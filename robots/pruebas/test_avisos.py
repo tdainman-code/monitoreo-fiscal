@@ -53,7 +53,26 @@ os.remove(f"{R}/publico/avisos.json")
 r = av.evaluar(dt.date(2026, 12, 1))
 lista = json.load(open(f"{R}/publico/avisos.json"))
 chk(r["automaticos"] == 1 and lista[0]["estado"] == "enviado al cliente" and "15 días" in lista[0]["historial"][-1]["que"]
-    and "pendiente" in lista[0]["vep"], "día 15: al cliente automático (VEP pendiente de programar)")
+    and "medio de pago" in lista[0]["vep"], "día 15 sin medio de pago cargado: aviso al cliente sin VEP y lo avisa")
+# con medio de pago: el día 15 deja un pedido para generar el VEP (necesita ARCA)
+c = json.load(open(f"{R}/bandeja/pedidos/_contactos.txt"))
+c[C]["medios_vep"] = ["Pago Mis Cuentas (Banelco)", "Interbanking"]
+json.dump(c, open(f"{R}/bandeja/pedidos/_contactos.txt", "w"))
+os.remove(f"{R}/publico/avisos.json")
+av.evaluar(dt.date(2026, 12, 1))
+lista = json.load(open(f"{R}/publico/avisos.json"))
+peds = [json.load(open(f"{R}/bandeja/pedidos/{n}")) for n in os.listdir(f"{R}/bandeja/pedidos") if n.endswith(".json")]
+chk(lista[0]["estado"].startswith("VEP en preparación") and any(p["robot"] == "aviso_vep" and p["por"].startswith("automático")
+    for p in peds), "día 15 con medio de pago: pide generar el VEP")
+from robots import robot_vep_facilidades as rv  # noqa: E402
+rv.correr = lambda cuit, plan, cuota, medios: [{"medio": m, "vep": str(1708960299 + i), "importe": "6854.63"}
+                                                for i, m in enumerate(medios)]
+r = av.accion_web(lista[0]["id"], con_vep=True, por="automático (15 días)")
+lista = json.load(open(f"{R}/publico/avisos.json"))
+mails = [json.load(open(os.path.join(av.SALIDA, n))) for n in sorted(os.listdir(av.SALIDA))]
+m = [x for x in mails if "VEP para pagar HOY" in x["asunto"]]
+chk(r.startswith("OK") and len(lista[0]["veps"]) == 2 and m and "1708960299" in m[0]["cuerpo"] and "1708960300" in m[0]["cuerpo"]
+    and "vence HOY" in m[0]["cuerpo"], "VEP por cada medio de pago, en el mail al cliente con aviso de que vence hoy")
 plan("Pagada")
 r = av.evaluar(dt.date(2026, 12, 2))
 lista = json.load(open(f"{R}/publico/avisos.json"))

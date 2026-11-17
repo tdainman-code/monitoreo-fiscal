@@ -254,7 +254,12 @@ pa = [json.load(open(os.path.join(BANDEJA, "pedidos", n))) for n in os.listdir(o
 ok(any(p.get("robot") == "aviso_vep" and p.get("aviso") == f"{C2}:W631300:2" for p in pa), "botón 'Enviar aviso + VEP' deja el pedido")
 ok(cl.post("/avisos", data={"csrf": "malo", "aviso": "x", "accion": "aviso_enviar"}).status_code == 400, "avisos con CSRF")
 r = cl.get(f"/cliente/{C2}/datos")
-ok('name="encargado"' in r.text, "datos del cliente: elegir encargado")
+ok('name="encargado"' in r.text and 'name="medios_vep"' in r.text, "datos del cliente: encargado y medios de pago del VEP")
+cl.post(f"/cliente/{C2}/datos", data={"csrf": token(r.text), "medios_vep": ["Interbanking", "Pagar (Red Link)", "trucho"],
+                                      "emails": "a@b.com"})
+ct = json.load(open(os.path.join(BANDEJA, "pedidos", "_contactos.txt")))
+ok(ct[C2]["medios_vep"] == ["Pagar (Red Link)", "Interbanking"] and ct[C2]["emails_cliente"] == ["a@b.com"],
+   "medios de pago del VEP (varios) publicados para el robot")
 r = cl.get("/cartera/dfe?ver=todas")
 ok(r.status_code == 200 and "Notificadas sin leer" in r.text and "Reenviar al cliente" in r.text, "tablero DFE con prioridades y botones")
 from robots_web import datos as _dw  # noqa: E402

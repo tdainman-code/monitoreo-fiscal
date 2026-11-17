@@ -7,8 +7,11 @@
 <form method="post" class="form-datos">
   <input type="hidden" name="csrf" value="{{ csrf() }}">
   {% for k, titulo in campos.items() %}
-    <label class="{{ 'ancho' if k in ('observaciones', 'emails', 'agente', 'jurisdicciones_iibb', 'convenios') }}">{{ titulo }}
-    {% if k == 'encargado' %}<select name="encargado"><option value="">—</option>{% for u, n in encargados %}<option value="{{ u }}" {{ 'selected' if d.get('encargado') == u }}>{{ n or u }}</option>{% endfor %}</select>
+    <label class="{{ 'ancho' if k in ('observaciones', 'emails', 'medios_vep', 'agente', 'jurisdicciones_iibb', 'convenios') }}">{{ titulo }}
+    {% if k == 'medios_vep' %}<span class="sutil">Depende del convenio de cada banco del cliente; si tiene varios bancos, marcá todos: se genera un VEP por medio.</span>
+      {% set elegidos = (d.get('medios_vep') or '').split(', ') %}
+      <span>{% for m in medios_vep %}<label class="en-linea"><input type="checkbox" name="medios_vep" value="{{ m }}" {{ 'checked' if m in elegidos }}> {{ m }}</label> {% endfor %}</span>
+    {% elif k == 'encargado' %}<select name="encargado"><option value="">—</option>{% for u, n in encargados %}<option value="{{ u }}" {{ 'selected' if d.get('encargado') == u }}>{{ n or u }}</option>{% endfor %}</select>
     {% elif k in opciones %}<select name="{{ k }}">{% for o in opciones[k] %}<option value="{{ o }}" {{ 'selected' if d.get(k) == o }}>{{ o or '—' }}</option>{% endfor %}</select>
     {% elif k == 'observaciones' %}<textarea name="{{ k }}" rows="3">{{ d.get(k, '') }}</textarea>
     {% else %}<input name="{{ k }}" value="{{ d.get(k, '') }}" maxlength="500"

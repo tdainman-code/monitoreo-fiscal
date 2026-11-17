@@ -295,6 +295,7 @@ def publicar_contactos() -> None:
         enc = d.get("encargado", "")
         out[cuit] = {"encargado": enc, "encargado_nombre": (us.get(enc) or ("", ""))[0] or "",
                      "encargado_email": (us.get(enc) or ("", ""))[1] or "",
+                     "medios_vep": [m for m in (d.get("medios_vep") or "").split(", ") if m],
                      "emails_cliente": [m.strip() for m in re.split(r"[,;\s]+", d.get("emails", "")) if EMAIL_RE.match(m.strip())]}
     out["_admins"] = admins
     ruta = os.path.join(pedidos.PEDIDOS, "_contactos.txt")

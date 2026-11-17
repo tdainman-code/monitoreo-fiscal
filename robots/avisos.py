@@ -163,15 +163,19 @@ def estado_mail(mid: str) -> str:
 
 
 # ---------------------------------------------------------------- textos
-def _texto_cliente(a: dict, con_vep: bool, vep: str) -> str:
-    linea_vep = ("\nAdjuntamos el VEP para pagarla." if vep else
-                 "\nEl VEP se lo enviamos por separado." if con_vep else "")
+def _texto_cliente(a: dict, veps: list[dict], nota_vep: str) -> str:
+    if veps:
+        lineas = "\n".join(f"  - {v['medio']}: VEP N° {v['vep']} por $ {v.get('importe')}" for v in veps)
+        linea_vep = (f"\nPara pagarla generamos el VEP (búsquenlo por su número en el home banking):\n{lineas}\n"
+                     f"IMPORTANTE: el VEP vence HOY ({dt.date.today():%d/%m/%Y}) a las 24 h; después hay que generar otro.\n")
+    else:
+        linea_vep = f"\n{nota_vep}\n" if nota_vep else ""
     return (f"Estimados de {a['razon_social'] or _cuit_fmt(a['cuit'])}:\n\n"
             f"Les informamos que en ARCA figura IMPAGA la cuota {a['cuota']} del plan de facilidades de pago "
             f"N° {a['plan']}, con vencimiento el {_fecha(a['venc_1']):%d/%m/%Y}, por {_pesos(a['importe'])}"
             + (f" (con el 2° vencimiento: {_pesos(a['importe_2'])})" if a.get("importe_2") else "") + ".\n"
             "Si el plan acumula cuotas impagas, ARCA puede declarar su caducidad.\n"
-            f"{linea_vep}\n\nSi ya la pagaron, desestimen este aviso (el pago puede demorar unos días en verse en ARCA).\n\n"
+            f"{linea_vep}\nSi ya la pagaron, desestimen este aviso (el pago puede demorar unos días en verse en ARCA).\n\n"
             "Saludos cordiales.\nEstudio")
 
 
@@ -242,7 +246,10 @@ def evaluar(hoy: dt.date | None = None) -> dict:
                 a["historial"].append({"fecha": hoy.isoformat(), "que": "aviso al encargado",
                                        "a": info.get("encargado_email") or "(el encargado no tiene mail cargado)"})
             if dias >= DIAS_CLIENTE and a["estado"] in ("para el encargado",):
-                enviar_al_cliente(a, info, con_vep=True, por="automático (15 días)")
+                if vep_programado() and info.get("medios_vep"):
+                    _pedir_vep_automatico(a)
+                else:
+                    enviar_al_cliente(a, info, con_vep=True, por="automático (15 días)")
                 auto += 1
     lista = sorted(avisos.values(), key=lambda a: (a["estado"] == "resuelto", -int(a.get("dias") or 0)))
     _guardar(ruta, lista[:2000])
@@ -259,24 +266,48 @@ def vep_programado() -> bool:
 
 
 def enviar_al_cliente(a: dict, info: dict, con_vep: bool, por: str) -> None:
-    """Encola el aviso al cliente (copia al encargado). El VEP lo agrega el robot de VEP cuando esté programado."""
-    vep = ""
+    """Encola el aviso al cliente (copia al encargado). Con VEP: lo genera en ARCA en este momento (vence hoy a las 24 h)
+    por cada medio de pago del cliente. Se llama con el candado de las corridas tomado (pedidos.py)."""
+    veps, nota = [], ""
     if con_vep:
-        try:
-            from . import robot_vep_facilidades                    # se programa con las pantallas de Gaby
-            vep = robot_vep_facilidades.vep_pendiente(a) or ""
-        except ImportError:
-            vep = ""
+        medios = info.get("medios_vep") or []
+        if not medios:
+            nota = ""
+            a["vep"] = "sin VEP: falta cargar el medio de pago del VEP en 'Datos del cliente'"
+        elif not vep_programado():
+            a["vep"] = "pendiente: falta programar la generación del VEP"
+        else:
+            from . import robot_vep_facilidades
+            try:
+                veps = robot_vep_facilidades.correr(a["cuit"], str(a["plan"]), int(a["cuota"]), medios)
+                a["vep"] = ", ".join(f"{v['medio']} N° {v['vep']}" for v in veps) or "ARCA no generó el VEP"
+            except Exception as e:
+                a["vep"] = f"no se pudo generar ({type(e).__name__}: {str(e)[:150]})"
+    else:
+        a["vep"] = "sin VEP"
     mid = encolar_mail(info.get("emails_cliente") or [],
-                       f"Aviso: cuota impaga del plan de facilidades {a['plan']}",
-                       _texto_cliente(a, con_vep, vep), cc=[info.get("encargado_email", "")],
-                       motivo=f"aviso {a['id']} al cliente ({por})", adjuntos=[vep] if vep else [])
+                       f"Aviso: cuota impaga del plan de facilidades {a['plan']}" + (" — VEP para pagar HOY" if veps else ""),
+                       _texto_cliente(a, veps, nota), cc=[info.get("encargado_email", "")],
+                       motivo=f"aviso {a['id']} al cliente ({por})")
     a["estado"] = "enviado al cliente"
     a["mail_cliente"] = mid
-    a["vep"] = "adjunto" if vep else ("pendiente: falta programar la generación del VEP" if con_vep else "sin VEP")
+    a["veps"] = veps
     a.setdefault("historial", []).append({
         "fecha": dt.date.today().isoformat(), "que": f"aviso al cliente{' + VEP' if con_vep else ''} — {por}",
         "a": ", ".join(info.get("emails_cliente") or []) or "(el cliente no tiene mails cargados)"})
+
+
+def _pedir_vep_automatico(a: dict) -> None:
+    """Día 15: el VEP necesita entrar a ARCA (candado de corridas + pantalla virtual): se deja un pedido para
+    robots.pedidos, que genera el VEP y manda el aviso al cliente."""
+    carpeta = os.path.join(BANDEJA, "pedidos")
+    p = {"id": uuid.uuid4().hex, "fecha": dt.datetime.now().isoformat(timespec="seconds"), "por": "automático (15 días)",
+         "cuit": a["cuit"], "robot": "aviso_vep", "aviso": a["id"]}
+    ruta = os.path.join(carpeta, f"{p['fecha'].replace(':', '')}_{p['id'][:8]}.json")
+    with open(ruta + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(p, f)
+    os.replace(ruta + ".tmp", ruta)
+    a["estado"] = "VEP en preparación (15 días)"
 
 
 def accion_web(aviso_id: str, con_vep: bool, por: str) -> str:
@@ -286,7 +317,7 @@ def accion_web(aviso_id: str, con_vep: bool, por: str) -> str:
     a = next((x for x in lista if x["id"] == aviso_id), None)
     if not a:
         return "aviso inexistente"
-    if a["estado"] != "para el encargado":
+    if a["estado"] not in ("para el encargado", "VEP en preparación (15 días)"):
         return f"el aviso ya está '{a['estado']}'"
     info = contactos().get(a["cuit"]) or {}
     enviar_al_cliente(a, info, con_vep, por=f"pedido por {por}")

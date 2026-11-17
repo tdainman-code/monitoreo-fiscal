@@ -385,12 +385,14 @@ def pedir_corrida(cuit):
     return redirect(url_for("cliente", cuit=cuit))
 
 
+MEDIOS_VEP = ["Pago Mis Cuentas (Banelco)", "Pagar (Red Link)", "Interbanking", "XN Group"]
 CAMPOS_CLIENTE = {
     "condicion_iva": "Condición frente al IVA", "condicion_ganancias": "Ganancias", "bienes_personales": "Bienes Personales",
     "regimen_iibb": "Régimen de Ingresos Brutos", "jurisdicciones_iibb": "Jurisdicciones de IIBB",
     "agente": "Agente de retención / percepción", "mes_cierre": "Mes de cierre", "empleador": "Empleador",
     "convenios": "Convenios colectivos", "encargado": "Encargado del estudio (recibe los avisos)",
     "contadores": "Contador/es a cargo", "emails": "Mails del cliente",
+    "medios_vep": "Medios de pago del VEP (según sus bancos)",
     "whatsapp": "WhatsApp", "observaciones": "Observaciones",
 }
 OPCIONES_CLIENTE = {
@@ -416,12 +418,13 @@ def datos_del_cliente(cuit):
                 nuevos[k] = ""
         if nuevos["encargado"] not in {u[0] for u in usuarios.listar() if u[3]}:
             nuevos["encargado"] = ""
+        nuevos["medios_vep"] = ", ".join(m for m in MEDIOS_VEP if m in request.form.getlist("medios_vep"))
         usuarios.guardar_datos_cliente(cuit, nuevos, session["usuario"])
         usuarios.registrar(session["usuario"], "datos del cliente", cuit, _ip())
         flash("Datos del cliente guardados", "ok")
         return redirect(url_for("cliente", cuit=cuit))
     return render_template("datos_cliente.html", c=info, d=usuarios.datos_cliente(cuit), campos=CAMPOS_CLIENTE,
-                           opciones=OPCIONES_CLIENTE, encargados=[(u[0], u[1]) for u in usuarios.listar() if u[3]])
+                           opciones=OPCIONES_CLIENTE, medios_vep=MEDIOS_VEP, encargados=[(u[0], u[1]) for u in usuarios.listar() if u[3]])
 
 
 @app.route("/alertas")
