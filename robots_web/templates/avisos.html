@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block titulo %}Avisos{% endblock %}
+{% block cuerpo %}
+<div class="cabecera"><div><h1>Avisos de cuotas impagas</h1>
+<div class="sutil">A los <b>4 días</b> del vencimiento sin cancelar, el encargado decide si le avisa al cliente. A los <b>15 días</b>, el aviso y el VEP le llegan al cliente automáticamente, con copia al encargado.</div></div></div>
+<div class="filtros">
+  <a class="chip {{ 'activo' if ver == 'mios' }}" href="{{ url_for('pantalla_avisos', ver='mios') }}">Mis clientes</a>
+  <a class="chip {{ 'activo' if ver == 'todos' }}" href="{{ url_for('pantalla_avisos', ver='todos') }}">Todos</a>
+</div>
+<div class="panel">
+<table class="tabla"><thead><tr><th>Cliente</th><th>Plan / cuota</th><th>Venció</th><th class="num">Días</th><th class="num">Importe</th><th>Estado</th><th></th></tr></thead><tbody>
+{% for a in abiertos %}
+<tr class="{{ 'sem-rojo' if (a.dias or 0) >= 15 else 'sem-amarillo' }}">
+  <td><a href="{{ url_for('cliente', cuit=a.cuit) }}"><b>{{ a.razon_social or cuit_fmt(a.cuit) }}</b></a>
+      <div class="sutil">{{ cuit_fmt(a.cuit) }}{% if a.encargado_nombre %} · encargado: {{ a.encargado_nombre }}{% else %} · <b class="txt-rojo">sin encargado</b>{% endif %}</div></td>
+  <td data-l="Plan / cuota">{{ a.plan }} · cuota {{ a.cuota }}<div class="sutil">{{ a.situacion }}</div></td>
+  <td data-l="Venció">{{ a.venc_1|fecha }}{% if a.venc_2 %}<div class="sutil">2° venc. {{ a.venc_2|fecha }}</div>{% endif %}</td>
+  <td class="num" data-l="Días"><span class="pill {{ 'rojo' if (a.dias or 0) >= 15 else 'ambar' }}">{{ a.dias }}</span></td>
+  <td class="num" data-l="Importe">{{ a.importe|pesos }}</td>
+  <td data-l="Estado">{{ a.estado }}{% if a.vep %}<div class="sutil">VEP: {{ a.vep }}</div>{% endif %}
+      {% for h in (a.historial or [])[-2:] %}<div class="sutil">{{ h.fecha|fecha }} · {{ h.que }} → {{ h.a }}</div>{% endfor %}</td>
+  <td>{% if a.estado == 'para el encargado' %}
+    {% if a.id in pend %}<span class="sutil">⏳ pedido</span>{% else %}
+    <form method="post" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="aviso" value="{{ a.id }}">
+      <button name="accion" value="aviso_enviar">Enviar aviso al cliente</button>
+      <button name="accion" value="aviso_vep">Enviar aviso + VEP</button></form>{% endif %}
+  {% endif %}</td>
+</tr>
+{% else %}<tr><td colspan="7" class="sutil">No hay cuotas impagas para avisar.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if resueltos %}<details class="plegado"><summary>Resueltos ({{ resueltos|length }})</summary>
+<ul>{% for a in resueltos %}<li>{{ a.razon_social or cuit_fmt(a.cuit) }} — plan {{ a.plan }} cuota {{ a.cuota }}: {{ a.detalle or 'resuelto' }} ({{ a.resuelto|fecha }})</li>{% endfor %}</ul></details>{% endif %}
+<p class="sutil">Los mails salen de la casilla del estudio. Mientras no esté configurada en el servidor, quedan en cola y se mandan apenas se configure.</p>
+{% endblock %}

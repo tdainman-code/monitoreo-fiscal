@@ -1,0 +1,61 @@
+"""Avisos de cuotas impagas: 4 días -> encargado; 15 días -> cliente automático; pagada -> resuelto."""
+import datetime as dt, json, os, sys, tempfile
+R = tempfile.mkdtemp()
+for k, sub in (("ROBOTS_DATOS", "datos"), ("ROBOTS_PUBLICO", "publico"), ("ROBOTS_BANDEJA", "bandeja")):
+    os.environ[k] = os.path.join(R, sub)
+os.environ["ROBOTS_CORREO"] = os.path.join(R, "no_hay_casilla.json")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from robots import avisos as av  # noqa: E402
+
+C = "30717468631"
+HOY = dt.date(2026, 11, 30)
+
+
+def plan(estado_c2):
+    os.makedirs(f"{R}/datos/{C}/situacion/2026-11-30", exist_ok=True)
+    cuotas = [{"cuota": 1, "venc_1": "2026-10-16", "situacion": "Pagada", "total_1": 100.0},
+              {"cuota": 2, "venc_1": "2026-11-16", "venc_2": "2026-11-26", "situacion": estado_c2, "total_1": 342337.29,
+               "total_2": 345475.38},
+              {"cuota": 3, "venc_1": "2026-12-16", "situacion": "A vencer", "total_1": 1.0}]
+    json.dump({"mis_facilidades": {"vigentes": [{"numero": "W631300", "detalle_cuotas": cuotas}]}},
+              open(f"{R}/datos/{C}/situacion/2026-11-30/resultado.json", "w"))
+
+
+os.makedirs(f"{R}/bandeja/pedidos", exist_ok=True)
+json.dump({C: {"razon_social": "BH SOLUCIONES", "encargado": "tomas", "encargado_nombre": "Tomás",
+               "encargado_email": "tomas@estudio.com", "emails_cliente": ["admin@bh.com"]}},
+          open(f"{R}/bandeja/pedidos/_contactos.txt", "w"))
+ok = True
+def chk(c, m):
+    global ok; print(("✔ " if c else "✘ ") + m); ok &= bool(c)
+
+plan("Pendiente de pago")
+r = av.evaluar(dt.date(2026, 11, 19))
+chk(r["nuevos"] == 0, "día 3: todavía no avisa")
+r = av.evaluar(dt.date(2026, 11, 20))
+lista = json.load(open(f"{R}/publico/avisos.json"))
+chk(r["nuevos"] == 1 and lista[0]["estado"] == "para el encargado" and lista[0]["cuota"] == 2, "día 4: aviso al encargado")
+mails = [json.load(open(os.path.join(av.SALIDA, n))) for n in sorted(os.listdir(av.SALIDA))]
+chk(len(mails) == 1 and mails[0]["para"] == ["tomas@estudio.com"] and mails[0]["estado"] == "esperando casilla",
+    "mail al encargado en cola (sin casilla configurada queda esperando)")
+av.evaluar(dt.date(2026, 11, 21))
+chk(len(os.listdir(av.SALIDA)) == 1, "no repite el mail al encargado")
+r2 = av.accion_web(lista[0]["id"], con_vep=False, por="tomas")
+lista = json.load(open(f"{R}/publico/avisos.json"))
+chk(r2.startswith("OK") and lista[0]["estado"] == "enviado al cliente", "botón 'Enviar aviso al cliente'")
+mails = [json.load(open(os.path.join(av.SALIDA, n))) for n in sorted(os.listdir(av.SALIDA))]
+mc = next(m for m in mails if "al cliente" in m["motivo"])
+chk(mc["para"] == ["admin@bh.com"] and mc["cc"] == ["tomas@estudio.com"] and "W631300" in mc["cuerpo"],
+    "mail al cliente con copia al encargado")
+chk(av.accion_web(lista[0]["id"], con_vep=False, por="tomas").startswith("el aviso ya"), "no se manda dos veces")
+# 15 días automático (otro cliente / aviso nuevo)
+os.remove(f"{R}/publico/avisos.json")
+r = av.evaluar(dt.date(2026, 12, 1))
+lista = json.load(open(f"{R}/publico/avisos.json"))
+chk(r["automaticos"] == 1 and lista[0]["estado"] == "enviado al cliente" and "15 días" in lista[0]["historial"][-1]["que"]
+    and "pendiente" in lista[0]["vep"], "día 15: al cliente automático (VEP pendiente de programar)")
+plan("Pagada")
+r = av.evaluar(dt.date(2026, 12, 2))
+lista = json.load(open(f"{R}/publico/avisos.json"))
+chk(r["resueltos"] == 1 and lista[-1]["estado"] == "resuelto", "cuota pagada -> aviso resuelto")
+print("TODO OK" if ok else "FALLAS"); sys.exit(0 if ok else 1)

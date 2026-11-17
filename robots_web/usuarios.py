@@ -43,6 +43,10 @@ def conectar():
     CREATE TABLE IF NOT EXISTS informadas (id TEXT PRIMARY KEY, cuit TEXT, fecha TEXT, usuario TEXT, nombre TEXT);
     CREATE TABLE IF NOT EXISTS datos_cliente (cuit TEXT PRIMARY KEY, datos TEXT, actualizado TEXT, usuario TEXT);
     """)
+    try:                                   # mail de cada usuario (avisos al encargado, 17/11/2026)
+        con.execute("ALTER TABLE usuarios ADD COLUMN email TEXT")
+    except sqlite3.OperationalError:
+        pass
     return con
 
 
@@ -242,13 +246,60 @@ def guardar_datos_cliente(cuit, datos: dict, usuario):
         con.execute("INSERT OR REPLACE INTO datos_cliente VALUES (?,?,?,?)",
                     (cuit, _json.dumps(datos, ensure_ascii=False), ahora(), usuario))
     con.close()
+    try:
+        publicar_contactos()
+    except OSError:
+        pass
 
 
 def listar():
     con = conectar()
-    filas = con.execute("SELECT usuario, nombre, rol, activo, ultimo_ingreso FROM usuarios ORDER BY usuario").fetchall()
+    filas = con.execute("SELECT usuario, nombre, rol, activo, ultimo_ingreso, email FROM usuarios ORDER BY usuario").fetchall()
     con.close()
     return filas
+
+
+EMAIL_RE = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
+
+
+def poner_email(usuario: str, email: str) -> str:
+    email = (email or "").strip()
+    if email and not EMAIL_RE.match(email):
+        return "El mail no es válido"
+    con = conectar()
+    with con:
+        con.execute("UPDATE usuarios SET email=? WHERE usuario=?", (email, usuario))
+    con.close()
+    publicar_contactos()
+    return ""
+
+
+def publicar_contactos() -> None:
+    """Deja en la bandeja los contactos que usan los avisos del robot (el robot no ve la base de la web):
+    {cuit: {razon_social, encargado, encargado_nombre, encargado_email, emails_cliente}}."""
+    import json as _json
+    from . import pedidos
+    if not pedidos.listo():
+        return
+    con = conectar()
+    us = {u: (n, e) for u, n, e in con.execute("SELECT usuario, nombre, email FROM usuarios WHERE activo=1")}
+    filas = con.execute("SELECT cuit, datos FROM datos_cliente").fetchall()
+    con.close()
+    out = {}
+    for cuit, d in filas:
+        try:
+            d = _json.loads(d)
+        except ValueError:
+            continue
+        enc = d.get("encargado", "")
+        out[cuit] = {"encargado": enc, "encargado_nombre": (us.get(enc) or ("", ""))[0] or "",
+                     "encargado_email": (us.get(enc) or ("", ""))[1] or "",
+                     "emails_cliente": [m.strip() for m in re.split(r"[,;\s]+", d.get("emails", "")) if EMAIL_RE.match(m.strip())]}
+    ruta = os.path.join(pedidos.PEDIDOS, "_contactos.txt")
+    tmp = ruta + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        _json.dump(out, f, ensure_ascii=False)
+    os.replace(tmp, ruta)
 
 
 def _pedir_clave():

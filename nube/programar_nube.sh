@@ -5,6 +5,7 @@
 #   sábados 9:00          repechaje: los que dieron error en la semana (cortes, portal caído)
 #   cada 3 minutos        claves cargadas desde la web (bandeja de sobres)
 #   cada minuto           corridas pedidas desde la web
+#   cada 30 minutos       avisos de cuotas impagas (4 días: al encargado; 15 días: al cliente) y envío de mails
 # Todas usan el mismo candado (/tmp/robots_todo.lock): nunca corren dos robots a la vez.
 # La zona horaria del servidor es la de Argentina (la pone el instalador).
 # xvfb-run: pantalla virtual (AGIP no deja entrar a navegadores ocultos).
@@ -24,6 +25,8 @@ $TAG claves cargadas desde la web
 */3 * * * * cd \$HOME/app && $PY -m robots.almacen_claves procesar-bandeja >> \$HOME/logs/bandeja.log 2>&1 $TAG
 $TAG corridas pedidas desde la web
 * * * * * cd \$HOME/app && flock -n /tmp/robots_pedidos.lock xvfb-run -a $PY -m robots.pedidos >> \$HOME/logs/pedidos.log 2>&1 $TAG
+$TAG avisos de cuotas impagas (4 y 15 dias) y cola de mails
+*/30 * * * * cd \$HOME/app && $PY -m robots.avisos evaluar >> \$HOME/logs/avisos.log 2>&1 $TAG
 $TAG limpieza de logs de mas de 60 dias
 30 5 * * 0 find \$HOME/logs -name '*.log' -mtime +60 -delete $TAG
 EOT

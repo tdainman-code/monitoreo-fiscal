@@ -31,7 +31,11 @@ ROBOTS_PERMITIDOS = {
     "fiscalizaciones": "Fiscalizaciones ARCA",
     "agip": "AGIP (DFE, deuda, fiscalización)",
     "arba_dfe": "ARBA (domicilio fiscal electrónico)",
+    # botones de la pantalla Avisos (cuotas impagas): no entran a ARCA salvo para el VEP
+    "aviso_enviar": "Aviso de cuota impaga al cliente",
+    "aviso_vep": "Aviso de cuota impaga al cliente + VEP",
 }
+AVISOS = {"aviso_enviar", "aviso_vep"}
 MAX_ESTADO = 50
 
 
@@ -62,8 +66,11 @@ def _anotar(p: dict, estado: str, detalle: str = "") -> None:
 
 
 def _valido(p: dict) -> bool:
-    return (isinstance(p, dict) and re.fullmatch(r"\d{11}", str(p.get("cuit", ""))) is not None
-            and p.get("robot") in ROBOTS_PERMITIDOS and re.fullmatch(r"[0-9a-f]{8,32}", str(p.get("id", ""))) is not None)
+    ok = (isinstance(p, dict) and re.fullmatch(r"\d{11}", str(p.get("cuit", ""))) is not None
+          and p.get("robot") in ROBOTS_PERMITIDOS and re.fullmatch(r"[0-9a-f]{8,32}", str(p.get("id", ""))) is not None)
+    if ok and p["robot"] in AVISOS:
+        ok = re.fullmatch(rf"{p['cuit']}:[A-Za-z0-9-]{{1,20}}:\d{{1,3}}", str(p.get("aviso", ""))) is not None
+    return ok
 
 
 def pendientes() -> list[tuple[str, dict]]:
@@ -87,8 +94,25 @@ def pendientes() -> list[tuple[str, dict]]:
     return out
 
 
+def _procesar_avisos(lista) -> list:
+    """Los avisos SIN VEP se mandan al instante (no entran a ARCA, no esperan el candado de las corridas)."""
+    from . import avisos
+    resto = []
+    for ruta, p in lista:
+        if p["robot"] == "aviso_enviar" or (p["robot"] == "aviso_vep" and not avisos.vep_programado()):
+            os.remove(ruta)
+            try:
+                r = avisos.accion_web(p["aviso"], con_vep=p["robot"] == "aviso_vep", por=p.get("por") or "?")
+                _anotar(p, "terminado" if r.startswith("OK") else "con problemas", r)
+            except Exception as e:
+                _anotar(p, "error", f"{type(e).__name__}: {e}")
+        else:
+            resto.append((ruta, p))
+    return resto
+
+
 def procesar() -> int:
-    lista = pendientes()
+    lista = _procesar_avisos(pendientes())
     if not lista:
         return 0
     with open(CANDADO, "a") as candado:
@@ -105,7 +129,11 @@ def procesar() -> int:
             os.remove(ruta)                                  # se saca de la bandeja ANTES de correr (no repetir)
             _anotar(p, "corriendo")
             try:
-                res = correr_uno(p["robot"], p["cuit"], None, visible=False, modo="completo")
+                if p["robot"] in AVISOS:                     # aviso + VEP: entra a ARCA a generar el VEP
+                    from . import avisos
+                    res = avisos.accion_web(p["aviso"], con_vep=True, por=p.get("por") or "?")
+                else:
+                    res = correr_uno(p["robot"], p["cuit"], None, visible=False, modo="completo")
                 _anotar(p, "terminado" if res.startswith("OK") else "con problemas", res)
             except Exception as e:                           # nunca dejar la tarea trabada
                 _anotar(p, "error", f"{type(e).__name__}: {e}")

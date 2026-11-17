@@ -208,7 +208,7 @@ cl.post(f"/cliente/{C2}/datos", data={"csrf": token(r.text), "condicion_iva": "<
 ok("<script>" not in cl.get(f"/cliente/{C2}").text, "datos del cliente: opción inválida descartada")
 r = cl.get(f"/cliente/{C2}")
 r = cl.post(f"/cliente/{C2}/pedir", data={"csrf": token(r.text), "robot": "agip"}, follow_redirects=True)
-ok("Pedido enviado" in r.text and len(os.listdir(os.path.join(BANDEJA, "pedidos"))) == 1, "pedido de corrida en la bandeja")
+ok("Pedido enviado" in r.text and len([n for n in os.listdir(os.path.join(BANDEJA, "pedidos")) if n.endswith(".json")]) == 1, "pedido de corrida en la bandeja")
 r = cl.post(f"/cliente/{C2}/pedir", data={"csrf": token(r.text), "robot": "agip"}, follow_redirects=True)
 ok("Ya hay un pedido igual" in r.text, "no duplica pedidos")
 r = cl.post(f"/cliente/{C2}/pedir", data={"csrf": token(r.text), "robot": "rm -rf"}, follow_redirects=True)
@@ -227,7 +227,7 @@ import robots.correr as rc  # noqa: E402
 llamados = []
 rc.correr_uno = lambda robot, cuit, *a, **k: llamados.append((robot, cuit)) or "OK\n     agip: simulado"
 rc._publicar = lambda: None
-ok(rp.procesar() == 1 and llamados == [("agip", C2)] and not os.listdir(rp.PEDIDOS), "el robot toma el pedido y lo corre")
+ok(rp.procesar() == 1 and llamados == [("agip", C2)] and not [n for n in os.listdir(rp.PEDIDOS) if n.endswith(".json")], "el robot toma el pedido y lo corre")
 ok("terminado" in cl.get("/robots").text, "la web muestra el pedido terminado")
 import fcntl  # noqa: E402
 
@@ -235,11 +235,29 @@ open(os.path.join(BANDEJA, "pedidos", "x_12345678.json"), "w").write(json.dumps(
     {"id": "1234567890ab", "cuit": C, "robot": "todo", "fecha": "2026-11-17T10:00:00", "por": "ana"}))
 with open(rp.CANDADO, "a") as f:
     fcntl.flock(f, fcntl.LOCK_EX)
-    ok(rp.procesar() == 0 and len(os.listdir(rp.PEDIDOS)) == 1, "con una corrida en curso el pedido espera")
+    ok(rp.procesar() == 0 and len([n for n in os.listdir(rp.PEDIDOS) if n.endswith(".json")]) == 1, "con una corrida en curso el pedido espera")
 ok("en espera" in cl.get("/robots").text, "estado 'en espera' visible")
 open(os.path.join(BANDEJA, "pedidos", "y_mal.json"), "w").write(json.dumps({"cuit": "1; rm", "robot": "todo", "id": "zz"}))
 rp.procesar()
 ok(os.path.exists(os.path.join(BANDEJA, "pedidos", "y_mal.json.mal")), "pedido mal formado se descarta")
+
+# ------------------------------------------------ avisos de cuotas impagas (17/11/2026)
+json.dump([{"id": f"{C2}:W631300:2", "cuit": C2, "razon_social": "BH SOLUCIONES", "plan": "W631300", "cuota": 2,
+            "venc_1": "2026-11-16", "dias": 5, "importe": 342337.29, "estado": "para el encargado", "encargado": "",
+            "historial": []}], open(os.path.join(R, "publico", "avisos.json"), "w"))
+r = cl.get("/avisos?ver=todos")
+ok(r.status_code == 200 and "W631300" in r.text and "Enviar aviso + VEP" in r.text, "pantalla Avisos con botones")
+r = cl.post("/avisos?ver=todos", data={"csrf": token(r.text), "aviso": f"{C2}:W631300:2", "accion": "aviso_vep"},
+            follow_redirects=True)
+pa = [json.load(open(os.path.join(BANDEJA, "pedidos", n))) for n in os.listdir(os.path.join(BANDEJA, "pedidos"))
+      if n.endswith(".json")]
+ok(any(p.get("robot") == "aviso_vep" and p.get("aviso") == f"{C2}:W631300:2" for p in pa), "botón 'Enviar aviso + VEP' deja el pedido")
+ok(cl.post("/avisos", data={"csrf": "malo", "aviso": "x", "accion": "aviso_enviar"}).status_code == 400, "avisos con CSRF")
+r = cl.get(f"/cliente/{C2}/datos")
+ok('name="encargado"' in r.text, "datos del cliente: elegir encargado")
+for n in os.listdir(os.path.join(BANDEJA, "pedidos")):
+    if n.endswith(".json"):
+        os.remove(os.path.join(BANDEJA, "pedidos", n))
 
 # ------------------------------------------------ reparto por día y repechaje
 import datetime as _dt  # noqa: E402

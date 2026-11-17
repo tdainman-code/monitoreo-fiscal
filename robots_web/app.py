@@ -353,7 +353,8 @@ CAMPOS_CLIENTE = {
     "condicion_iva": "Condición frente al IVA", "condicion_ganancias": "Ganancias", "bienes_personales": "Bienes Personales",
     "regimen_iibb": "Régimen de Ingresos Brutos", "jurisdicciones_iibb": "Jurisdicciones de IIBB",
     "agente": "Agente de retención / percepción", "mes_cierre": "Mes de cierre", "empleador": "Empleador",
-    "convenios": "Convenios colectivos", "contadores": "Contador/es a cargo", "emails": "Mails del cliente",
+    "convenios": "Convenios colectivos", "encargado": "Encargado del estudio (recibe los avisos)",
+    "contadores": "Contador/es a cargo", "emails": "Mails del cliente",
     "whatsapp": "WhatsApp", "observaciones": "Observaciones",
 }
 OPCIONES_CLIENTE = {
@@ -377,12 +378,14 @@ def datos_del_cliente(cuit):
         for k, ops in OPCIONES_CLIENTE.items():
             if nuevos[k] not in ops:
                 nuevos[k] = ""
+        if nuevos["encargado"] not in {u[0] for u in usuarios.listar() if u[3]}:
+            nuevos["encargado"] = ""
         usuarios.guardar_datos_cliente(cuit, nuevos, session["usuario"])
         usuarios.registrar(session["usuario"], "datos del cliente", cuit, _ip())
         flash("Datos del cliente guardados", "ok")
         return redirect(url_for("cliente", cuit=cuit))
     return render_template("datos_cliente.html", c=info, d=usuarios.datos_cliente(cuit), campos=CAMPOS_CLIENTE,
-                           opciones=OPCIONES_CLIENTE)
+                           opciones=OPCIONES_CLIENTE, encargados=[(u[0], u[1]) for u in usuarios.listar() if u[3]])
 
 
 @app.route("/alertas")
@@ -467,6 +470,38 @@ def robots():
                            estado=pedidos.estado(), nombres=pedidos.ROBOTS)
 
 
+# ---------------------------------------------------------------- avisos de cuotas impagas (17/11/2026)
+@app.route("/avisos", methods=["GET", "POST"])
+@requiere_login
+def pantalla_avisos():
+    lista = pedidos.avisos()
+    if request.method == "POST":
+        _controlar_csrf()
+        a = next((x for x in lista if x.get("id") == request.form.get("aviso", "")), None)
+        accion = request.form.get("accion", "")
+        if not a:
+            flash("Ese aviso ya no existe", "error")
+        elif a.get("estado") != "para el encargado":
+            flash(f"Ese aviso ya está '{a.get('estado')}'", "error")
+        elif session.get("rol") != "admin" and a.get("encargado") and a["encargado"] != session["usuario"]:
+            flash("Ese cliente tiene otro encargado", "error")
+        else:
+            try:
+                pedidos.encolar_aviso(a, accion, session["usuario"])
+                usuarios.registrar(session["usuario"], f"{pedidos.AVISOS.get(accion, accion)}", a["cuit"], _ip())
+                flash("Pedido: el aviso sale en un minuto" + (" (el VEP lo genera el robot)" if accion == "aviso_vep" else ""), "ok")
+            except pedidos.ErrorPedido as e:
+                flash(str(e), "error")
+        return redirect(url_for("pantalla_avisos", ver=request.args.get("ver", "")))
+    ver = request.args.get("ver", "mios")
+    if ver == "mios":
+        lista = [a for a in lista if a.get("encargado") in (session["usuario"], "", None)]
+    abiertos = [a for a in lista if a.get("estado") != "resuelto"]
+    resueltos = [a for a in lista if a.get("estado") == "resuelto"][:50]
+    pend = {p.get("aviso") for p in pedidos.pendientes() if p.get("aviso")}
+    return render_template("avisos.html", abiertos=abiertos, resueltos=resueltos, ver=ver, pend=pend)
+
+
 @app.route("/actividad")
 @requiere_admin
 def actividad():
@@ -494,6 +529,11 @@ def pantalla_usuarios():
             if not err:
                 usuarios.registrar(session["usuario"], "cambio de contraseña de usuario", u, _ip())
                 flash(f"Contraseña de '{u}' cambiada.", "ok")
+        elif accion == "email":
+            err = usuarios.poner_email(u, request.form.get("email", ""))
+            if not err:
+                usuarios.registrar(session["usuario"], "mail de usuario", u, _ip())
+                flash(f"Mail de '{u}' guardado.", "ok")
         elif accion in ("baja", "alta"):
             if accion == "baja" and u == session["usuario"]:
                 err = "No podés darte de baja a vos mismo"

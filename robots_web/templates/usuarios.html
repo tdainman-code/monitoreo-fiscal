@@ -16,9 +16,11 @@
 </form>
 
 <h2>Usuarios existentes</h2>
-<table class="tabla"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último ingreso</th><th>Acciones</th></tr></thead><tbody>
+<table class="tabla"><thead><tr><th>Usuario</th><th>Nombre</th><th>Mail (avisos)</th><th>Rol</th><th>Estado</th><th>Último ingreso</th><th>Acciones</th></tr></thead><tbody>
 {% for u in lista %}
-<tr><td data-l="Usuario">{{ u[0] }}</td><td data-l="Nombre">{{ u[1] }}</td><td data-l="Rol">{{ u[2] }}</td><td data-l="Estado">{{ 'activo' if u[3] else 'baja' }}</td>
+<tr><td data-l="Usuario">{{ u[0] }}</td><td data-l="Nombre">{{ u[1] }}</td>
+<td data-l="Mail"><form class="en-linea" method="post"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="email"><input type="hidden" name="usuario" value="{{ u[0] }}">
+  <input name="email" type="email" value="{{ u[5] or '' }}" placeholder="mail@estudio.com" style="width:180px"> <button>Guardar</button></form></td><td data-l="Rol">{{ u[2] }}</td><td data-l="Estado">{{ 'activo' if u[3] else 'baja' }}</td>
 <td data-l="Último ingreso">{{ (u[4] or '—')[:16]|replace('T',' ') }}</td>
 <td>
   <form class="en-linea" method="post" autocomplete="off">

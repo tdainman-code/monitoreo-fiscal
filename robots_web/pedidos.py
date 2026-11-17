@@ -58,6 +58,36 @@ def estado() -> list[dict]:
         return []
 
 
+AVISOS = {"aviso_enviar": "Aviso al cliente", "aviso_vep": "Aviso al cliente + VEP"}
+
+
+def encolar_aviso(aviso: dict, accion: str, por: str) -> str:
+    """Botón del encargado en 'Avisos': el robot manda el mail (y genera el VEP si se pidió)."""
+    if accion not in AVISOS:
+        raise ErrorPedido("Acción desconocida")
+    if not listo():
+        raise ErrorPedido("Los pedidos todavía no están habilitados en el servidor")
+    if any(p.get("aviso") == aviso["id"] for p in pendientes()):
+        raise ErrorPedido("Ese aviso ya está pedido")
+    p = {"id": uuid.uuid4().hex, "fecha": dt.datetime.now().isoformat(timespec="seconds"), "por": por,
+         "cuit": aviso["cuit"], "robot": accion, "aviso": aviso["id"]}
+    ruta = os.path.join(PEDIDOS, f"{p['fecha'].replace(':', '')}_{p['id'][:8]}.json")
+    tmp = ruta + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o660)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(p, f)
+    os.replace(tmp, ruta)
+    return p["id"]
+
+
+def avisos() -> list[dict]:
+    try:
+        with open(os.path.join(datos.PUBLICO, "avisos.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
 def encolar(cuit: str, robot: str, por: str) -> str:
     if robot not in ROBOTS:
         raise ErrorPedido("Robot desconocido")
