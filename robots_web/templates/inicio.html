@@ -1,34 +1,44 @@
-{% extends "base.html" %}{% block titulo %}Clientes{% endblock %}
+{% extends "base.html" %}{% block titulo %}Tablero{% endblock %}
 {% block cuerpo %}
 <div class="cabecera">
-  <h1>Clientes</h1>
-  <a class="boton" href="{{ url_for('cliente_nuevo') }}">➕ Nuevo cliente</a>
+  <div><h1>Tablero de clientes</h1><div class="sutil">{{ kpi.clientes }} cliente(s) · tocá una tarjeta para filtrar</div></div>
   <form class="buscar" method="get">
-    <input name="q" value="{{ q }}" placeholder="Buscar por nombre o CUIT">
+    <input name="q" value="{{ q }}" placeholder="🔍  Buscar por nombre o CUIT">
     {% if f %}<input type="hidden" name="f" value="{{ f }}">{% endif %}
   </form>
+  <a class="boton" href="{{ url_for('cliente_nuevo') }}">＋ Nuevo cliente</a>
 </div>
-<div class="filtros">
-  <a class="chip {{ 'activo' if not f }}" href="{{ url_for('inicio', q=q) }}">Todos</a>
-  <a class="chip rojo {{ 'activo' if f=='rojo' }}" href="{{ url_for('inicio', q=q, f='rojo') }}">Urgente {{ cuenta.rojo }}</a>
-  <a class="chip amarillo {{ 'activo' if f=='amarillo' }}" href="{{ url_for('inicio', q=q, f='amarillo') }}">Atención {{ cuenta.amarillo }}</a>
-  <a class="chip verde {{ 'activo' if f=='verde' }}" href="{{ url_for('inicio', q=q, f='verde') }}">Al día {{ cuenta.verde }}</a>
-  <a class="chip gris {{ 'activo' if f=='gris' }}" href="{{ url_for('inicio', q=q, f='gris') }}">Sin datos {{ cuenta.gris }}</a>
-</div>
+
+<section class="kpis">
+  <a class="kpi {{ 'activo' if not f }}" href="{{ url_for('inicio', q=q) }}"><span class="k-tit">Todos</span><b>{{ kpi.clientes }}</b><span class="k-sub">clientes</span></a>
+  <a class="kpi rojo {{ 'activo' if f=='rojo' }}" href="{{ url_for('inicio', q=q, f='rojo') }}"><span class="k-tit"><span class="punto rojo"></span> Urgente</span><b>{{ cuenta.rojo }}</b><span class="k-sub">requieren acción</span></a>
+  <a class="kpi amarillo {{ 'activo' if f=='amarillo' }}" href="{{ url_for('inicio', q=q, f='amarillo') }}"><span class="k-tit"><span class="punto amarillo"></span> Atención</span><b>{{ cuenta.amarillo }}</b><span class="k-sub">a revisar</span></a>
+  <a class="kpi verde {{ 'activo' if f=='verde' }}" href="{{ url_for('inicio', q=q, f='verde') }}"><span class="k-tit"><span class="punto verde"></span> Al día</span><b>{{ cuenta.verde }}</b><span class="k-sub">sin novedades</span></a>
+  <a class="kpi gris {{ 'activo' if f=='gris' }}" href="{{ url_for('inicio', q=q, f='gris') }}"><span class="k-tit"><span class="punto"></span> Sin datos</span><b>{{ cuenta.gris }}</b><span class="k-sub">falta correr</span></a>
+</section>
+<section class="kpis totales">
+  <div class="kpi plano"><span class="k-tit">Deuda vencida total</span><b class="{{ 'txt-rojo' if kpi.deuda }}">{{ kpi.deuda|pesos }}</b></div>
+  <div class="kpi plano"><span class="k-tit">Cuotas de planes impagas</span><b class="{{ 'txt-rojo' if kpi.cuotas }}">{{ kpi.cuotas }}</b></div>
+  <div class="kpi plano"><span class="k-tit">DFE sin abrir</span><b class="{{ 'txt-ambar' if kpi.dfe }}">{{ kpi.dfe }}</b></div>
+  <div class="kpi plano"><span class="k-tit">DDJJ pendientes</span><b class="{{ 'txt-ambar' if kpi.ddjj }}">{{ kpi.ddjj }}</b></div>
+</section>
+
+<div class="panel">
 <table class="tabla clientes">
 <thead><tr><th></th><th>Cliente</th><th class="num">Deuda vencida</th><th class="num">DDJJ pend.</th><th class="num">Cuotas impagas</th><th class="num">DFE sin abrir</th><th>Datos al</th></tr></thead>
 <tbody>
 {% for c in filas %}
-<tr onclick="location.href='{{ url_for('cliente', cuit=c.cuit) }}'">
+<tr class="sem-{{ c.semaforo }}" onclick="location.href='{{ url_for('cliente', cuit=c.cuit) }}'">
   <td><span class="punto {{ c.semaforo }}" title="{{ c.motivo }}"></span></td>
   <td><a href="{{ url_for('cliente', cuit=c.cuit) }}"><b>{{ c.razon_social or cuit_fmt(c.cuit) }}</b></a>
       <div class="sutil">{{ cuit_fmt(c.cuit) }} · {{ c.motivo }}{% if c.accesos and c.accesos|selectattr('estado','equalto','Clave inválida')|list %} · <b class="txt-rojo">Clave inválida, actualizar</b>{% endif %}</div></td>
-  <td class="num" data-l="Deuda vencida">{{ c.deuda_vencida|pesos }}</td>
-  <td class="num" data-l="DDJJ pend.">{{ c.ddjj if c.ddjj is not none else '—' }}</td>
-  <td class="num" data-l="Cuotas impagas">{{ c.cuotas_impagas if c.cuotas_impagas is not none else '—' }}</td>
-  <td class="num" data-l="DFE sin abrir">{{ c.dfe_sin_abrir if c.dfe_sin_abrir is not none else '—' }}</td>
+  <td class="num" data-l="Deuda vencida">{% if c.deuda_vencida %}<span class="pill rojo">{{ c.deuda_vencida|pesos }}</span>{% else %}{{ c.deuda_vencida|pesos }}{% endif %}</td>
+  <td class="num" data-l="DDJJ pend.">{% if c.ddjj %}<span class="pill ambar">{{ c.ddjj }}</span>{% else %}{{ c.ddjj if c.ddjj is not none else '—' }}{% endif %}</td>
+  <td class="num" data-l="Cuotas impagas">{% if c.cuotas_impagas %}<span class="pill rojo">{{ c.cuotas_impagas }}</span>{% else %}{{ c.cuotas_impagas if c.cuotas_impagas is not none else '—' }}{% endif %}</td>
+  <td class="num" data-l="DFE sin abrir">{% if c.dfe_sin_abrir %}<span class="pill ambar">{{ c.dfe_sin_abrir }}</span>{% else %}{{ c.dfe_sin_abrir if c.dfe_sin_abrir is not none else '—' }}{% endif %}</td>
   <td data-l="Datos al">{{ c.fecha|fecha }}</td>
 </tr>
 {% else %}<tr><td colspan="7" class="sutil">No hay clientes que coincidan.</td></tr>{% endfor %}
 </tbody></table>
+</div>
 {% endblock %}

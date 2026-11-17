@@ -164,17 +164,18 @@ ORDEN = {"rojo": 0, "amarillo": 1, "verde": 2, "gris": 3}
 def inicio():
     q = request.args.get("q", "").strip().lower()
     filtro = request.args.get("f", "")
-    filas = []
+    todos = []
     for c in datos.lista_clientes():
         if q and q not in c["cuit"] and q not in (c.get("razon_social") or "").lower():
             continue
-        s = datos.situacion(c["cuit"])
-        if filtro and s["semaforo"] != filtro:
-            continue
-        filas.append({**c, **s})
+        todos.append({**c, **datos.situacion(c["cuit"])})
+    filas = [x for x in todos if not filtro or x["semaforo"] == filtro]
     filas.sort(key=lambda x: (ORDEN[x["semaforo"]], (x.get("razon_social") or x["cuit"]).upper()))
-    cuenta = {k: sum(1 for f in filas if f["semaforo"] == k) for k in ORDEN}
-    return render_template("inicio.html", filas=filas, q=q, f=filtro, cuenta=cuenta)
+    cuenta = {k: sum(1 for f in todos if f["semaforo"] == k) for k in ORDEN}
+    suma = lambda k: sum(x.get(k) or 0 for x in todos)
+    kpi = {"clientes": len(todos), "deuda": suma("deuda_vencida"), "cuotas": suma("cuotas_impagas"),
+           "dfe": suma("dfe_sin_abrir"), "ddjj": suma("ddjj")}
+    return render_template("inicio.html", filas=filas, q=q, f=filtro, cuenta=cuenta, kpi=kpi)
 
 
 SECCIONES = {"deuda": "Deuda ARCA", "planes": "Planes de pago", "vencimientos": "Vencimientos",

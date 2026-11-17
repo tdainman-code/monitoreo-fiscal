@@ -3,23 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1F4E78">
+<meta name="theme-color" content="#0f1b2d">
 <link rel="manifest" href="{{ url_for('manifest') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
-<title>{% block titulo %}Estudio Mancovsky{% endblock %} · Monitoreo fiscal</title>
+<title>{% block titulo %}Estudio{% endblock %} · Monitoreo fiscal</title>
 </head>
-<body>
+<body class="{{ 'con-menu' if session.usuario }}">
 {% if session.usuario %}
-<header class="barra">
-  <a class="marca" href="{{ url_for('inicio') }}">Monitoreo fiscal</a>
+<aside class="lateral">
+  <a class="marca" href="{{ url_for('inicio') }}"><span class="logo">MF</span><span>Monitoreo<br><small>fiscal</small></span></a>
   <nav>
-    <a href="{{ url_for('inicio') }}">Clientes</a>
-    <a href="{{ url_for('alertas') }}">Alertas del día</a>
-    <a href="{{ url_for('cartera', vista='dfe') }}">Cartera</a>
-    <a href="{{ url_for('mas') }}">⚙ Más</a>
+    {% set ep = request.endpoint or '' %}
+    <a class="{{ 'activo' if ep in ('inicio', 'cliente', 'cliente_seccion', 'cliente_claves', 'datos_del_cliente') }}" href="{{ url_for('inicio') }}"><i>▦</i><span>Tablero</span></a>
+    <a class="{{ 'activo' if ep == 'alertas' }}" href="{{ url_for('alertas') }}"><i>⚑</i><span>Alertas del día</span></a>
+    <a class="{{ 'activo' if ep == 'cartera' }}" href="{{ url_for('cartera', vista='dfe') }}"><i>☰</i><span>Cartera</span></a>
+    <a class="{{ 'activo' if ep not in ('inicio', 'cliente', 'cliente_seccion', 'cliente_claves', 'datos_del_cliente', 'alertas', 'cartera') }}" href="{{ url_for('mas') }}"><i>⚙</i><span>Más</span></a>
   </nav>
-  <div class="yo"><a href="{{ url_for('mi_clave') }}" title="Cambiar contraseña">{{ session.nombre }}</a> · <a href="{{ url_for('salir') }}">Salir</a></div>
-</header>
+  <div class="yo"><a href="{{ url_for('mi_clave') }}" title="Cambiar contraseña"><span class="avatar">{{ (session.nombre or '?')[:1] }}</span>{{ session.nombre }}</a><a class="salir" href="{{ url_for('salir') }}">Salir</a></div>
+</aside>
 {% endif %}
 <main>
 {% with m = get_flashed_messages(with_categories=true) %}{% for cat, t in m %}<div class="aviso {{ cat }}">{{ t }}</div>{% endfor %}{% endwith %}

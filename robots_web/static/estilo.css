@@ -71,3 +71,97 @@ fieldset{border:1px solid #d5dbe6;border-radius:10px;margin:10px 0;padding:8px 1
 .form-datos label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--gris)}.form-datos input,.form-datos select,.form-datos textarea{padding:8px;border:1px solid #d7dee8;border-radius:8px;font-size:14px}
 .form-datos .ancho{grid-column:1/-1}@media (max-width:700px){.form-datos{grid-template-columns:1fr}}
 .fila-gris td{color:var(--gris)}
+/* =================== Estética tablero (17/11/2026) =================== */
+:root{--azul:#2563eb;--azul-osc:#0f1b2d;--celeste:#eef2ff;--gris:#64748b;--rojo:#dc2626;--amarillo:#d97706;--verde:#16a34a;
+ --fondo:#f1f5f9;--borde:#e2e8f0;--texto:#0f172a;--sombra:0 1px 2px rgba(15,23,42,.06),0 4px 14px rgba(15,23,42,.05)}
+body{background:var(--fondo);color:var(--texto);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:14.5px}
+body.con-menu{padding-left:220px}
+main{max-width:1320px;padding:26px 30px}
+a{color:var(--azul)}
+h1{font-size:24px;font-weight:750;letter-spacing:-.02em;margin:0 0 2px}h2{color:var(--texto);font-size:16px;font-weight:700;margin:26px 0 10px}
+/* menú lateral */
+.lateral{position:fixed;inset:0 auto 0 0;width:220px;background:var(--azul-osc);color:#cbd5e1;display:flex;flex-direction:column;padding:18px 12px;z-index:10}
+.lateral a{color:#cbd5e1;text-decoration:none}
+.lateral .marca{display:flex;align-items:center;gap:10px;color:#fff;font-weight:700;line-height:1.05;margin:0 6px 26px}
+.lateral .marca small{font-weight:400;color:#94a3b8}
+.logo{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#06b6d4);color:#fff;font-size:13px;font-weight:800}
+.lateral nav{display:flex;flex-direction:column;gap:4px;flex:1}
+.lateral nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;font-size:14px}
+.lateral nav a i{font-style:normal;width:18px;text-align:center;opacity:.85}
+.lateral nav a:hover{background:rgba(255,255,255,.06);color:#fff}
+.lateral nav a.activo{background:rgba(59,130,246,.18);color:#fff;box-shadow:inset 3px 0 0 #3b82f6}
+.lateral .yo{display:flex;flex-direction:column;gap:8px;border-top:1px solid rgba(255,255,255,.08);padding:14px 8px 0;font-size:13px}
+.lateral .yo a{display:flex;align-items:center;gap:8px}.lateral .salir{color:#94a3b8;font-size:12px}
+.avatar{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#1e3a8a;color:#fff;font-weight:700;text-transform:uppercase}
+/* cabecera y buscador */
+.cabecera{gap:14px;margin-bottom:18px;align-items:center}
+.cabecera>div:first-child{flex:1}
+.buscar input{background:#fff;border:1px solid var(--borde);border-radius:12px;padding:11px 14px;min-width:300px;box-shadow:var(--sombra);font-size:14px}
+button,.boton{background:var(--azul);border-radius:10px;padding:10px 16px;font-weight:600;box-shadow:0 1px 2px rgba(37,99,235,.3)}
+button:hover,.boton:hover{background:#1d4ed8}
+/* tarjetas KPI */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin:0 0 14px}
+.kpis.totales{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:22px}
+.kpi{position:relative;display:flex;flex-direction:column;gap:2px;background:#fff;border:1px solid var(--borde);border-radius:16px;padding:16px 18px;
+ text-decoration:none;color:var(--texto);box-shadow:var(--sombra);transition:transform .1s,box-shadow .1s;overflow:hidden}
+a.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.10)}
+.kpi::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:#cbd5e1}
+.kpi.rojo::before{background:var(--rojo)}.kpi.amarillo::before{background:var(--amarillo)}.kpi.verde::before{background:var(--verde)}
+.kpi:not(.rojo):not(.amarillo):not(.verde):not(.gris)::before{background:var(--azul)}.kpi.plano::before{display:none}
+.kpi .k-tit{font-size:12.5px;color:var(--gris);font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+.kpi b{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.15}.kpi.plano b{font-size:22px}
+.kpi .k-sub{font-size:12.5px;color:var(--gris)}
+.kpi.activo{outline:2px solid var(--azul);outline-offset:-2px}
+.kpi.rojo b{color:var(--rojo)}.kpi.amarillo b{color:var(--amarillo)}.kpi.verde b{color:var(--verde)}
+.txt-ambar{color:var(--amarillo)}
+/* tablas */
+.panel{background:#fff;border:1px solid var(--borde);border-radius:16px;box-shadow:var(--sombra);overflow:hidden}
+.tabla{border-radius:16px;box-shadow:var(--sombra);border:1px solid var(--borde)}
+.panel .tabla{border:0;box-shadow:none;border-radius:0}
+.tabla th{background:#f8fafc;color:var(--gris);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:12px 14px;border-bottom:1px solid var(--borde)}
+.tabla td{padding:13px 14px;border-top:1px solid #f1f5f9;vertical-align:middle}
+.clientes tbody tr{box-shadow:inset 4px 0 0 transparent}.clientes tbody tr:hover{background:#f8fafc}
+.clientes tr.sem-rojo{box-shadow:inset 4px 0 0 var(--rojo)}.clientes tr.sem-amarillo{box-shadow:inset 4px 0 0 var(--amarillo)}
+.clientes tr.sem-verde{box-shadow:inset 4px 0 0 var(--verde)}
+.clientes td a{color:var(--texto);text-decoration:none}.clientes td a b{font-weight:650}
+.punto{width:10px;height:10px;box-shadow:0 0 0 3px rgba(148,163,184,.18)}
+.punto.rojo{box-shadow:0 0 0 3px rgba(220,38,38,.15)}.punto.amarillo{box-shadow:0 0 0 3px rgba(217,119,6,.15)}.punto.verde{box-shadow:0 0 0 3px rgba(22,163,74,.15)}
+.pill{display:inline-block;border-radius:999px;padding:3px 10px;font-weight:700;font-size:13px}
+.pill.rojo{background:#fef2f2;color:var(--rojo)}.pill.ambar{background:#fffbeb;color:var(--amarillo)}
+.fila-roja td{background:#fef2f2}.tabla tr.total td{background:#f8fafc;border-top:2px solid var(--borde)}
+/* ficha del cliente y secciones */
+.botonera{grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.boton-ficha{border:1px solid var(--borde);border-top:0;border-radius:16px;box-shadow:var(--sombra);position:relative;overflow:hidden;padding:18px}
+.boton-ficha::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:#cbd5e1}
+.boton-ficha.rojo::before{background:var(--rojo)}.boton-ficha.amarillo::before{background:var(--amarillo)}.boton-ficha.verde::before{background:var(--verde)}
+.boton-ficha .titulo{color:var(--gris);font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.boton-ficha .numero{font-size:26px;font-weight:800;letter-spacing:-.02em}
+.tarjeta{border:1px solid var(--borde);border-radius:14px;box-shadow:var(--sombra);padding:14px 16px}.tarjeta b{font-size:20px}
+.pedir,.plegado,.form-datos,.nota{border:1px solid var(--borde);border-radius:14px;box-shadow:var(--sombra)}
+.alertas li{border:1px solid var(--borde);border-left:4px solid var(--amarillo);border-radius:10px;box-shadow:var(--sombra);padding:10px 14px}
+.alertas li.alta{border-left-color:var(--rojo)}
+.chip,.menu-cartera a{border-radius:999px;border-color:var(--borde);background:#fff;padding:6px 13px}
+.chip.activo,.menu-cartera a.activo{background:var(--azul-osc);border-color:var(--azul-osc)}
+.aviso{border:1px solid var(--borde)}
+.login{background:#fff;border:1px solid var(--borde);border-radius:18px;box-shadow:var(--sombra);padding:28px;margin-top:80px}
+/* celular */
+@media (max-width:900px){
+ body.con-menu{padding-left:0;padding-bottom:64px}
+ .lateral{inset:auto 0 0 0;width:auto;height:60px;flex-direction:row;padding:6px 8px;align-items:center}
+ .lateral .marca,.lateral .yo{display:none}
+ .lateral nav{flex-direction:row;justify-content:space-around}
+ .lateral nav a{flex-direction:column;gap:2px;font-size:11px;padding:6px 8px}
+ .lateral nav a.activo{box-shadow:none}
+ main{padding:16px}
+ .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpis.totales{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .kpi b{font-size:24px}.buscar input{min-width:0;width:100%}
+ .panel{border-radius:12px}
+}
+@media (max-width:900px){
+ .cabecera{align-items:stretch;text-align:left}.cabecera .boton{text-align:center}
+ .clientes tbody tr{padding:10px 4px 8px 10px}
+ .clientes td:first-child{display:none}
+ .clientes td:nth-child(2){display:block;padding:2px 10px 6px}
+ .clientes td:nth-child(2) .sutil{margin-top:2px}
+ .clientes td{padding:3px 10px}
+}

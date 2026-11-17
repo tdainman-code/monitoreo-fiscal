@@ -279,5 +279,9 @@ escribir(f"{R}/publico/actualizaciones.json", [{"fecha": "2026-11-17T13:00:00", 
 ok("cambio de prueba" in cl2.get("/sistema").text and "Sistema" in cl2.get("/mas").text, "el admin ve la pantalla Sistema")
 ok(cl.get("/sistema").status_code == 403, "un empleado no ve Sistema")
 ok(cl.get(f"/cliente/{C3}").status_code == 200 and cl.get(f"/cliente/{C3}/iva").status_code == 200, "cliente sin datos no rompe")
+if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
+    os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
+    for nom, url in (("inicio", "/"), ("ficha", f"/cliente/{C2}"), ("relacion", f"/cliente/{C2}/relacion")):
+        open(os.path.join(os.environ["VOLCAR_HTML"], nom + ".html"), "w", encoding="utf-8").write(cl.get(url).text)
 print(f"\n{sum(res)}/{len(res)} OK")
 sys.exit(0 if all(res) else 1)
