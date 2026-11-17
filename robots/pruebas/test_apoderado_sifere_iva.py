@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 os.environ.setdefault("ROBOTS_DATOS", tempfile.mkdtemp())
 from urllib.parse import parse_qs, urlparse
 from playwright.sync_api import sync_playwright
-from robots import robot_sifere as sf, robot_libro_iva as li, arca
+from robots import robot_sifere as sf, robot_libro_iva as li, robot_observados as ob, arca
 
 arca.pausa = lambda *a, **k: None
 arca.verificar_sesion = lambda *a, **k: None
@@ -14,6 +14,24 @@ EMP = [("30718086058", "CONTRIBUYENTE"), ("30717468631", "CONTRIBUYENTE"), ("305
 S = {"sifere": YO, "iva": YO}
 BS = "https://app1.comarb.gob.ar/siferewebconsultas/"
 BI = "https://siapweb.cloud.afip.gob.ar/iva/"
+BN = "https://cgpf-webv2-fe.arca.gob.ar/"
+
+
+def np_(route):
+    route.fulfill(content_type="text/html", body=f"""<html><body><div id="cab"></div><div id="app"></div><script>
+      const yo = {list(YO)}; const emp = {[list(e) for e in EMP]};
+      function fm(c) {{ return c.slice(0,2)+'-'+c.slice(2,10)+'-'+c.slice(10); }}
+      function pintar() {{
+        const r = JSON.parse(sessionStorage.getItem('np') || 'null');
+        document.getElementById('cab').innerText = yo[1]+' ['+fm(yo[0])+']' + (r ? '\\nREPRESENTANDO A: '+r[1]+' ['+fm(r[0])+']' : '');
+        if (!r || location.hash === '#/seleccionRepresentado') {{
+          document.getElementById('app').innerHTML = '<p>Seleccioná la persona con la que vas a operar</p>' + emp.map(e =>
+            `<div class="t" data-c="${{e[0]}}"><b>${{e[1]}}</b><div>${{fm(e[0])}}</div></div>`).join('');
+          document.querySelectorAll('.t').forEach(t => t.onclick = () => {{
+            sessionStorage.setItem('np', JSON.stringify(emp.find(e => e[0] === t.dataset.c))); location.hash = '#/'; }});
+        }} else document.getElementById('app').innerHTML = '<h1>Nuestra Parte</h1><p>Tenés 1 mensaje importante</p>';
+      }}
+      window.onhashchange = pintar; pintar();</script></body></html>""")
 
 
 def sifere(route):
@@ -52,7 +70,7 @@ def chk(c, m):
 
 with sync_playwright() as p:
     b = p.chromium.launch(); ctx = b.new_context()
-    ctx.route(BS + "**", sifere); ctx.route(BI + "**", iva)
+    ctx.route(BS + "**", sifere); ctx.route(BI + "**", iva); ctx.route(BN + "**", np_)
     pg = ctx.new_page(); pg.goto(BS + "mainMenu.do")
     sf.elegir_contribuyente(pg, "30717468631", [])
     chk(S["sifere"][0] == "30717468631", "SIFERE: elige BH en 'Contribuyentes disponibles'")
@@ -75,5 +93,16 @@ with sync_playwright() as p:
         li.elegir_representado(pi, "30999999993", espera_s=5); chk(False, "ajena")
     except arca.SinRepresentado:
         chk(True, "Portal IVA: empresa que no puede representar -> se detiene")
+    pn = ctx.new_page(); pn.goto(BN + "#/seleccionRepresentado")
+    ob.elegir_representado(pn, "30717468631", espera_s=10)
+    li._controlar_cuit(pn, "30717468631", "Nuestra Parte", espera_s=5)
+    chk("REPRESENTANDO A: BH" not in pn.inner_text("#cab") or "[30-71746863-1]" in pn.inner_text("#cab"),
+        "Nuestra Parte: elige BH en 'Seleccioná la persona' y queda representando a BH")
+    ob.elegir_representado(pn, "30525839512", espera_s=10)
+    chk("[30-52583951-2]" in pn.inner_text("#cab"), "Nuestra Parte: cambia de BH a Macabi")
+    try:
+        ob.elegir_representado(pn, "30999999993", espera_s=20); chk(False, "ajena")
+    except arca.SinRepresentado:
+        chk(True, "Nuestra Parte: empresa que no puede representar -> se detiene")
     b.close()
 print("TODO OK" if ok else "FALLAS"); sys.exit(0 if ok else 1)

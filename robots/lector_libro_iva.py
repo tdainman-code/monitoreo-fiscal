@@ -210,6 +210,8 @@ def leer_zip(ruta_o_bytes) -> dict:
         "compras": _resumir(compras, periodo, compras=True),
         "comprobantes_compras": [{k: c[k] for k in ("fecha", "tipo", "punto_venta", "numero", "cuit", "nombre",
                                                     "neto", "iva", "total", "b_c")} for c in compras],
+        "comprobantes_ventas": [{k: c[k] for k in ("fecha", "tipo", "punto_venta", "numero", "cuit", "nombre",
+                                                   "neto", "iva", "total")} for c in ventas],
         "control": control, "alertas": alertas,
     }
 

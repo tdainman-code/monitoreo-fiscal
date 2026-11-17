@@ -8,6 +8,14 @@ Pedido del 16/11/2026:
     importación, servicios públicos, etc.).
 Solo se comparan meses con Libro IVA bajado (DJ presentada). No entra a ARCA: usa lo que bajaron los robots.
 
+VENTAS (pedido de Gaby, 17/11/2026: "nunca debería haber diferencias, pero no está de más controlar"):
+  Mis Comprobantes EMITIDOS contra las ventas del Libro IVA, comprobante por comprobante (tipo + punto de venta +
+  número) y en totales del mes (neto gravado e IVA):
+  - emitido en Mis Comprobantes que no está en el Libro IVA de ese mes  -> ALTA (débito no declarado),
+    o declarado en otro mes -> se marca en qué mes;
+  - en el Libro IVA y no en Mis Comprobantes -> informativo (comprobantes manuales / controlador fiscal);
+  - mismo comprobante con distinto neto o IVA -> diferencia de importe.
+
 APOC: los "Comprobantes electrónicos observados" que ARCA le informa a cada cliente en Nuestra Parte
 (robot_observados -> DATOS/<cuit>/observados/observados.json). Cada observado se cruza con el Libro IVA:
 si quedó COMPUTADO como crédito, riesgo ALTO (habría que rectificar). Opcional: DATOS/apoc/apoc.csv con
@@ -68,6 +76,121 @@ def _mc_recibidos(cuit: str, periodo: str) -> list[dict]:
                     "neto": float(x["Imp. Neto Gravado Total"]), "iva": float(x["Total IVA"]),
                     "total": float(x["Imp. Total"])})
     return out
+
+
+def _mc_emitidos(cuit: str, periodo: str) -> list[dict]:
+    ruta = os.path.join(DATOS, cuit, periodo, "emitidos.csv")
+    if not os.path.exists(ruta):
+        return []
+    from .lector_mis_comprobantes import leer
+    df = leer(ruta)
+    out = []
+    for _, x in df.iterrows():
+        try:
+            num = int(str(x.get("Número Desde", "0")).split(".")[0] or 0)
+            h_txt = str(x.get("Número Hasta", "") or "").split(".")[0]
+            hasta = int(h_txt) if h_txt.isdigit() else num
+            pv = int(str(x.get("Punto de Venta", "0")).split(".")[0] or 0)
+        except ValueError:
+            continue
+        out.append({"periodo": periodo, "fecha": x["Fecha"].date(), "tipo": int(x["Tipo"]), "punto_venta": pv,
+                    "numero": num, "hasta": hasta, "cuit": str(x["CUIT contraparte"]).strip(), "nombre": x["Contraparte"],
+                    "neto": float(x["Imp. Neto Gravado Total"]), "iva": float(x["Total IVA"]),
+                    "total": float(x["Imp. Total"])})
+    return out
+
+
+def _liva_ventas(cuit: str, per: str, d: dict) -> list[dict] | None:
+    """Comprobantes de ventas del Libro IVA: del JSON (desde el 17/11/2026) o, si es anterior, del zip bajado."""
+    if d.get("comprobantes_ventas") is not None:
+        return d["comprobantes_ventas"]
+    z = os.path.join(DATOS, cuit, "libro_iva", f"{per}.zip")
+    if not os.path.exists(z):
+        return None
+    from .lector_libro_iva import leer_zip
+    try:
+        return leer_zip(z).get("comprobantes_ventas")
+    except Exception:
+        return None
+
+
+TOL = 1.0      # pesos de tolerancia por redondeo
+
+
+def conciliar_ventas(cuit: str) -> dict:
+    liva = {}
+    for r in sorted(glob.glob(os.path.join(DATOS, cuit, "libro_iva", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json"))):
+        per = os.path.basename(r)[:7]
+        v = _liva_ventas(cuit, per, _leer_json(r))
+        if v is not None:
+            liva[per] = v
+    if not liva:
+        return {"sin_libro_iva": True}
+    clave = lambda c: (int(c["tipo"]), int(c["punto_venta"]), int(c["numero"]))
+    en_liva = {}
+    for per, comps in liva.items():
+        for c in comps:
+            en_liva.setdefault(clave(c), (per, c))
+    no_declaradas, otro_mes, dif_importe, solo_liva, resumen = [], [], [], [], []
+    vistos_mc, meses_mc = set(), []
+    for per in sorted(liva):
+        mc = _mc_emitidos(cuit, per)
+        if not mc:
+            resumen.append({"Período": per, "Mis Comprobantes": "sin bajar"})
+            continue
+        vistos = set()
+        for c in mc:
+            # Mis Comprobantes puede agrupar un rango (Número Desde/Hasta, típico de tiques B)
+            claves = [(c["tipo"], c["punto_venta"], n) for n in range(c["numero"], max(c["numero"], c["hasta"]) + 1)][:500]
+            vistos.update(claves)
+            hallados = [en_liva.get(k) for k in claves]
+            fila = {"Período MC": per, "Fecha": c["fecha"], "Comprobante": NOMBRES.get(c["tipo"], f"Tipo {c['tipo']}"),
+                    "Pto. venta": c["punto_venta"], "Número": c["numero"] if c["hasta"] == c["numero"] else f"{c['numero']}-{c['hasta']}",
+                    "CUIT receptor": c["cuit"], "Receptor": c["nombre"], "Neto MC": c["neto"], "IVA MC": c["iva"], "Total MC": c["total"]}
+            if not any(hallados):
+                fila["Observación"] = "Emitido y NO declarado en el Libro IVA (débito fiscal sin declarar)"
+                no_declaradas.append(fila)
+                continue
+            meses = sorted({h[0] for h in hallados if h})
+            if meses != [per]:
+                fila["Declarado en"] = ", ".join(meses)
+                otro_mes.append(fila)
+            if c["hasta"] == c["numero"]:
+                h = hallados[0][1]
+                if abs(abs(h["neto"]) - abs(c["neto"])) > TOL or abs(abs(h["iva"]) - abs(c["iva"])) > TOL:
+                    dif_importe.append({**fila, "Neto Libro IVA": h["neto"], "IVA Libro IVA": h["iva"],
+                                        "Dif. neto": round(abs(c["neto"]) - abs(h["neto"]), 2),
+                                        "Dif. IVA": round(abs(c["iva"]) - abs(h["iva"]), 2)})
+        vistos_mc.update(vistos)
+        meses_mc.append(per)
+        neto_mc, iva_mc = round(sum(c["neto"] for c in mc), 2), round(sum(c["iva"] for c in mc), 2)
+        neto_li, iva_li = round(sum(c["neto"] for c in liva[per]), 2), round(sum(c["iva"] for c in liva[per]), 2)
+        resumen.append({"Período": per, "Mis Comprobantes": "OK", "Neto MC": neto_mc, "Neto Libro IVA": neto_li,
+                        "Dif. neto": round(neto_mc - neto_li, 2), "IVA MC": iva_mc, "IVA Libro IVA": iva_li,
+                        "Dif. IVA": round(iva_mc - iva_li, 2),
+                        "No declarados": sum(1 for f in no_declaradas if f["Período MC"] == per)})
+    for per in meses_mc:
+        for c in liva[per]:
+            if clave(c) not in vistos_mc:
+                solo_liva.append({"Período": per, "Fecha": c["fecha"], "Comprobante": NOMBRES.get(c["tipo"], f"Tipo {c['tipo']}"),
+                                  "Pto. venta": c["punto_venta"], "Número": c["numero"], "CUIT receptor": c["cuit"],
+                                  "Receptor": c["nombre"], "Neto gravado": c["neto"], "IVA": c["iva"], "Total": c["total"]})
+    alertas = []
+    if no_declaradas:
+        alertas.append({"prioridad": "ALTA", "tipo": "Ventas no declaradas",
+                        "texto": f"{len(no_declaradas)} comprobante(s) emitido(s) en Mis Comprobantes que no están en el "
+                                 f"Libro IVA (total {sum(f['Total MC'] for f in no_declaradas):,.2f})."})
+    if dif_importe:
+        alertas.append({"prioridad": "Media", "tipo": "Ventas con importe distinto",
+                        "texto": f"{len(dif_importe)} comprobante(s) de venta con neto o IVA distinto entre Mis "
+                                 "Comprobantes y el Libro IVA."})
+    for f in resumen:
+        if f.get("Mis Comprobantes") == "OK" and (abs(f["Dif. neto"]) > TOL or abs(f["Dif. IVA"]) > TOL):
+            alertas.append({"prioridad": "Media", "tipo": "Ventas: totales del mes",
+                            "texto": f"{f['Período']}: Mis Comprobantes vs Libro IVA — neto {f['Dif. neto']:,.2f}, "
+                                     f"IVA {f['Dif. IVA']:,.2f}."})
+    return {"no_declaradas": no_declaradas, "otro_mes": otro_mes, "dif_importe": dif_importe,
+            "solo_libro_iva": solo_liva, "resumen": resumen, "alertas": alertas}
 
 
 def conciliar(cuit: str) -> dict:
@@ -248,10 +371,33 @@ def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
          ["Fecha", "Comprobante", "Pto. venta", "Número", "CUIT emisor", "Emisor", "IVA", "Total", "Anulación",
           "En Libro IVA", "Riesgo"],
          lambda f: ROJO_FUERTE if f["Riesgo"].startswith("ALTO") else AMARILLO if f["Riesgo"].startswith(("Revisar", "Neutro")) else None)
+    v = conciliar_ventas(cuit)
+    r["ventas"] = v
+    if not v.get("sin_libro_iva"):
+        colv = ["Período MC", "Fecha", "Comprobante", "Pto. venta", "Número", "CUIT receptor", "Receptor", "Neto MC",
+                "IVA MC", "Total MC"]
+        hoja("Ventas no declaradas", "Comprobantes EMITIDOS en Mis Comprobantes que no figuran en el Libro IVA: "
+             "débito fiscal sin declarar (nunca debería haber).", v["no_declaradas"], colv + ["Observación"],
+             lambda f: ROJO_FUERTE)
+        hoja("Ventas en otro mes", "Emitidos en un mes y declarados en el Libro IVA de otro.", v["otro_mes"],
+             colv + ["Declarado en"], lambda f: AMARILLO)
+        hoja("Ventas con importe distinto", "Mismo comprobante con neto o IVA distinto entre Mis Comprobantes y el "
+             "Libro IVA.", v["dif_importe"], colv + ["Neto Libro IVA", "IVA Libro IVA", "Dif. neto", "Dif. IVA"],
+             lambda f: ROJO)
+        hoja("Ventas solo en Libro IVA", "Informativo: ventas declaradas que no están en Mis Comprobantes "
+             "(comprobantes manuales o de controlador fiscal).", v["solo_libro_iva"],
+             ["Período", "Fecha", "Comprobante", "Pto. venta", "Número", "CUIT receptor", "Receptor", "Neto gravado",
+              "IVA", "Total"])
+        wv = hoja("Resumen ventas", "Totales del mes: Mis Comprobantes emitidos contra Libro IVA ventas.", v["resumen"],
+                  ["Período", "Mis Comprobantes", "Neto MC", "Neto Libro IVA", "Dif. neto", "IVA MC", "IVA Libro IVA",
+                   "Dif. IVA", "No declarados"],
+                  lambda f: ROJO if (f.get("No declarados") or abs(f.get("Dif. neto") or 0) > TOL
+                                     or abs(f.get("Dif. IVA") or 0) > TOL) else None)
+        wb.move_sheet(wv, offset=-(len(wb.sheetnames) - 1))
     ws = hoja("Resumen", "Por período con Libro IVA bajado.", r["resumen"],
               ["Período", "Mis Comprobantes", "Comprobantes MC (no B)", "No tomados", "Importe no tomado", "En otro mes"],
               lambda f: ROJO if f.get("No tomados") else None)
-    wb.move_sheet(ws, offset=-4)
+    wb.move_sheet(ws, offset=-(len(wb.sheetnames) - 1))
     wb.active = 0
     os.makedirs(os.path.dirname(ruta), exist_ok=True)
     wb.save(ruta)
@@ -268,8 +414,13 @@ def main(argv=None):
     if r is None:
         print("Sin Libro IVA bajado para este CUIT (monotributista o falta correr el robot libro_iva)")
         return
-    print(f"No tomadas: {len(r['no_tomadas'])}   en otro mes: {len(r['otro_mes'])}   "
-          f"solo en Libro IVA: {len(r['solo_libro_iva'])}   APOC: {len(r['alertas_apoc'])}\n{ruta}")
+    v = r.get("ventas") or {}
+    print(f"COMPRAS  no tomadas: {len(r['no_tomadas'])}   en otro mes: {len(r['otro_mes'])}   "
+          f"solo en Libro IVA: {len(r['solo_libro_iva'])}   APOC: {len(r['alertas_apoc'])}")
+    if not v.get("sin_libro_iva"):
+        print(f"VENTAS   no declaradas: {len(v['no_declaradas'])}   en otro mes: {len(v['otro_mes'])}   "
+              f"importe distinto: {len(v['dif_importe'])}   solo en Libro IVA: {len(v['solo_libro_iva'])}")
+    print(ruta)
 
 
 if __name__ == "__main__":

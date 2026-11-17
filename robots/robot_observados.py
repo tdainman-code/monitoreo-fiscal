@@ -8,6 +8,12 @@ Recorrido (relevado el 16/11/2026):
      FORMATO XLSX / GENERAR XLSX) -> exportacion_<fecha>.xlsx  (lector_observados)
 Si la exportación no baja, lee la tabla de la pantalla página por página (mismo resultado).
 Guarda DATOS/<cuit>/observados/observados.json (+ el xlsx). Solo consulta.
+
+APODERADOS (relevado con Gaby el 17/11/2026, 20-38893131-1): al entrar abre #/seleccionRepresentado
+"Seleccioná la persona con la que vas a operar", tarjetas "BH SOLUCIONES EMPRESARIALES / 30-71746863-1".
+Al elegir, el encabezado dice "REPRESENTANDO A: BH SOLUCIONES EMPRESARIALES [30-71746863-1]".
+Sin observados: "Tenés 1 mensaje importante" puede ser otra cosa (p. ej. "Registrás deuda"): sin la tarjeta
+"Comprobantes electrónicos observados" queda "sin observados".
 """
 from __future__ import annotations
 
@@ -146,6 +152,36 @@ def guardar(cuit: str, comps: list[dict], origen: str, aviso: str = "") -> str:
     return ruta
 
 
+def elegir_representado(page, cuit: str, espera_s: int = 40) -> None:
+    """Nuestra Parte con apoderado: elige la tarjeta del cliente en #/seleccionRepresentado."""
+    from .robot_libro_iva import _RE_REPRESENTANDO
+    fmt = arca.cuit_fmt(cuit)
+    limite = time.time() + espera_s
+    while time.time() < limite:
+        t = page.inner_text("body") if page.locator("body").count() else ""
+        m = _RE_REPRESENTANDO.search(t[:1500])
+        if m and m[1] == fmt:
+            return
+        lista = "seleccionRepresentado" in page.url or re.search(r"Seleccion[aá] la persona", t, re.I)
+        if m and m[1] != fmt and not lista:
+            page.goto(page.url.split("#")[0] + "#/seleccionRepresentado", wait_until="domcontentloaded")
+            arca.pausa(1.0, 2.0)
+            continue
+        if lista:
+            tarjeta = page.get_by_text(re.compile(rf"^\s*{re.escape(fmt)}\s*$"))
+            try:
+                tarjeta.first.wait_for(state="visible", timeout=15_000)
+            except Exception:
+                raise arca.SinRepresentado(f"Nuestra Parte: {fmt} no está entre las personas que puede representar")
+            tarjeta.first.click()
+            arca.pausa(1.5, 3.0)
+            continue
+        if not m and fmt in t[:400]:                  # sin apoderados: el encabezado ya es del cliente
+            return
+        page.wait_for_timeout(1000)
+    raise arca.SinRepresentado(f"Nuestra Parte: no se pudo elegir {fmt}")
+
+
 def paso(cuit: str, estado: dict):
     def fn(ctx, portal):
         try:
@@ -154,6 +190,7 @@ def paso(cuit: str, estado: dict):
             estado["resultado"] = "sin servicio Nuestra Parte"
             return dict(estado)
         page.wait_for_load_state("domcontentloaded")
+        elegir_representado(page, cuit)
         _controlar_cuit(page, cuit, "Nuestra Parte")
         base = page.url.split("#")[0]
         if _pantalla(page, base) == "sin observados":

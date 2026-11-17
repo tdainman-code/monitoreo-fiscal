@@ -58,7 +58,8 @@ def _texto(page) -> str:
         return ""
 
 
-_RE_REPRESENTANDO = re.compile(r"REPRESENTANDO A:?\s*[^\[]*\[\s*CUIT\s*(\d{2}-\d{8}-\d)\s*\]", re.I)
+# Portal IVA: "REPRESENTANDO A: BH ... [CUIT 30-71746863-1]"; Nuestra Parte: "REPRESENTANDO A: BH ... [30-71746863-1]"
+_RE_REPRESENTANDO = re.compile(r"REPRESENTANDO A:?\s*[^\[]*\[\s*(?:CUIT\s*)?(\d{2}-\d{8}-\d)\s*\]", re.I)
 
 
 def elegir_representado(page, cuit: str, espera_s: int = 45) -> None:
