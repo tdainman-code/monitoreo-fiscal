@@ -132,8 +132,15 @@ ok(pr["periodo"] == "2026-11" and abs(pr["debito"] - 270_000) < 2 and pr["credit
 ok(analisis.proyectar_iva(iva[:2]) is None, "sin proyección con menos de 3 meses")
 r1 = analisis.analizar_resultado(analisis.resultado_mensual(C))
 m0 = r1["meses"][0]
-ok(abs(m0["ventas"] - 1_000_000) < 1 and abs(m0["compras"] - 650_000) < 1 and abs(m0["sueldos"] - 249_000) < 1
-   and abs(m0["f931"] - 131_000) < 1 and abs(m0["resultado"] + 30_000) < 1, f"resultado de un mes ({m0['resultado']:,.0f})")
+ib0 = m0["iibb"] or 0
+ok(abs(m0["ventas"] - 1_000_000) < 1 and abs(m0["compras"] - 650_000) < 1 and abs(m0["sueldos"] - 300_000) < 1
+   and abs(m0["cargas"] - 80_000) < 1 and abs(m0["erogaciones"] - (1_030_000 + ib0)) < 1
+   and abs(m0["resultado"] + 30_000 + ib0) < 1 and abs(m0["indice"] - m0["erogaciones"] / 1_000_000) < 1e-9
+   and abs(m0["margen"] - (1 - m0["indice"])) < 1e-9, f"relación D/C de un mes como la planilla ({m0['resultado']:,.0f}, índice {m0['indice']:.3f})")
+ok(abs(r1["meses"][1]["indice_acumulado"] - (r1["meses"][0]["erogaciones"] + r1["meses"][1]["erogaciones"])
+       / (r1["meses"][0]["ventas"] + r1["meses"][1]["ventas"])) < 1e-9
+   and abs(r1["meses"][1]["saldo_acumulado"] - (r1["meses"][0]["resultado"] + r1["meses"][1]["resultado"])) < 1e-6,
+   "saldo acumulado e índice acumulado")
 ok(r1["total"]["resultado"] > 0 and any("sube" in c for c in r1["conclusiones"]), "resultado 12 meses y tendencia en palabras")
 r2 = analisis.analizar_resultado(analisis.resultado_mensual(C2))
 ok(r2["total"]["resultado"] < 0 and len(r2["incompletos"]) == 2 and any("NEGATIVO" in c for c in r2["conclusiones"]),
@@ -159,8 +166,9 @@ ok("BH SOLUCIONES" in r.text and r.text.count("punto rojo") >= 2, "panel con sem
 ok("relación D/C crítica" in r.text or "aviso(s) de AGIP" in r.text, "motivo del rojo nuevo en el panel")
 r = cl.get(f"/cliente/{C2}")
 r2 = cl.get(f"/cliente/{C2}/relacion")
-ok(r2.status_code == 200 and "Cargas sociales" in r2.text and "Ventas − resto" in r2.text and "Total" in r2.text,
-   "relación débito crédito: cuadro mes por mes ventas, compras, sueldos, cargas sociales y ventas − resto")
+ok(r2.status_code == 200 and all(t in r2.text for t in ("Cargas sociales (F.931)", "Total erogaciones", "SALDO MENSUAL",
+   "Índice erogaciones / ventas", "Índice acumulado", "Margen de utilidad bruto", "IIBB determinado")),
+   "relación débito crédito: cuadro como la planilla (erogaciones, saldo, índices y margen)")
 ok("Débito / crédito y proyección" in r.text and "Relación débito crédito" in r.text and "Fiscalizaciones" in r.text
    and "AGIP (Ciudad)" in r.text and "Pedir corrida" in r.text, "ficha con botones nuevos y pedir corrida")
 escribir(f"{R}/publico/grupos.json", {C2: {"dia": 2, "semana": 1}, C3: {"dia": 4, "semana": 0}})

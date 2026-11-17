@@ -163,16 +163,36 @@ def proyectar_iva(iva: list[dict]) -> dict | None:
 
 # ---------------------------------------------------------------- resultado mensual
 def _neto(res: dict, compras: bool) -> float:
+    """Igual que la planilla 'Relación DC': ventas = neto gravado + no gravado + exento;
+    compras = lo mismo + comprobantes B/C + impuesto a los combustibles."""
     n = _num(res.get("Neto gravado total")) + _num(res.get("Exento")) + _num(res.get("No gravado"))
     if compras:
-        n += _num(res.get("Comprobantes B/C (sin IVA discriminado)"))
+        n += _num(res.get("Comprobantes B/C (sin IVA discriminado)")) + _num(res.get("Impuesto a los combustibles"))
     return n
 
 
+def _iibb(cuit: str) -> dict[str, float]:
+    """Impuesto determinado de IIBB por período: SIFERE (todas las jurisdicciones) + ARBA (contribuyente local)."""
+    out: dict[str, float] = {}
+    for per, d in _meses(cuit, "sifere").items():
+        out[per] = out.get(per, 0.0) + sum(_num((v or {}).get("determinado")) for v in (d.get("jurisdicciones") or {}).values())
+    for per, d in _meses(cuit, "arba").items():
+        if d.get("impuesto_determinado") is not None:
+            out[per] = out.get(per, 0.0) + _num(d.get("impuesto_determinado"))
+    return out
+
+
 def resultado_mensual(cuit: str) -> list[dict]:
+    """Relación débito/crédito con las MISMAS fórmulas que el Excel del robot (informe_cliente.relacion_dc):
+    erogaciones = compras + (remuneraciones + cargas sociales) + IIBB determinado;
+    saldo = ventas − erogaciones; índice = erogaciones / ventas; margen = 1 − índice; y sus acumulados.
+    Fuentes: Libro IVA (Portal IVA), F.931 y SIFERE/ARBA. No usa Mis Comprobantes."""
     liva = _meses(cuit, "libro_iva")
     f931 = _meses(cuit, "f931")
+    iibb = _iibb(cuit)
+    hay_iibb = bool(iibb) or os.path.isdir(os.path.join(datos.DATOS, cuit, "sifere"))
     out = []
+    acum_v = acum_e = acum_s = 0.0
     for per in sorted(set(liva) | set(f931))[-REGLAS["meses"]:]:
         faltan = []
         l, f = liva.get(per), f931.get(per)
@@ -183,25 +203,36 @@ def resultado_mensual(cuit: str) -> list[dict]:
             faltan.append("Libro IVA")
         if f or not f931:                                 # sin ningún F.931 bajado = sin empleados (no "falta")
             f = f or {}
-            rem = _num(f.get("Remuneración total (Rem. 1)"))
-            aportes = _num(f.get("Total aportes (retenidos al empleado)"))
-            contrib = _num(f.get("TOTAL CARGAS SOCIALES"))
-            sueldos, f931_tot = max(0.0, rem - aportes), aportes + contrib
+            sueldos = _num(f.get("Remuneración total (Rem. 1)"))
+            cargas = _num(f.get("TOTAL CARGAS SOCIALES"))
         else:
-            sueldos = f931_tot = 0.0
+            sueldos = cargas = 0.0
             faltan.append("F.931")
-        res = ventas - compras - sueldos - f931_tot
-        out.append({"periodo": per, "ventas": ventas, "compras": compras, "sueldos": sueldos, "f931": f931_tot,
-                    "resultado": res, "margen": (res / ventas) if ventas else None, "faltantes": faltan,
-                    "completo": not faltan})
+        ib = iibb.get(per)
+        if ib is None and hay_iibb and ventas:
+            faltan.append("IIBB")
+        erog = compras + sueldos + cargas + (ib or 0.0)
+        saldo = ventas - erog
+        if ventas:
+            acum_v += ventas
+            acum_e += erog
+            acum_s += saldo
+        indice = erog / ventas if ventas else None
+        out.append({"periodo": per, "ventas": ventas, "compras": compras, "sueldos": sueldos, "cargas": cargas,
+                    "f931": cargas, "iibb": ib, "erogaciones": erog, "resultado": saldo, "saldo_acumulado": acum_s,
+                    "indice": indice, "indice_acumulado": (acum_e / acum_v) if acum_v else None,
+                    "margen": (1 - indice) if indice is not None else None,
+                    "faltantes": faltan, "completo": not faltan})
     return out
 
 
 def analizar_resultado(meses: list[dict]) -> dict | None:
     if not meses:
         return None
-    tot = {k: sum(m[k] for m in meses) for k in ("ventas", "compras", "sueldos", "f931", "resultado")}
-    tot["margen"] = tot["resultado"] / tot["ventas"] if tot["ventas"] else None
+    tot = {k: sum((m.get(k) or 0) for m in meses) for k in ("ventas", "compras", "sueldos", "cargas", "f931", "iibb",
+                                                          "erogaciones", "resultado")}
+    tot["indice"] = tot["erogaciones"] / tot["ventas"] if tot["ventas"] else None
+    tot["margen"] = (1 - tot["indice"]) if tot["indice"] is not None else None
     negativos = [m for m in meses if m["resultado"] < 0]
     orden = sorted([m for m in meses if m["completo"]] or meses, key=lambda m: m["resultado"], reverse=True)
     mejor, peor = orden[0], orden[-1]
@@ -213,10 +244,12 @@ def analizar_resultado(meses: list[dict]) -> dict | None:
     pend = linea[1] - linea[0] if len(linea) > 1 else 0.0
 
     c = [f"Entre {periodo_txt(meses[0]['periodo'])} y {periodo_txt(meses[-1]['periodo'])} vendió {_pesos(tot['ventas'])} "
-         f"y le quedó {_pesos(tot['resultado'])} después de compras, sueldos y F.931 ({pct(tot['margen'])} de las ventas)."]
+         f"y le quedó {_pesos(tot['resultado'])} después de compras, sueldos, cargas sociales e IIBB "
+         f"(índice erogaciones/ventas {pct(tot['indice'])}, margen {pct(tot['margen'])})."]
     if tot["ventas"]:
-        c.append(f"De cada $100 vendidos: ${round(tot['compras'] / tot['ventas'] * 100)} se fueron en compras, "
-                 f"${round(tot['sueldos'] / tot['ventas'] * 100)} en sueldos netos y ${round(tot['f931'] / tot['ventas'] * 100)} en F.931.")
+        c.append(f"De cada $100 vendidos: ${round(tot['compras'] / tot['ventas'] * 100)} en compras, "
+                 f"${round(tot['sueldos'] / tot['ventas'] * 100)} en remuneraciones, ${round(tot['cargas'] / tot['ventas'] * 100)} "
+                 f"en cargas sociales y ${round(tot['iibb'] / tot['ventas'] * 100)} en IIBB.")
     if tot["resultado"] < 0:
         c.append("El resultado acumulado es NEGATIVO: los costos superan a las ventas declaradas. Conviene revisar si faltan "
                  "ventas o si hay costos que no corresponden.")
@@ -236,8 +269,9 @@ def analizar_resultado(meses: list[dict]) -> dict | None:
         c.append(f"Atención: {len(incompletos)} mes(es) con datos incompletos ("
                  + "; ".join(f"{periodo_txt(m['periodo'])}: falta {', '.join(m['faltantes'])}" for m in incompletos)
                  + "). El resultado de esos meses no es confiable.")
-    if tot["sueldos"] or tot["f931"]:
-        c.append("Sueldos netos estimados con el F.931 (remuneración menos aportes): el robot todavía no baja el Libro de Sueldos.")
+    if tot["sueldos"] or tot["cargas"]:
+        c.append("Remuneraciones (Rem. 1) y cargas sociales (contribuciones S.S., O.S., ART, seguro de vida y RENATRE) "
+                 "tomadas del F.931, igual que en la planilla Relación DC.")
     else:
         c.append("No hay F.931 bajados: se toma como cliente sin empleados.")
     return {"meses": meses, "total": tot, "negativos": negativos, "mejor": mejor, "peor": peor,
