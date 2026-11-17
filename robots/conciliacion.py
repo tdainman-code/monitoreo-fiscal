@@ -282,6 +282,49 @@ def conciliar(cuit: str) -> dict:
             solo_liva.append({"Período": per, "Fecha": c["fecha"], "Comprobante": NOMBRES.get(c["tipo"], f"Tipo {c['tipo']}"),
                               "Pto. venta": c["punto_venta"], "Número": c["numero"], "CUIT emisor": c["cuit"],
                               "Emisor": c["nombre"], "Neto gravado": c["neto"], "IVA": c["iva"], "Total": c["total"]})
+    # Error de carga (caso real de Gaby, 17/11/2026: tique 8-27327 cargado en el Libro como 8-27227, misma fecha e
+    # importe): una "no tomada" que tiene en el Libro IVA un comprobante del mismo emisor, misma fecha y mismo IVA y
+    # total pero con otro número, se considera TOMADA CON OTRO NÚMERO (no es omisión: el crédito está computado).
+    otro_numero = []
+    for f in list(no_tomadas):
+        par = next((s for s in solo_liva if s["CUIT emisor"].lstrip("0") == f["CUIT emisor"].lstrip("0")
+                    and str(s["Fecha"])[:10] == str(f["Fecha"])[:10] and abs(s["IVA"] - f["IVA"]) <= 1
+                    and abs(s["Total"] - f["Total"]) <= 1), None)
+        if par:
+            no_tomadas.remove(f)
+            solo_liva.remove(par)
+            f = dict(f, **{"Tomada en": par["Período"],
+                           "Cargada como": f"{par['Comprobante']} {par['Pto. venta']}-{par['Número']}",
+                           "Observación": "Tomada con otro número/tipo: posible error de carga en el Libro IVA"})
+            otro_numero.append(f)
+    # El mismo comprobante (emisor + punto de venta + número) cargado dos veces en el Libro IVA, aunque sea con
+    # distinto tipo (ej.: como "Tique Factura A" y como "Factura A"): el crédito fiscal queda computado dos veces.
+    grupos = {}
+    for per, comps in liva.items():
+        for c in comps:
+            grupos.setdefault((str(c["cuit"]).lstrip("0"), int(c["punto_venta"]), int(c["numero"])), []).append((per, c))
+    duplicados = []
+    for (_, pv, num), v in grupos.items():
+        if len(v) < 2 or num == 0:
+            continue
+        for per, c in v:
+            duplicados.append({"Período": per, "Fecha": c["fecha"], "Comprobante": NOMBRES.get(c["tipo"], f"Tipo {c['tipo']}"),
+                               "Pto. venta": pv, "Número": num, "CUIT emisor": c["cuit"], "Emisor": c["nombre"],
+                               "Neto gravado": c["neto"], "IVA": c["iva"], "Total": c["total"],
+                               "Veces en el Libro": len(v),
+                               "Meses": ", ".join(sorted({p for p, _ in v}))})
+    iva_duplicado = round(sum(sum(c["iva"] for _, c in v[1:]) for v in grupos.values() if len(v) > 1), 2)
+    # Resumen: notas de crédito aparte (restan crédito) para no mezclarlas con las facturas no tomadas.
+    for fila_res in resumen:
+        p = fila_res["Período"]
+        nc = [f for f in no_tomadas if f["Período MC"] == p and f["Nota de crédito"]]
+        fa = [f for f in no_tomadas if f["Período MC"] == p and not f["Nota de crédito"]]
+        if fila_res.get("Mis Comprobantes") == "OK":
+            fila_res.update({"No tomados": len(fa), "Importe no tomado": round(sum(f["Total"] for f in fa), 2),
+                             "IVA no tomado": round(sum(f["IVA"] for f in fa), 2),
+                             "NC no computadas": len(nc), "IVA de NC a restar": round(sum(f["IVA"] for f in nc), 2),
+                             "Con otro número": sum(1 for f in otro_numero if f["Período MC"] == p),
+                             "Duplicados en Libro": sum(1 for d in duplicados if d["Período"] == p)})
     # Observados por ARCA cruzados con el Libro IVA
     desde = min(liva)
     obs_filas = []
@@ -315,6 +358,7 @@ def conciliar(cuit: str) -> dict:
     apoc_alertas = [f for f in no_tomadas + otro_mes if f["APOC"].startswith("SÍ")] + \
                    [f for f in obs_filas if f["Riesgo"].startswith("ALTO")]
     return {"no_tomadas": no_tomadas, "otro_mes": otro_mes, "solo_libro_iva": solo_liva, "resumen": resumen,
+            "otro_numero": otro_numero, "duplicados_libro": duplicados, "iva_duplicado": iva_duplicado,
             "apoc": ("sin verificar (falta correr el robot de observados)" if obs_d is None
                      else f"{len(observados)} comprobantes observados por ARCA (consulta del {obs_d.get('fecha')})"),
             "alertas_apoc": apoc_alertas, "observados": obs_filas,
@@ -373,6 +417,13 @@ def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
          f"(revisado hasta {r['hasta']}). Base APOC: {r['apoc']}.", r["no_tomadas"], cols, rojo)
     hoja("Tomadas en otro mes", "Comprobantes de Mis Comprobantes computados en un Libro IVA de un mes distinto.",
          r["otro_mes"], cols[:11] + ["Tomada en"], lambda f: ROJO_FUERTE if f["APOC"].startswith("SÍ") else AMARILLO)
+    hoja("Tomadas con otro número", "Comprobantes de Mis Comprobantes que en el Libro IVA figuran con otro número o "
+         "tipo (mismo emisor, fecha, IVA y total): el crédito está computado, pero conviene corregir la carga.",
+         r["otro_numero"], cols[:11] + ["Tomada en", "Cargada como"], lambda f: AMARILLO)
+    hoja("Duplicados en Libro IVA", "El mismo comprobante (emisor, punto de venta y número) cargado más de una vez en "
+         f"el Libro IVA: el crédito fiscal se computó dos veces. IVA computado de más: {r['iva_duplicado']:,.2f}.",
+         r["duplicados_libro"], ["Período", "Fecha", "Comprobante", "Pto. venta", "Número", "CUIT emisor", "Emisor",
+                                 "Neto gravado", "IVA", "Total", "Veces en el Libro", "Meses"], lambda f: ROJO_FUERTE)
     hoja("Solo en Libro IVA", "Informativo: comprobantes del Libro IVA que no están en Mis Comprobantes "
          "(despachos de importación, servicios públicos, etc.).", r["solo_libro_iva"],
          ["Período", "Fecha", "Comprobante", "Pto. venta", "Número", "CUIT emisor", "Emisor", "Neto gravado", "IVA", "Total"])
@@ -412,8 +463,10 @@ def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
                                      or abs(f.get("Dif. IVA") or 0) > TOL) else None)
         wb.move_sheet(wv, offset=-(len(wb.sheetnames) - 1))
     ws = hoja("Resumen", "Por período con Libro IVA bajado.", r["resumen"],
-              ["Período", "Mis Comprobantes", "Comprobantes MC (no B)", "No tomados", "Importe no tomado", "En otro mes"],
-              lambda f: ROJO if f.get("No tomados") else None)
+              ["Período", "Mis Comprobantes", "Comprobantes MC (no B)", "No tomados", "Importe no tomado", "IVA no tomado",
+               "NC no computadas", "IVA de NC a restar", "En otro mes", "Con otro número", "Duplicados en Libro"],
+              lambda f: ROJO_FUERTE if (f.get("NC no computadas") or f.get("Duplicados en Libro"))
+              else ROJO if f.get("No tomados") else None)
     wb.move_sheet(ws, offset=-(len(wb.sheetnames) - 1))
     wb.active = 0
     os.makedirs(os.path.dirname(ruta), exist_ok=True)

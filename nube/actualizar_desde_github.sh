@@ -71,7 +71,8 @@ git --work-tree="$PRUEBA" checkout -q "$NUEVO" -- . && chown -R robot:robot "$PR
 SALIDA=$(cd "$PRUEBA" && timeout 1200 sudo -u robot env PYTHONPATH="$PRUEBA" HOME=/home/robot \
          /home/robot/venv/bin/python pruebas/test_web_radar.py 2>&1; echo "CODIGO=$?")
 SALIDA2=$(cd "$PRUEBA" && timeout 900 sudo -u robot env PYTHONPATH="$PRUEBA" HOME=/home/robot \
-         /home/robot/venv/bin/python robots/pruebas/test_agip_simulado.py 2>&1; echo "CODIGO=$?")
+         /home/robot/venv/bin/python robots/pruebas/test_agip_simulado.py 2>&1 && \
+         /home/robot/venv/bin/python robots/pruebas/test_conciliacion_compras.py 2>&1; echo "CODIGO=$?")
 if echo "$SALIDA" | grep -q "CODIGO=0" && echo "$SALIDA2" | grep -q "CODIGO=0"; then
   if instalar_desde "$PRUEBA"; then
     echo "$NUEVO" > /opt/monitoreo/instalado; git checkout -q --detach "$NUEVO"
