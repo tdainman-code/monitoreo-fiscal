@@ -58,4 +58,11 @@ plan("Pagada")
 r = av.evaluar(dt.date(2026, 12, 2))
 lista = json.load(open(f"{R}/publico/avisos.json"))
 chk(r["resueltos"] == 1 and lista[-1]["estado"] == "resuelto", "cuota pagada -> aviso resuelto")
+r = av.mail_dfe({"cuit": C, "a": "cliente", "por": "gaby", "notif": {"origen": "ARCA", "fecha": "20/10/2026",
+                 "asunto": "Sistema de Cuentas Tributarias", "estado": "NOTIFICADA DE OFICIO el 26/10/2026 — SIN LEER"}})
+mails = [json.load(open(os.path.join(av.SALIDA, n))) for n in sorted(os.listdir(av.SALIDA))]
+m = next(x for x in mails if x["motivo"].startswith("DFE cliente"))
+chk(r.startswith("OK") and m["para"] == ["admin@bh.com"] and "Cuentas Tributarias" in m["cuerpo"], "DFE: reenvío al cliente")
+r = av.mail_dfe({"cuit": C, "a": "admin", "por": "gaby", "notif": {"asunto": "x"}})
+chk(r.startswith("sin destinatario"), "DFE: alerta al admin sin admins con mail -> lo avisa")
 print("TODO OK" if ok else "FALLAS"); sys.exit(0 if ok else 1)

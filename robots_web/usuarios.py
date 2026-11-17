@@ -283,6 +283,7 @@ def publicar_contactos() -> None:
         return
     con = conectar()
     us = {u: (n, e) for u, n, e in con.execute("SELECT usuario, nombre, email FROM usuarios WHERE activo=1")}
+    admins = [e for (e,) in con.execute("SELECT email FROM usuarios WHERE activo=1 AND rol='admin' AND email<>''") if e]
     filas = con.execute("SELECT cuit, datos FROM datos_cliente").fetchall()
     con.close()
     out = {}
@@ -295,6 +296,7 @@ def publicar_contactos() -> None:
         out[cuit] = {"encargado": enc, "encargado_nombre": (us.get(enc) or ("", ""))[0] or "",
                      "encargado_email": (us.get(enc) or ("", ""))[1] or "",
                      "emails_cliente": [m.strip() for m in re.split(r"[,;\s]+", d.get("emails", "")) if EMAIL_RE.match(m.strip())]}
+    out["_admins"] = admins
     ruta = os.path.join(pedidos.PEDIDOS, "_contactos.txt")
     tmp = ruta + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:

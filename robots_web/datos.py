@@ -232,7 +232,10 @@ def _notificaciones(base: str, dfe: dict | None) -> list[dict]:
     for c in (dfe or {}).get("comunicaciones", []):
         out.append({"origen": "ARCA", "fecha": c.get("fecha"), "organismo": c.get("organismo"), "asunto": c.get("asunto"),
                     "importancia": c.get("importancia"), "para": c.get("para", ""), "motivo": c.get("motivo", ""),
-                    "responsable": c.get("responsable", ""), "estado": c.get("notificado") or "SIN ABRIR",
+                    "responsable": c.get("responsable", ""),
+                    "estado": (f"NOTIFICADA{' DE OFICIO' if c.get('de_oficio') else ''} el {c.get('notificado')} — SIN LEER"
+                               if c.get("notificada_sin_leer") else c.get("notificado") or "SIN ABRIR"),
+                    "notificada_sin_leer": bool(c.get("notificada_sin_leer")),
                     "pendiente": not c.get("leida"), "plazo": "", "resumen": ""})
     arba = _leer(_ultimo(os.path.join(base, "arba_dfe", "[0-9]*", "resultado.json")))
     for c in (arba or {}).get("comunicaciones", []):
@@ -250,7 +253,10 @@ def _notificaciones(base: str, dfe: dict | None) -> list[dict]:
 
     def clave(n):
         f = _fecha((n["fecha"] or "").replace("-", "/")) or date.min
-        return (orden.get(n["importancia"], 1), -f.toordinal())
+        return (not n.get("notificada_sin_leer"), orden.get(n["importancia"], 1), -f.toordinal())
+    for n in out:                                     # prioridad para el tablero (17/11/2026)
+        n["prioridad"] = (1 if n.get("notificada_sin_leer") else 2 if n["importancia"] == "ALTA" and n["pendiente"]
+                          else 3 if n["importancia"] == "ALTA" else 4 if n["importancia"] == "Media" else 5)
     import hashlib
     for n in out:
         n["id"] = hashlib.sha1(f"{base}|{n['origen']}|{n['fecha']}|{n['asunto']}".encode()).hexdigest()[:16]

@@ -8,21 +8,40 @@
 <h1>{{ titulo }}</h1>
 
 {% if vista == 'dfe' %}
-  <p class="sutil">Comunicaciones de ARCA, ARBA y AGIP de todos los clientes. El robot nunca abre una comunicación de ARCA ni de AGIP sin notificar.
-  Marcá "Informada" cuando ya se la pasaste al cliente: sale de la lista de pendientes.</p>
-  <div class="filtros"><a class="chip {{ 'activo' if x.ver == 'pendientes' }}" href="{{ url_for('cartera', vista='dfe') }}">Pendientes</a>
-  <a class="chip {{ 'activo' if x.ver == 'todas' }}" href="{{ url_for('cartera', vista='dfe', ver='todas') }}">Todas</a></div>
-  <table class="tabla"><thead><tr><th>Cliente</th><th>Organismo</th><th>Fecha</th><th>Asunto</th><th>Importancia</th><th>Estado</th><th></th></tr></thead><tbody>
-  {% for n in filas %}<tr class="{{ 'fila-roja' if n.importancia == 'ALTA' and n.pendiente and not n.informada else 'fila-gris' if n.informada else '' }}">
-    <td><a href="{{ url_for('cliente_seccion', cuit=n.cuit, seccion='notificaciones') }}">{{ n.nombre }}</a></td>
-    <td data-l="Organismo">{{ n.origen }}</td><td data-l="Fecha">{{ n.fecha }}</td><td data-l="Asunto">{{ n.asunto }}{% if n.motivo %}<div class="sutil">{{ n.motivo }}</div>{% endif %}</td>
-    <td data-l="Importancia">{{ n.importancia }}</td><td data-l="Estado">{{ n.estado }}{% if n.informada %}<div class="sutil">informada por {{ n.informada.nombre }} {{ n.informada.fecha[:10] }}</div>{% endif %}</td>
+  <section class="kpis totales">
+    <div class="kpi plano"><span class="k-tit">Notificadas sin leer</span><b class="{{ 'txt-rojo' if x.kpi.oficio }}">{{ x.kpi.oficio }}</b><span class="k-sub">los plazos ya corren</span></div>
+    <div class="kpi plano"><span class="k-tit">Importantes sin abrir</span><b class="{{ 'txt-rojo' if x.kpi.altas }}">{{ x.kpi.altas }}</b><span class="k-sub">todavía no notificadas</span></div>
+    <div class="kpi plano"><span class="k-tit">Pendientes de informar</span><b class="{{ 'txt-ambar' if x.kpi.pend }}">{{ x.kpi.pend }}</b><span class="k-sub">al cliente</span></div>
+    <div class="kpi plano"><span class="k-tit">Comunicaciones leídas</span><b>{{ x.kpi.total }}</b><span class="k-sub">ARCA, ARBA y AGIP</span></div>
+  </section>
+  <div class="filtros">
+    {% set q = {'ver': x.ver, 'org': x.org, 'mios': '1' if x.mios else ''} %}
+    <a class="chip {{ 'activo' if x.ver == 'pendientes' }}" href="{{ url_for('cartera', vista='dfe', ver='pendientes', org=x.org, mios=q.mios) }}">Pendientes</a>
+    <a class="chip {{ 'activo' if x.ver == 'todas' }}" href="{{ url_for('cartera', vista='dfe', ver='todas', org=x.org, mios=q.mios) }}">Todas</a>
+    <span class="sutil">·</span>
+    {% for o in ['', 'ARCA', 'ARBA', 'AGIP'] %}<a class="chip {{ 'activo' if x.org == o }}" href="{{ url_for('cartera', vista='dfe', ver=x.ver, org=o, mios=q.mios) }}">{{ o or 'Todos los organismos' }}</a>{% endfor %}
+    <span class="sutil">·</span>
+    <a class="chip {{ 'activo' if x.mios }}" href="{{ url_for('cartera', vista='dfe', ver=x.ver, org=x.org, mios='' if x.mios else '1') }}">Solo mis clientes</a>
+  </div>
+  <p class="sutil">Prioridad: 1) notificadas (de oficio) sin leer · 2) importantes sin abrir · 3) importantes · 4) medias · 5) bajas.
+  El robot no abre una comunicación sin notificar. "Informada" la saca de pendientes; "Reenviar al cliente" y "Alertar al admin" mandan un mail.</p>
+  <div class="panel">
+  <table class="tabla"><thead><tr><th>Prioridad</th><th>Cliente</th><th>Organismo</th><th>Fecha</th><th>Asunto</th><th>Estado</th><th></th></tr></thead><tbody>
+  {% for n in filas %}<tr class="{{ 'sem-rojo' if n.prioridad <= 2 and not n.informada else 'sem-amarillo' if n.prioridad == 3 and not n.informada else '' }} {{ 'fila-gris' if n.informada }}">
+    <td data-l="Prioridad"><span class="pill {{ 'rojo' if n.prioridad <= 2 else 'ambar' if n.prioridad <= 3 else '' }}">{{ n.prioridad }}</span></td>
+    <td><a href="{{ url_for('cliente_seccion', cuit=n.cuit, seccion='notificaciones') }}"><b>{{ n.nombre }}</b></a></td>
+    <td data-l="Organismo">{{ n.origen }}</td><td data-l="Fecha">{{ n.fecha }}</td>
+    <td data-l="Asunto">{{ n.asunto }}{% if n.motivo %}<div class="sutil">{{ n.motivo }}{% if n.para %} → {{ n.para }}{% endif %}</div>{% endif %}</td>
+    <td data-l="Estado">{{ n.estado }}{% if n.informada %}<div class="sutil">informada por {{ n.informada.nombre }} {{ n.informada.fecha[:10] }}</div>{% endif %}</td>
     <td><form method="post" action="{{ url_for('dfe_informada') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
       <input type="hidden" name="id" value="{{ n.id }}"><input type="hidden" name="cuit" value="{{ n.cuit }}">
       <input type="hidden" name="marcar" value="{{ '0' if n.informada else '1' }}"><input type="hidden" name="volver" value="{{ request.full_path }}">
-      <button class="{{ 'link' if n.informada else '' }}">{{ 'desmarcar' if n.informada else 'Informada' }}</button></form></td></tr>
+      <button class="{{ 'link' if n.informada else '' }}">{{ 'desmarcar' if n.informada else 'Informada' }}</button></form>
+      {% if not n.informada %}<form method="post" action="{{ url_for('dfe_mail') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="id" value="{{ n.id }}"><input type="hidden" name="cuit" value="{{ n.cuit }}"><input type="hidden" name="volver" value="{{ request.full_path }}">
+      <button name="a" value="cliente">Reenviar al cliente</button><button name="a" value="admin">Alertar al admin</button></form>{% endif %}</td></tr>
   {% else %}<tr><td colspan="7" class="sutil">No hay comunicaciones pendientes.</td></tr>{% endfor %}
-  </tbody></table>
+  </tbody></table></div>
 
 {% elif vista == 'deudas' %}
   <p class="sutil">Clientes con deuda vencida de {{ reglas.deuda_minima|pesos }} o más (por debajo se considera sin deuda). Total: <b>{{ x.total|pesos }}</b></p>

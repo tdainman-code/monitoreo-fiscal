@@ -6,6 +6,9 @@
 {% if sec == 'deuda' %}
   {% if s.sct %}
   <p><b>Deuda vencida: {{ s.deuda_vencida|pesos }}</b> <span class="sutil">(capital + intereses, {{ s.sct.deudas|length }} obligaciones)</span></p>
+  {% if s.deuda_vencida %}<div class="pedir"><b>¿Envío VEP de la deuda al cliente?</b>
+    <button disabled title="Se habilita cuando el robot tenga programado el VEP de obligaciones (esperando las pantallas)">Sí, generar y enviar VEP</button>
+    <span class="sutil">En preparación: falta relevar en ARCA cómo se genera el VEP de obligaciones pendientes.</span></div>{% endif %}
   <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Vencimiento</th><th class="num">Capital</th><th class="num">Intereses</th><th class="num">Total</th></tr></thead><tbody>
   {% for d in s.sct.deudas|sort(attribute='total', reverse=True) %}<tr class="{{ 'fila-roja' if d.vencida }}"><td>{{ d.impuesto }}</td><td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td>
   <td class="num" data-l="Capital">{{ d.capital|pesos }}</td><td class="num" data-l="Intereses">{{ (d.int_resarcitorio + d.int_punitorio)|pesos }}</td><td class="num" data-l="Total"><b>{{ d.total|pesos }}</b></td></tr>{% endfor %}

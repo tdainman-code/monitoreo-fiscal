@@ -295,6 +295,36 @@ def accion_web(aviso_id: str, con_vep: bool, por: str) -> str:
     return "OK " + a["vep"]
 
 
+def mail_dfe(p: dict) -> str:
+    """Tablero DFE: reenvío de una comunicación al cliente (copia al encargado) o alerta a los administradores."""
+    cont = contactos()
+    info = cont.get(p["cuit"]) or {}
+    n = {k: str(v)[:300] for k, v in (p.get("notif") or {}).items()}
+    try:
+        from .almacen_claves import razon_social
+        rs = razon_social(p["cuit"]) or _cuit_fmt(p["cuit"])
+    except Exception:
+        rs = _cuit_fmt(p["cuit"])
+    detalle = (f"Organismo: {n.get('origen')} {('— ' + n['organismo']) if n.get('organismo') and n.get('organismo') != n.get('origen') else ''}\n"
+               f"Fecha: {n.get('fecha')}\nAsunto: {n.get('asunto')}\nEstado: {n.get('estado')}\n")
+    if p["a"] == "cliente":
+        para, cc = info.get("emails_cliente") or [], [info.get("encargado_email", "")]
+        asunto = f"Comunicación de {n.get('origen')} en su domicilio fiscal electrónico"
+        cuerpo = (f"Estimados de {rs}:\n\nLes informamos que recibieron una comunicación en su domicilio fiscal "
+                  f"electrónico:\n\n{detalle}\nNos ponemos en contacto para ver los pasos a seguir.\n\nSaludos cordiales.\nEstudio")
+    else:
+        para, cc = cont.get("_admins") or [], []
+        asunto = f"Alerta DFE: {rs} — {n.get('asunto', '')[:80]}"
+        cuerpo = (f"{p.get('por_nombre') or p.get('por')} marcó esta comunicación para revisar:\n\nCliente: {rs} "
+                  f"({_cuit_fmt(p['cuit'])})\n{detalle}{('Motivo: ' + n['motivo']) if n.get('motivo') else ''}\n")
+    mid = encolar_mail(para, asunto, cuerpo, cc=cc, motivo=f"DFE {p['a']} {p['cuit']} (pedido por {p.get('por')})")
+    enviar_cola()
+    est = estado_mail(mid)
+    if not para:
+        return "sin destinatario: " + ("el cliente no tiene mails cargados" if p["a"] == "cliente" else "ningún admin tiene mail")
+    return f"OK mail {est}"
+
+
 def main(argv=None):
     a = (argv if argv is not None else sys.argv[1:]) or ["evaluar"]
     if a[0] == "evaluar":

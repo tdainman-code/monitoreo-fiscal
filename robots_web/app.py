@@ -240,15 +240,27 @@ def cartera(vista):
     if vista == "dfe":
         inf = usuarios.informadas()
         ver = request.args.get("ver", "pendientes")
+        org = request.args.get("org", "")
+        mios = request.args.get("mios") == "1"
+        enc = {cu: (usuarios.datos_cliente(cu) or {}).get("encargado", "") for cu in {c["cuit"] for c in todos}} if mios else {}
+        todas = []
         for c in todos:
             for n in c["f"]["notificaciones"]:
-                n = {**n, "cuit": c["cuit"], "nombre": c["nombre"], "informada": inf.get(n["id"])}
-                if ver == "pendientes" and (n["informada"] or n["importancia"] == "Baja"):
-                    continue
-                filas.append(n)
-        orden = {"ALTA": 0, "Media": 1, "Baja": 2}
-        filas.sort(key=lambda n: (orden.get(n["importancia"], 1), not n["pendiente"]))
-        extra["ver"] = ver
+                todas.append({**n, "cuit": c["cuit"], "nombre": c["nombre"], "informada": inf.get(n["id"])})
+        extra["kpi"] = {"oficio": sum(1 for n in todas if n.get("notificada_sin_leer") and not n["informada"]),
+                        "altas": sum(1 for n in todas if n["prioridad"] == 2 and not n["informada"]),
+                        "pend": sum(1 for n in todas if not n["informada"] and n["importancia"] != "Baja"),
+                        "total": len(todas)}
+        for n in todas:
+            if ver == "pendientes" and (n["informada"] or n["importancia"] == "Baja"):
+                continue
+            if org and n["origen"] != org:
+                continue
+            if mios and enc.get(n["cuit"]) not in (session["usuario"], ""):
+                continue
+            filas.append(n)
+        filas.sort(key=lambda n: (n["prioridad"], bool(n["informada"]), n["nombre"]))
+        extra.update(ver=ver, org=org, mios=mios)
     elif vista == "deudas":
         for c in todos:
             f = c["f"]
@@ -330,6 +342,30 @@ def dfe_informada():
     marcar = request.form.get("marcar") == "1"
     usuarios.marcar_informada(id_, cuit, session["usuario"], session.get("nombre", ""), marcar)
     usuarios.registrar(session["usuario"], "DFE informada" if marcar else "DFE desmarcada", cuit, _ip())
+    destino = request.form.get("volver", "")
+    return redirect(destino if destino.startswith("/") and not destino.startswith("//") else url_for("cartera", vista="dfe"))
+
+
+@app.route("/dfe/mail", methods=["POST"])
+@requiere_login
+def dfe_mail():
+    """Tablero DFE: 'Reenviar al cliente' / 'Alertar al admin' (el mail lo manda el robot desde la casilla del estudio)."""
+    _controlar_csrf()
+    id_, cuit, a = request.form.get("id", ""), request.form.get("cuit", ""), request.form.get("a", "")
+    if not id_.isalnum() or not datos.CUIT_RE.match(cuit) or a not in ("cliente", "admin"):
+        abort(400)
+    n = next((x for x in datos.ficha(cuit)["notificaciones"] if x["id"] == id_), None)
+    if not n:
+        flash("La comunicación ya no figura", "error")
+    else:
+        try:
+            pedidos.encolar_mail_dfe(cuit, a, {k: str(n.get(k) or "")[:300] for k in
+                                               ("origen", "organismo", "fecha", "asunto", "estado", "motivo")},
+                                     session["usuario"], session.get("nombre", ""))
+            usuarios.registrar(session["usuario"], f"DFE: {'reenvío al cliente' if a == 'cliente' else 'alerta al admin'}", cuit, _ip())
+            flash("Mail pedido: sale en un minuto (o queda en cola hasta que se configure la casilla del estudio)", "ok")
+        except pedidos.ErrorPedido as e:
+            flash(str(e), "error")
     destino = request.form.get("volver", "")
     return redirect(destino if destino.startswith("/") and not destino.startswith("//") else url_for("cartera", vista="dfe"))
 

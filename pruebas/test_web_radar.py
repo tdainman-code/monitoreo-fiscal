@@ -255,6 +255,16 @@ ok(any(p.get("robot") == "aviso_vep" and p.get("aviso") == f"{C2}:W631300:2" for
 ok(cl.post("/avisos", data={"csrf": "malo", "aviso": "x", "accion": "aviso_enviar"}).status_code == 400, "avisos con CSRF")
 r = cl.get(f"/cliente/{C2}/datos")
 ok('name="encargado"' in r.text, "datos del cliente: elegir encargado")
+r = cl.get("/cartera/dfe?ver=todas")
+ok(r.status_code == 200 and "Notificadas sin leer" in r.text and "Reenviar al cliente" in r.text, "tablero DFE con prioridades y botones")
+from robots_web import datos as _dw  # noqa: E402
+nid = _dw.ficha(C2)["notificaciones"][0]["id"]
+cl.post("/dfe/mail", data={"csrf": token(r.text), "id": nid, "cuit": C2, "a": "cliente", "volver": "/cartera/dfe"})
+pa = [json.load(open(os.path.join(BANDEJA, "pedidos", n))) for n in os.listdir(os.path.join(BANDEJA, "pedidos"))
+      if n.endswith(".json")]
+ok(any(p.get("robot") == "mail_dfe" and p.get("a") == "cliente" and p["notif"].get("asunto") for p in pa),
+   "DFE: 'Reenviar al cliente' deja el pedido de mail")
+ok(cl.post("/dfe/mail", data={"csrf": "malo", "id": nid, "cuit": C2, "a": "admin"}).status_code == 400, "mail DFE con CSRF")
 for n in os.listdir(os.path.join(BANDEJA, "pedidos")):
     if n.endswith(".json"):
         os.remove(os.path.join(BANDEJA, "pedidos", n))

@@ -36,6 +36,7 @@ ROBOTS_PERMITIDOS = {
     "aviso_vep": "Aviso de cuota impaga al cliente + VEP",
 }
 AVISOS = {"aviso_enviar", "aviso_vep"}
+ROBOTS_PERMITIDOS["mail_dfe"] = "Mail de una comunicación del domicilio fiscal electrónico"
 MAX_ESTADO = 50
 
 
@@ -68,6 +69,8 @@ def _anotar(p: dict, estado: str, detalle: str = "") -> None:
 def _valido(p: dict) -> bool:
     ok = (isinstance(p, dict) and re.fullmatch(r"\d{11}", str(p.get("cuit", ""))) is not None
           and p.get("robot") in ROBOTS_PERMITIDOS and re.fullmatch(r"[0-9a-f]{8,32}", str(p.get("id", ""))) is not None)
+    if ok and p["robot"] == "mail_dfe":
+        ok = p.get("a") in ("cliente", "admin") and isinstance(p.get("notif"), dict)
     if ok and p["robot"] in AVISOS:
         ok = re.fullmatch(rf"{p['cuit']}:[A-Za-z0-9-]{{1,20}}:\d{{1,3}}", str(p.get("aviso", ""))) is not None
     return ok
@@ -99,6 +102,14 @@ def _procesar_avisos(lista) -> list:
     from . import avisos
     resto = []
     for ruta, p in lista:
+        if p["robot"] == "mail_dfe":
+            os.remove(ruta)
+            try:
+                r = avisos.mail_dfe(p)
+                _anotar(p, "terminado" if r.startswith("OK") else "con problemas", r)
+            except Exception as e:
+                _anotar(p, "error", f"{type(e).__name__}: {e}")
+            continue
         if p["robot"] == "aviso_enviar" or (p["robot"] == "aviso_vep" and not avisos.vep_programado()):
             os.remove(ruta)
             try:
