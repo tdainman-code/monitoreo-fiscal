@@ -18,6 +18,12 @@ DEUDA DE CONVENIO (relevado el 16/11/2026 con GONCALVES VICENTE JUAN JOSE):
   (confirmado por el estudio); el aviso "no incluye Pagos COMARB" no afecta a los clientes del estudio.
   COMARB avisa que la información puede tener hasta 7 días de retraso.
 Si el contribuyente no está en Convenio Multilateral (no tiene el servicio) queda "sin servicio".
+
+APODERADOS (relevado con Gaby el 17/11/2026, 20-38893131-1 con varias empresas):
+  mainMenu.do muestra "DAINMAN TOMAS (20-38893131-1) representando a DAINMAN TOMAS (20-38893131-1)" y abajo
+  "Contribuyentes disponibles": desplegable "BH ... (CUIT 30-71746863-1)" / "CONTRIBUYENTE (CUIT 30-71746863-1)"
+  + botón "Seleccionar". Al elegir, el encabezado pasa a "representando a <EMPRESA> (30-...)".
+  En cualquier pantalla está el enlace "Cambiar Contribuyente" (vuelve a esa lista).
 """
 from __future__ import annotations
 
@@ -74,6 +80,39 @@ def _controlar_cuit(page, cuit, espera_s: int = 60):
     m = [None, activo]
     if m[1] != arca.cuit_fmt(cuit):
         raise arca.SinRepresentado(f"SIFERE trabaja con {m[1]} y no con {arca.cuit_fmt(cuit)} (pantalla a relevar)")
+
+
+def elegir_contribuyente(page, cuit: str, http_comarb: list[str]) -> None:
+    """Deja SIFERE Web en el CUIT del cliente: si el encabezado muestra otro, lo elige en
+    'Contribuyentes disponibles' (y si esa lista no está en pantalla, entra por 'Cambiar Contribuyente')."""
+    fmt = arca.cuit_fmt(cuit)
+    try:
+        _controlar_cuit(page, cuit)
+        return
+    except arca.SinRepresentado:
+        pass
+
+    def lista():
+        return page.locator("select").filter(has=page.locator("option", has_text=re.compile(re.escape(fmt))))
+
+    if not lista().count():
+        link = page.locator("a", has_text=re.compile(r"Cambiar Contribuyente", re.I))
+        if link.count():
+            _navegar(page, lambda: link.first.click(), http_comarb)
+        else:
+            page.goto(re.sub(r"(siferewebconsultas/).*$", r"\1mainMenu.do", page.url), wait_until="domcontentloaded")
+            _pasar_a_https(page, http_comarb)
+    if not lista().count():
+        opciones = [o.strip() for o in page.locator("select option").all_inner_texts()][:30]
+        raise arca.SinRepresentado(f"SIFERE: {fmt} no está entre los contribuyentes disponibles "
+                                   f"({'; '.join(opciones) or 'sin lista'})")
+    sel = lista().first
+    valor = sel.evaluate("(s, c) => [...s.options].find(o => o.text.includes(c)).value", fmt)
+    sel.select_option(value=valor)
+    arca.pausa(0.5, 1.0)
+    boton = page.locator("input[value='Seleccionar'], button:has-text('Seleccionar')")
+    _navegar(page, lambda: boton.first.click(), http_comarb)
+    _controlar_cuit(page, cuit)
 
 
 def _pasar_a_https(page, http_comarb: list[str], espera_s: int = 20) -> None:
@@ -184,7 +223,7 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
                 return dict(estado)
             page.wait_for_load_state("domcontentloaded")
             _pasar_a_https(page, http_comarb)
-            _controlar_cuit(page, cuit)
+            elegir_contribuyente(page, cuit, http_comarb)
             return _leer_periodos(page, http_comarb)
         finally:
             ctx.remove_listener("request", anotar)

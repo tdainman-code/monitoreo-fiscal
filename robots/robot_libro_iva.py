@@ -58,6 +58,49 @@ def _texto(page) -> str:
         return ""
 
 
+_RE_REPRESENTANDO = re.compile(r"REPRESENTANDO A:?\s*[^\[]*\[\s*CUIT\s*(\d{2}-\d{8}-\d)\s*\]", re.I)
+
+
+def elegir_representado(page, cuit: str, espera_s: int = 45) -> None:
+    """Portal IVA con apoderado (relevado con Gaby el 17/11/2026): el encabezado dice
+    'REPRESENTANDO A: DAINMAN TOMAS [CUIT 20-38893131-1]'; el ícono de al lado lleva a #/changeRelation,
+    'Elegí una persona para ingresar', con una tarjeta por empresa ('BH SOLUCIONES ... [CUIT 30-71746863-1]').
+    Se elige la tarjeta del cliente y se controla que el encabezado pase a ese CUIT."""
+    fmt = arca.cuit_fmt(cuit)
+    limite = time.time() + espera_s
+    while time.time() < limite:
+        m = _RE_REPRESENTANDO.search(_texto(page)[:1500])
+        if m:
+            break
+        if fmt in _texto(page)[:600]:                 # sin apoderados: el encabezado ya es del cliente
+            return
+        page.wait_for_timeout(1000)
+    else:
+        return                                         # pantalla sin "representando a": lo controla _controlar_cuit
+    if m[1] == fmt:
+        return
+    base = page.url.split("#")[0]
+    page.goto(base + "#/changeRelation", wait_until="domcontentloaded")
+    arca.pausa(1.0, 2.0)
+    tarjeta = page.get_by_text(re.compile(rf"\[\s*CUIT\s*{re.escape(fmt)}\s*\]"))
+    try:
+        tarjeta.first.wait_for(state="visible", timeout=30_000)
+    except Exception:
+        raise arca.SinRepresentado(f"Portal IVA: {fmt} no está entre las personas que puede representar el usuario")
+    tarjeta.first.click()
+    arca.pausa(1.5, 3.0)
+    limite = time.time() + 30
+    while time.time() < limite:
+        m = _RE_REPRESENTANDO.search(_texto(page)[:1500])
+        if m and m[1] == fmt:
+            if "changeRelation" in page.url:
+                page.goto(base + "#/", wait_until="domcontentloaded")
+                arca.pausa(1.0, 2.0)
+            return
+        page.wait_for_timeout(1000)
+    raise arca.CuitEquivocado(f"Portal IVA: se eligió {fmt} y el encabezado no cambió")
+
+
 def _controlar_cuit(page, cuit: str, donde: str, espera_s: int = 45) -> None:
     """El encabezado tiene que mostrar el CUIT del cliente (Portal IVA: '[CUIT 20-33116278-8]';
     Libro IVA: '[20-33116278-8]'). Si hay una pantalla para elegir a quién representar, se elige."""
@@ -66,6 +109,11 @@ def _controlar_cuit(page, cuit: str, donde: str, espera_s: int = 45) -> None:
     elegido = False
     while time.time() < limite:
         t = _texto(page)
+        m = _RE_REPRESENTANDO.search(t[:1500])
+        if m:
+            if m[1] == fmt:
+                return
+            raise arca.SinRepresentado(f"{donde}: representa a {m[1]} y no a {fmt}")
         if fmt in t[:3000]:
             return
         if not elegido and re.search(r"represent|eleg[ií]|seleccion", t, re.I):
@@ -226,6 +274,7 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
             return dict(estado)
         page.wait_for_load_state("domcontentloaded")
         base = page.url.split("#")[0]
+        elegir_representado(page, cuit)
         _controlar_cuit(page, cuit, "Portal IVA")
         _ir_a_lista(page)
         guardar_categoria(cuit, "Responsable inscripto")

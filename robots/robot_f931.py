@@ -7,6 +7,13 @@ Recorrido (relevado el 15/11/2026 con la empresa 30-51969833-8):
   consultar/ver_formulario.aspx?Periodo=AAAAMM&SecDJVig=00N : texto del F931 -> lector_f931
 Por cada período se toma la ÚLTIMA secuencia (la vigente). Solo consulta: no genera ni presenta nada.
 Si el contribuyente no tiene el servicio (sin empleados), queda anotado "sin servicio".
+
+APODERADOS (relevado con Gaby el 17/11/2026, usuario 20-38893131-1 con varias empresas):
+  al entrar abre login/checkIngreso.aspx: "Ud. es apoderado de los siguientes CUITs, por favor seleccione uno
+  para comenzar a operar" + desplegable "30-71746863-1 - BH SOLUCIONES EMPRESARIALES". Al elegir pasa a
+  avisoInicial.aspx (botón ACEPTAR) / index.aspx y el encabezado muestra "CUIT: 30-71746863-1".
+  Si la sesión ya está en otra empresa, el menú INGRESE... tiene "para cambiar el CUIT de sesión", que vuelve
+  a la misma lista.
 """
 from __future__ import annotations
 
@@ -37,6 +44,59 @@ def _controlar_cuit(page, cuit):
                                    "(hay que cambiar el CUIT de sesión; pantalla a relevar)")
 
 
+def _cuit_encabezado(page) -> str:
+    m = re.search(r"CUIT:?\s*(\d{2}-?\d{8}-?\d)", page.inner_text("body")[:1500])
+    return re.sub(r"\D", "", m[1]) if m else ""
+
+
+def _elegir_en_lista(page, cuit: str) -> bool:
+    """Pantalla 'Ud. es apoderado de los siguientes CUITs': elige la empresa. Devuelve False si no está la lista."""
+    sel = page.locator("select").filter(has=page.locator("option", has_text=arca.cuit_fmt(cuit)))
+    if not sel.count():
+        if page.locator("select").count() and re.search(r"apoderado", page.inner_text("body"), re.I):
+            opciones = page.locator("select").first.locator("option").all_inner_texts()
+            raise arca.SinRepresentado(f"Declaración en línea: {arca.cuit_fmt(cuit)} no está entre los CUIT del "
+                                       f"apoderado ({'; '.join(o.strip() for o in opciones)})")
+        return False
+    valor = sel.first.evaluate("(s, c) => [...s.options].find(o => o.text.includes(c)).value", arca.cuit_fmt(cuit))
+    try:
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=30_000):
+            sel.first.select_option(value=valor)           # el desplegable hace postback al elegir
+    except Exception:
+        boton = page.locator("input[type=submit], input[type=image], button").filter(
+            has_not_text=re.compile(r"cerrar", re.I))
+        if boton.count():
+            with page.expect_navigation(wait_until="domcontentloaded", timeout=30_000):
+                boton.first.click()
+    arca.pausa(1.0, 2.0)
+    arca.verificar_sesion(page, "declaracion_en_linea")
+    return True
+
+
+def elegir_empresa(page, cuit: str) -> None:
+    """Deja la sesión de Declaración en línea en el CUIT del cliente (apoderados con varias empresas)."""
+    if _elegir_en_lista(page, cuit):
+        return
+    _ir(page, BASE + "consultar/dj_generadas.aspx")
+    actual = _cuit_encabezado(page)
+    if actual == cuit or not actual:
+        return
+    # sesión en otra empresa: "para cambiar el CUIT de sesión" -> vuelve a la lista de apoderado
+    link = page.locator("a").filter(has_text=re.compile(r"cambiar el CUIT", re.I))
+    if link.count():
+        href = link.first.get_attribute("href") or ""
+        if href and not href.startswith("javascript"):
+            _ir(page, href if href.startswith("http") else BASE + href.lstrip("./").replace("app/", "", 1))
+        else:
+            with page.expect_navigation(wait_until="domcontentloaded", timeout=30_000):
+                link.first.evaluate("a => a.click()")
+    else:
+        _ir(page, BASE + "login/checkIngreso.aspx")
+    if not _elegir_en_lista(page, cuit):
+        raise arca.SinRepresentado(f"Declaración en línea trabaja con {arca.cuit_fmt(actual)} y no se pudo cambiar "
+                                   f"a {arca.cuit_fmt(cuit)}")
+
+
 def lista_dj(page) -> dict[str, int]:
     """{'2026-10': secuencia vigente, ...}"""
     filas = page.evaluate("""() => [...document.querySelectorAll('table tr')].map(r =>
@@ -62,6 +122,8 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
         except arca.RequiereIntervencion:
             estado["_servicio"] = "sin servicio (no habilitado)"
             return dict(estado)
+        page.wait_for_load_state("domcontentloaded")
+        elegir_empresa(page, cuit)
         _ir(page, BASE + "consultar/dj_generadas.aspx")
         _controlar_cuit(page, cuit)
         vigentes = lista_dj(page)

@@ -170,8 +170,10 @@ def leer_zip(ruta_o_bytes) -> dict:
     cf_xml = (_x(xml, "totales_compras/total_computable") + _x(xml, "totales_bienes_usados/total_computable")
               + _x(xml, "totales_importacion_bienes/total_computable")
               - _x(xml, "totales_compras_mlcf_restituir/total_computable"))
-    deb_xml = sum(v for k, v in xml.items() if isinstance(v, float) and k.startswith("iva_ventas/")
-                  and k.endswith("/total_liquidado") and "_rest_" not in k)
+    # Débito neto de la DJ = débitos − restituciones (notas de crédito emitidas, "*_rest_deb_fiscal"): en el CSV
+    # las notas de crédito ya vienen en negativo (relevado con Gaby, 17/11/2026: NC 3-13 por 289.800 de IVA).
+    deb_xml = sum((-v if "_rest_" in k else v) for k, v in xml.items() if isinstance(v, float)
+                  and k.startswith("iva_ventas/") and k.endswith("/total_liquidado"))
     alertas, control = [], {}
 
     def coincide(a, b):
@@ -189,7 +191,9 @@ def leer_zip(ruta_o_bytes) -> dict:
             elegida = (nombre, cc, vv, cf, deb)
             break
     if not elegida:
-        nombre, cc, vv = variantes[-1]
+        # El CSV de ARCA trae los importes en PESOS aunque la moneda original sea otra (factura en DOL con
+        # tipo de cambio 1506,50 relevada el 17/11/2026): si nada cierra, se toma tal cual y se avisa.
+        nombre, cc, vv = variantes[0]
         cf = round(sum(c["credito_computable"] for c in cc if not c["b_c"]), 2)
         deb = round(sum(c["iva"] for c in vv), 2)
         elegida = (nombre, cc, vv, cf, deb)
