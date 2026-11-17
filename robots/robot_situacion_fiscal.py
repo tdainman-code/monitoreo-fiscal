@@ -430,9 +430,13 @@ def correr(cuit: str, periodo: str | None, usuario: str, clave: str, metodo: str
                         if res["reingresos"] > MAX_REINGRESOS:
                             raise
                         break                     # salir, abrir navegador nuevo y volver a entrar
-                    except Exception:
-                        arca.capturar(ctx, destino, "cuentas_tributarias" if parte == "sct" else "mis_facilidades")
+                    except arca.ClaveInvalida:
                         raise
+                    except Exception as e:
+                        # Una parte que falla no impide leer la otra (los planes están en Mis Facilidades,
+                        # que es un servicio aparte de Cuentas Tributarias).
+                        arca.capturar(ctx, destino, "cuentas_tributarias" if parte == "sct" else "mis_facilidades")
+                        res.setdefault("errores", {})[parte] = f"{type(e).__name__}: {str(e).splitlines()[0][:200]}"
                     pendientes.pop(0)
                     if pendientes:
                         arca.pausa(2, 5)
@@ -441,9 +445,16 @@ def correr(cuit: str, periodo: str | None, usuario: str, clave: str, metodo: str
         if pendientes:
             arca.pausa(10, 20)                    # antes de volver a entrar
 
+    errores = res.get("errores", {})
+    if errores and not any(p in res for p in ("sct", "mis_facilidades")):
+        raise arca.ErrorRobot("; ".join(f"{k}: {v}" for k, v in errores.items()))
     for parte in ("sct", "mis_facilidades"):
         if parte in res:
             res["alertas"] += res[parte]["alertas"]
+    nombres = {"sct": "Cuentas Tributarias", "mis_facilidades": "Mis Facilidades (planes)"}
+    for parte, err in errores.items():
+        res["alertas"].append({"prioridad": "Media", "tipo": "Robot",
+                               "texto": f"No se pudo leer {nombres.get(parte, parte)}: {err}"})
     with open(os.path.join(destino, "resultado.json"), "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=1, default=str)
     guardar_excel(res, os.path.join(destino, "situacion_fiscal.xlsx"))

@@ -179,7 +179,7 @@ def inicio():
 
 SECCIONES = {"deuda": "Deuda ARCA", "planes": "Planes de pago", "vencimientos": "Vencimientos",
              "ddjj": "DDJJ / faltas de presentación", "notificaciones": "Notificaciones", "iibb": "Ingresos Brutos",
-             "relacion": "Relación débito/crédito", "compras": "Compras y APOC", "informes": "Informes Excel",
+             "relacion": "Relación débito crédito", "compras": "Compras y APOC", "informes": "Informes Excel",
              "notas": "Notas del equipo", "iva": "Débito / crédito y proyección de IVA",
              "resultado": "Resultado mensual", "fiscalizaciones": "Fiscalizaciones y verificaciones", "agip": "AGIP (Ciudad)"}
 
@@ -224,7 +224,7 @@ def cliente_seccion(cuit, seccion):
 # ---------------------------------------------------------------- traído de Radar fiscal (17/11/2026)
 VISTAS = {"dfe": "Domicilio fiscal electrónico", "deudas": "Deudas", "planes": "Planes de pago",
           "faltas": "Falta de presentación", "iva": "Débito / crédito", "proyeccion": "Proyección de IVA",
-          "resultado": "Resultado mensual", "fiscalizaciones": "Fiscalizaciones y verificaciones"}
+          "resultado": "Relación débito crédito", "fiscalizaciones": "Fiscalizaciones y verificaciones"}
 
 
 @app.route("/cartera/<vista>")

@@ -280,9 +280,6 @@ def ficha(cuit: str) -> dict:
         b.append({"id": "iibb", "titulo": "Ingresos Brutos", "valor": (cm or {}).get("deuda_total"), "pesos": True,
                   "sub": (f"Convenio: {sum(1 for v in jur.values() if v['deuda'])} jurisdicción(es) con deuda"
                           if cm else "ARBA"), "color": color(bool((cm or {}).get("deuda_total")), hay=bool(cm))})
-    if meses_liva or any(i["tipo"] == "Relación débito/crédito" for i in inf):
-        b.append({"id": "relacion", "titulo": "Relación D/C (Excel)", "valor": None,
-                  "sub": f"{meses_liva} meses desde Libro IVA" if meses_liva else "desde Mis Comprobantes", "color": "gris"})
     if meses_liva or obs:
         n_obs = len((obs or {}).get("comprobantes") or [])
         b.append({"id": "compras", "titulo": "Compras y APOC", "valor": n_obs if obs else None,
@@ -298,11 +295,12 @@ def ficha(cuit: str) -> dict:
                   "color": {"Crítico": "rojo", "Advertencia": "amarillo"}.get((rt or {}).get("nivel"), "verde")})
     res = analisis.resultado_mensual(cuit)
     s["resultado"] = analisis.analizar_resultado(res)
-    if res:
-        tot = s["resultado"]["total"]
-        b.append({"id": "resultado", "titulo": "Resultado mensual", "valor": tot["resultado"], "pesos": True,
-                  "sub": f"{len(res)} meses · ventas − compras − sueldos − F.931",
-                  "color": "rojo" if tot["resultado"] < 0 else "amarillo" if s["resultado"]["incompletos"] else "verde"})
+    if res or meses_liva or any(i["tipo"] == "Relación débito/crédito" for i in inf):
+        tot = (s["resultado"] or {}).get("total") or {"resultado": None}
+        b.append({"id": "relacion", "titulo": "Relación débito crédito", "valor": tot["resultado"], "pesos": True,
+                  "sub": f"{len(res)} meses · ventas − compras − sueldos − cargas sociales",
+                  "color": "gris" if tot["resultado"] is None else "rojo" if tot["resultado"] < 0
+                           else "amarillo" if s["resultado"]["incompletos"] else "verde"})
     if s["fisc"] or (s["agip"] or {}).get("fiscalizacion") is not None:
         b.append({"id": "fiscalizaciones", "titulo": "Fiscalizaciones", "valor": s["fiscalizaciones"],
                   "sub": "ARCA (OI, SIACE) y AGIP", "color": "rojo" if s["fiscalizaciones"] else "verde"})

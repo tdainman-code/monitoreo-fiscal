@@ -229,7 +229,10 @@ def clasificar_cuota(c: dict, hoy: date) -> str:
         return "Vencida impaga"
     if c["venc_1"] and c["venc_1"] >= hoy:
         return "A vencer"
-    # vencida sin estado: ARCA todavía no la marcó (demora del banco en informar)
+    # Estado vacío y vencida: PENDIENTE DE PAGO (todavía se puede pagar hasta el 2° vencimiento, o el banco
+    # no informó el débito). Regla del estudio: Cancelada = bien; vacía = pendiente; Impaga = falta pagar.
+    if c.get("venc_2") and c["venc_2"] >= hoy:
+        return "Pendiente de pago"
     return "Vencida sin pago informado"
 
 
@@ -243,6 +246,7 @@ def resumir_plan(plan: dict, cronograma: list[dict], pagos: dict[int, dict], hoy
         cuotas.append(c)
     pendientes = [c for c in cuotas if c["situacion"] != "Pagada"]
     impagas = [c for c in cuotas if c["situacion"] in ("Vencida impaga", "Vencida sin pago informado")]
+    pend_pago = [c for c in cuotas if c["situacion"] == "Pendiente de pago"]
     proximas = [c for c in pendientes if c["venc_1"] and hoy <= c["venc_1"] <= hoy + timedelta(days=DIAS_A_VENCER)]
     siguiente = next((c for c in cuotas if c["situacion"] == "A vencer"), None)
     valor = (siguiente or (cuotas[-1] if cuotas else {})).get("total_1")
@@ -255,6 +259,9 @@ def resumir_plan(plan: dict, cronograma: list[dict], pagos: dict[int, dict], hoy
             "estado_anticipo": pagos.get(0, {}).get("estado", "") if con_anticipo else "",
             "valor_cuota": valor, "cuotas_total": len(cuotas), "cuotas_pagadas": len(cuotas) - len(pendientes),
             "cuotas_pendientes": len(pendientes), "vencidas_impagas": len(impagas),
+            "cuotas_impagas_arca": sum(1 for c in cuotas if c["situacion"] == "Vencida impaga"),
+            "pendientes_de_pago": len(pend_pago),
+            "importe_pendiente_de_pago": round(sum((c["total_2"] or c["total_1"] or 0) for c in pend_pago), 2),
             "importe_vencido_impago": round(sum((c["total_2"] or c["total_1"] or 0) for c in impagas), 2),
             "a_vencer_15_dias": len(proximas),
             "importe_a_vencer_15_dias": round(sum(c["total_1"] or 0 for c in proximas), 2),
@@ -267,11 +274,21 @@ def alertas_planes(planes: list[dict], resumenes: list[dict], hoy: date | None =
     hoy = hoy or date.today()
     al = []
     for r in resumenes:
+        n_impagas = sum(1 for c in r["detalle_cuotas"] if c["situacion"] == "Vencida impaga")
+        if n_impagas >= 2:
+            al.append({"prioridad": "ALTA", "tipo": "Plan con 2 o más cuotas impagas",
+                       "texto": f"CRÍTICO — Plan {r['numero']}: tiene {n_impagas} cuotas impagas. Un plan nunca puede "
+                                "tener dos impagas: riesgo inmediato de CADUCIDAD."})
         for c in r["detalle_cuotas"]:
-            if c["situacion"] == "Vencida impaga":
+            if c["situacion"] == "Pendiente de pago":
+                al.append({"prioridad": "Media", "tipo": "Cuota pendiente de pago",
+                           "texto": f"Plan {r['numero']}: cuota {c['cuota']} venció el {c['venc_1']:%d/%m/%Y} sin pago; "
+                                    f"se puede pagar hasta el 2° venc. {c['venc_2']:%d/%m/%Y}"
+                                    + (f" por {pesos(c['total_2'])}" if c.get("total_2") else "") + "."})
+            elif c["situacion"] == "Vencida impaga":
                 al.append({"prioridad": "ALTA", "tipo": "Cuota impaga",
-                           "texto": f"Plan {r['numero']}: cuota {c['cuota']} (venc. {c['venc_1']:%d/%m/%Y}) impaga. "
-                                    "Riesgo de caducidad."})
+                           "texto": f"Plan {r['numero']}: cuota {c['cuota']} (venc. {c['venc_1']:%d/%m/%Y}) IMPAGA. "
+                                    "No puede caer otra impaga: riesgo de caducidad."})
             elif c["situacion"] == "Vencida sin pago informado":
                 al.append({"prioridad": "Media", "tipo": "Cuota sin pago informado",
                            "texto": f"Plan {r['numero']}: cuota {c['cuota']} venció el {c['venc_1']:%d/%m/%Y} y ARCA "

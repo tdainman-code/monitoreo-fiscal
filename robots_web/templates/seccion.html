@@ -78,8 +78,7 @@
   {% endfor %}
   {% else %}<p class="sutil">Sin datos de Convenio Multilateral.</p>{% endif %}
 
-{% elif sec == 'relacion' or sec == 'compras' or sec == 'informes' %}
-  {% if sec == 'relacion' %}<p class="sutil">{{ s.meses_liva }} meses tomados del Libro IVA (Portal IVA); el mes sin DJ presentada sale de Mis Comprobantes como provisorio.</p>{% endif %}
+{% elif sec == 'compras' or sec == 'informes' %}
   {% if sec == 'compras' and s.observados %}
   <h2>Comprobantes observados por ARCA (APOC): {{ s.observados.comprobantes|length }}</h2>
   <table class="tabla"><thead><tr><th>Fecha</th><th>Emisor</th><th>Comprobante</th><th class="num">IVA</th><th class="num">Total</th><th>Anulación</th></tr></thead><tbody>
@@ -88,7 +87,7 @@
   </tbody></table>
   <p class="sutil">El cruce con el Libro IVA (si quedaron computados) está en el Excel de conciliación.</p>
   {% endif %}
-  {% set tipos = {'relacion': ['Relación débito/crédito'], 'compras': ['Conciliación de compras'], 'informes': None}[sec] %}
+  {% set tipos = {'compras': ['Conciliación de compras'], 'informes': None}[sec] %}
   <h2>Excel</h2>
   <ul class="informes">
   {% for i in s.informes_lista if not tipos or i.tipo in tipos %}{% if loop.index <= 9 %}<li><a class="boton" href="{{ url_for('bajar_informe', ruta=i.ruta) }}">⬇ {{ i.tipo }}</a> <span class="sutil">{{ i.fecha|fecha }} · {{ i.archivo }}</span></li>{% endif %}
@@ -127,24 +126,29 @@
   </tbody></table>
   {% else %}<p class="sutil">Todavía no hay meses del Libro IVA bajados (se bajan en la corrida semanal).</p>{% endif %}
 
-{% elif sec == 'resultado' %}
+{% elif sec == 'resultado' or sec == 'relacion' %}
   {% set a = s.resultado %}
   {% if a %}
   <div class="tarjetas">
     <div class="tarjeta"><span class="sutil">Ventas netas</span><b>{{ a.total.ventas|pesos }}</b></div>
     <div class="tarjeta"><span class="sutil">Compras netas</span><b>{{ a.total.compras|pesos }}</b></div>
     <div class="tarjeta"><span class="sutil">Sueldos netos (estimado)</span><b>{{ a.total.sueldos|pesos }}</b></div>
-    <div class="tarjeta"><span class="sutil">F.931</span><b>{{ a.total.f931|pesos }}</b></div>
-    <div class="tarjeta"><span class="sutil">Resultado · margen {{ pct(a.total.margen) }}</span><b class="{{ 'txt-rojo' if a.total.resultado < 0 }}">{{ a.total.resultado|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Cargas sociales</span><b>{{ a.total.f931|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Ventas − el resto · {{ pct(a.total.margen) }} de las ventas</span><b class="{{ 'txt-rojo' if a.total.resultado < 0 }}">{{ a.total.resultado|pesos }}</b></div>
   </div>
   <h2>Conclusiones</h2>
   <ul class="conclusiones">{% for x in a.conclusiones %}<li>{{ x }}</li>{% endfor %}</ul>
-  <table class="tabla"><thead><tr><th>Período</th><th class="num">Ventas</th><th class="num">Compras</th><th class="num">Sueldos</th><th class="num">F.931</th><th class="num">Resultado</th><th class="num">Margen</th></tr></thead><tbody>
-  {% for m in a.meses|reverse %}<tr class="{{ 'fila-roja' if m.resultado < 0 else 'fila-gris' if not m.completo }}"><td>{{ periodo_txt(m.periodo) }}{% if not m.completo %}<div class="sutil">falta {{ m.faltantes|join(', ') }}</div>{% endif %}</td>
+  <table class="tabla"><thead><tr><th>Período</th><th class="num">Ventas</th><th class="num">Compras</th><th class="num">Sueldos</th><th class="num">Cargas sociales</th><th class="num">Ventas − resto</th><th class="num">% ventas</th></tr></thead><tbody>
+  {% for m in a.meses %}<tr class="{{ 'fila-roja' if m.resultado < 0 else 'fila-gris' if not m.completo }}"><td>{{ periodo_txt(m.periodo) }}{% if not m.completo %}<div class="sutil">falta {{ m.faltantes|join(', ') }}</div>{% endif %}</td>
     <td class="num" data-l="Ventas">{{ m.ventas|pesos }}</td><td class="num" data-l="Compras">{{ m.compras|pesos }}</td><td class="num" data-l="Sueldos">{{ m.sueldos|pesos }}</td>
-    <td class="num" data-l="F.931">{{ m.f931|pesos }}</td><td class="num" data-l="Resultado"><b>{{ m.resultado|pesos }}</b></td><td class="num" data-l="Margen">{{ pct(m.margen) }}</td></tr>{% endfor %}
+    <td class="num" data-l="Cargas sociales">{{ m.f931|pesos }}</td><td class="num" data-l="Ventas − resto"><b>{{ m.resultado|pesos }}</b></td><td class="num" data-l="Margen">{{ pct(m.margen) }}</td></tr>{% endfor %}
+  <tr class="total"><td><b>Total</b></td><td class="num"><b>{{ a.total.ventas|pesos }}</b></td><td class="num"><b>{{ a.total.compras|pesos }}</b></td><td class="num"><b>{{ a.total.sueldos|pesos }}</b></td><td class="num"><b>{{ a.total.f931|pesos }}</b></td><td class="num"><b>{{ a.total.resultado|pesos }}</b></td><td class="num">{{ pct(a.total.margen) }}</td></tr>
   </tbody></table>
   {% else %}<p class="sutil">Todavía no hay meses del Libro IVA ni del F.931 bajados.</p>{% endif %}
+  <p class="sutil">Ventas y compras netas del Libro IVA (Portal IVA); sueldos (remuneración − aportes) y cargas sociales (aportes + contribuciones) del F.931.</p>
+  {% if sec == 'relacion' %}<h2>Excel</h2><ul class="informes">
+  {% for i in s.informes_lista if i.tipo == 'Relación débito/crédito' %}{% if loop.index <= 6 %}<li><a class="boton" href="{{ url_for('bajar_informe', ruta=i.ruta) }}">⬇ {{ i.tipo }}</a> <span class="sutil">{{ i.fecha|fecha }} · {{ i.archivo }}</span></li>{% endif %}
+  {% else %}<li class="sutil">Todavía no hay Excel.</li>{% endfor %}</ul>{% endif %}
 
 {% elif sec == 'fiscalizaciones' %}
   {% set f = s.fisc or {} %}{% set ag = s.agip or {} %}

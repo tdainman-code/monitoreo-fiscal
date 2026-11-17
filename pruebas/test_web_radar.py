@@ -158,7 +158,10 @@ r = cl.get("/")
 ok("BH SOLUCIONES" in r.text and r.text.count("punto rojo") >= 2, "panel con semáforo (incluye D/C crítica / AGIP)")
 ok("relación D/C crítica" in r.text or "aviso(s) de AGIP" in r.text, "motivo del rojo nuevo en el panel")
 r = cl.get(f"/cliente/{C2}")
-ok("Débito / crédito y proyección" in r.text and "Resultado mensual" in r.text and "Fiscalizaciones" in r.text
+r2 = cl.get(f"/cliente/{C2}/relacion")
+ok(r2.status_code == 200 and "Cargas sociales" in r2.text and "Ventas − resto" in r2.text and "Total" in r2.text,
+   "relación débito crédito: cuadro mes por mes ventas, compras, sueldos, cargas sociales y ventas − resto")
+ok("Débito / crédito y proyección" in r.text and "Relación débito crédito" in r.text and "Fiscalizaciones" in r.text
    and "AGIP (Ciudad)" in r.text and "Pedir corrida" in r.text, "ficha con botones nuevos y pedir corrida")
 escribir(f"{R}/publico/grupos.json", {C2: {"dia": 2, "semana": 1}, C3: {"dia": 4, "semana": 0}})
 ok("<b>todos los miércoles</b>" in cl.get(f"/cliente/{C2}").text, "inscripto (o sin clasificar): todas las semanas")

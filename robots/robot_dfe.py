@@ -44,14 +44,22 @@ def importancia(asunto: str, clasificacion: str) -> str:
     return "Media"
 
 
-def _cerrar_cartel(page):
-    try:
-        b = page.get_by_role("button", name=re.compile(r"Recordar m[aá]s tarde", re.I))
-        if b.first.is_visible(timeout=4000):
+def _cerrar_cartel(page, espera_ms: int = 4000):
+    """Cierra los carteles que tapan la bandeja SIN aceptar ni abrir nada:
+      - viejo (e-ventanilla): "Recordar más tarde"
+      - nuevo (DFE 4.8, nov/2026): modal "Notificaciones de oficio" -> botón CERRAR.
+    NUNCA se toca "Visualizar": abriría comunicaciones."""
+    for nombre in (r"^\s*Recordar m[aá]s tarde\s*$", r"^\s*Cerrar\s*$"):
+        try:
+            b = page.get_by_role("button", name=re.compile(nombre, re.I))
+            b.first.wait_for(state="visible", timeout=espera_ms)
+            texto = (b.first.inner_text() or "").strip().lower()
+            if "visualizar" in texto:            # por las dudas: jamás
+                continue
             b.first.click()
             arca.pausa(0.5, 1.0)
-    except Exception:
-        pass
+        except Exception:
+            pass
 
 
 def _valor_selector(page) -> list[str] | None:
@@ -128,47 +136,240 @@ def _leer_tabla(page) -> list[dict]:
     return filas
 
 
+# ---------------------------------------------------------------- pantalla nueva (DFE 4.8, nov/2026)
+# Encabezado "DOMICILIO FISCAL ELECTRONICO"; a la izquierda "Bandeja de entrada (N)";
+# solapas "Mis Comunicaciones (N)" | "Comunicaciones de [CHIP: RAZÓN SOCIAL (N) x]".
+# Las filas NO LEÍDAS van en negrita; la columna "Notificado" trae fecha aunque no se haya leído
+# (notificación de oficio: los plazos ya corren).
+
+def es_pantalla_nueva(page) -> bool:
+    try:
+        return page.get_by_text(re.compile(r"Bandeja de entrada", re.I)).count() > 0 \
+            and page.locator("#select-representados").count() == 0
+    except Exception:
+        return False
+
+
+_SUFIJOS = r"\b(s\.?\s?a\.?\s?s?|s\.?\s?r\.?\s?l|s\.?\s?a\.?\s?u|s\.?\s?c|s\.?\s?h|sociedad an[oó]nima|sociedad de responsabilidad limitada)\b\.?"
+
+
+def _norm(t: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
+    t = re.sub(_SUFIJOS, " ", t)
+    t = re.sub(r"\(\d+\)", " ", t)
+    return re.sub(r"[^a-z0-9]+", " ", t).strip()
+
+
+def coincide_representado(texto_chip: str, cuit: str, razon_social: str) -> bool:
+    """El chip muestra "RAZÓN SOCIAL (N)". Coincide si trae el CUIT o la razón social (sin S.A./S.R.L.)."""
+    if cuit in re.sub(r"\D", "", texto_chip) or arca.cuit_fmt(cuit) in texto_chip:
+        return True
+    a, b = _norm(texto_chip).replace(" x", " ").replace(" ", ""), _norm(razon_social).replace(" ", "")
+    return len(b) >= 4 and (b in a or (len(a) >= 6 and a in b))
+
+
+def _solapa_representados(page):
+    return page.locator("[role=tab], .nav-link, .nav-item, li, a, button").filter(
+        has_text=re.compile(r"Comunicaciones de", re.I)).last
+
+
+def _texto_solapa(page) -> str:
+    try:
+        return _solapa_representados(page).inner_text(timeout=5000)
+    except Exception:
+        return ""
+
+
+def _elegir_representado_nuevo(page, cuit: str, razon_social: str):
+    sol = _solapa_representados(page)
+    try:
+        sol.wait_for(state="visible", timeout=30_000)
+    except Exception:
+        raise arca.SinRepresentado(f"DFE: no aparece la solapa 'Comunicaciones de' (¿{arca.cuit_fmt(cuit)} "
+                                   "no es representado del usuario?)")
+    # clic en el texto de la solapa (NO en la x del chip, que quita el representado)
+    page.get_by_text(re.compile(r"^\s*Comunicaciones de\s*$", re.I)).first.click()
+    arca.pausa(1.5, 2.5)
+    _cerrar_cartel(page)
+    if coincide_representado(_texto_solapa(page), cuit, razon_social):
+        return
+    # No es el que está elegido: buscarlo en el selector que abra la solapa (lista, select o buscador)
+    candidatos = [cuit, arca.cuit_fmt(cuit)] + ([razon_social] if razon_social else [])
+    elegido = False
+    for sel in page.locator("select:visible").all():
+        try:
+            ops = sel.evaluate("s => [...s.options].map(o => [o.value, o.textContent])")
+            for v, t in ops:
+                if any(c and (c in (v or "") or c.lower() in (t or "").lower()) for c in candidatos) \
+                        or coincide_representado(t or "", cuit, razon_social):
+                    sel.select_option(value=v)
+                    elegido = True
+                    break
+        except Exception:
+            pass
+        if elegido:
+            break
+    if not elegido:
+        for c in candidatos:
+            item = page.locator("[role=option]:visible, .dropdown-item:visible, li:visible, button:visible").filter(
+                has_text=re.compile(re.escape(c), re.I))
+            if item.count():
+                item.first.click()
+                elegido = True
+                break
+    arca.pausa(2.0, 3.5)
+    _cerrar_cartel(page)
+    chip = _texto_solapa(page)
+    if not coincide_representado(chip, cuit, razon_social):
+        raise arca.CuitEquivocado(
+            f"DFE (pantalla nueva): la solapa muestra '{chip.strip()[:80]}' y no a {arca.cuit_fmt(cuit)}"
+            + ("" if razon_social else " (falta la razón social del cliente para comparar)"))
+
+
+JS_TABLA_DFE = """(t) => {
+  const limpiar = s => (s || '').replace(/\\(Click to [^)]*\\)/ig, '').replace(/\\s+/g, ' ').trim();
+  const hr = t.tHead ? t.tHead.rows[t.tHead.rows.length - 1] : t.rows[0];
+  const cuerpo = [...t.rows].filter(r => r !== hr && !['THEAD', 'TFOOT'].includes(r.parentElement.tagName));
+  const noLeida = r => !!r.querySelector('.no-leido') || [...r.cells].some(c => [c, ...c.querySelectorAll('*')]
+        .some(e => (parseInt(getComputedStyle(e).fontWeight) || 400) >= 600 && e.textContent.trim()));
+  const deOficio = r => [...r.querySelectorAll('[title],[aria-label]')].some(e =>
+        /de oficio/i.test(e.getAttribute('title') || e.getAttribute('aria-label') || ''));
+  return {encabezados: [...hr.cells].map(c => limpiar(c.textContent)),
+          filas: cuerpo.map(r => ({negrita: noLeida(r), oficio: deOficio(r),
+                                   celdas: [...r.cells].map(c => limpiar(c.innerText || c.textContent))}))};
+}"""
+
+
+def _tabla_activa(page):
+    t = page.locator(".tab-pane.active table, [role=tabpanel].active table")
+    return t if t.count() else page.locator("table:visible")
+
+
+def _leer_tabla_nueva(page) -> tuple[list[dict], str]:
+    """Devuelve (filas, aviso). Nunca hace clic en una fila."""
+    try:
+        _tabla_activa(page).first.wait_for(state="visible", timeout=30_000)
+    except Exception:
+        texto = page.inner_text("body")
+        if re.search(r"no (hay|ten[eé]s|se encontraron)|sin (comunicaciones|resultados)", texto, re.I):
+            return [], ""
+        raise arca.ErrorRobot("DFE (pantalla nueva): no apareció la tabla de comunicaciones")
+    for sel in page.locator("select:visible").all():          # "Mostrar [10] registros" -> 100
+        try:
+            ops = sel.evaluate("s => [...s.options].map(o => o.value)")
+            if "100" in ops:
+                sel.select_option("100")
+                arca.pausa(1.5, 2.5)
+                break
+        except Exception:
+            pass
+    _cerrar_cartel(page, 1500)
+    t = _tabla_activa(page).first.evaluate(JS_TABLA_DFE)
+    enc = [e.lower() for e in t["encabezados"]]
+    idx = {k: next((i for i, e in enumerate(enc) if e.startswith(k)), None)
+           for k in ("notific", "asunto", "organismo", "representado", "clasificaci", "recibido")}
+    filas = []
+    for f in t["filas"]:
+        c = f["celdas"]
+        if len(c) != len(enc) or not any(c):
+            continue
+        g = lambda k: c[idx[k]] if idx[k] is not None else ""
+        noti = g("notific")
+        mf = re.search(r"\d{2}/\d{2}/\d{4}", noti or "")
+        filas.append({"notificado": mf[0] if mf else None, "leida_pantalla": not f["negrita"],
+                      "de_oficio": bool(f.get("oficio")),
+                      "asunto": g("asunto"), "organismo": g("organismo"), "representado": g("representado"),
+                      "clasificacion": g("clasificaci"), "recibido": g("recibido")})
+    aviso = ""
+    m = re.search(r"\bde\s+(\d+)\b", page.locator(".tab-pane.active").first.inner_text()
+                  if page.locator(".tab-pane.active").count() else "")
+    if m and int(m[1]) > 1:
+        aviso = f"La bandeja tiene {m[1]} páginas y se leyó la primera (100 comunicaciones)."
+    return filas, aviso
+
+
+def _guardar_html(page, cuit: str) -> None:
+    """Copia de la página (sin claves) para relevar cambios de pantalla de ARCA."""
+    try:
+        d = os.path.join(DATOS, cuit, "capturas")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"dfe_pagina_{date.today().isoformat()}.html"), "w", encoding="utf-8") as fh:
+            fh.write(page.content())
+    except Exception:
+        pass
+
+
 def paso(cuit: str, usuario: str, estado: dict):
     def fn(ctx, portal):
         page = arca.abrir_servicio(ctx, portal, "domicilio_fiscal")
         page.wait_for_load_state("domcontentloaded")
-        _cerrar_cartel(page)
-        if cuit == usuario:
+        arca.pausa(2.0, 3.5)
+        _cerrar_cartel(page, 8000)
+        aviso = ""
+        if es_pantalla_nueva(page):
+            from .almacen_claves import razon_social as _rs
             try:
-                page.get_by_text(arca.cuit_fmt(cuit)).first.wait_for(state="visible", timeout=30_000)
+                rs = _rs(cuit)
             except Exception:
-                raise arca.CuitEquivocado(f"DFE: el encabezado no muestra {arca.cuit_fmt(cuit)}")
-            # Con representados hay solapas; sin representados, la bandeja se muestra directo (sin solapas)
-            solapa = page.locator("[role=tab]:visible").filter(has_text=re.compile(r"Mis Comunicaciones", re.I))
-            try:
-                solapa.first.wait_for(state="visible", timeout=8_000)
-                solapa.first.click()
-                arca.pausa(1.0, 2.0)
-            except Exception:
-                pass
+                rs = ""
+            if cuit == usuario:
+                pest = page.locator("[role=tab], .nav-link, li, a, button").filter(
+                    has_text=re.compile(r"Mis Comunicaciones", re.I))
+                if pest.count():
+                    pest.first.click()
+                    arca.pausa(1.0, 2.0)
+                    _cerrar_cartel(page)
+            else:
+                _elegir_representado_nuevo(page, cuit, rs)
+            _guardar_html(page, cuit)
+            filas, aviso = _leer_tabla_nueva(page)
         else:
-            _elegir_representado(page, cuit)
-        filas = _leer_tabla(page)
+            if cuit == usuario:
+                try:
+                    page.get_by_text(arca.cuit_fmt(cuit)).first.wait_for(state="visible", timeout=30_000)
+                except Exception:
+                    raise arca.CuitEquivocado(f"DFE: el encabezado no muestra {arca.cuit_fmt(cuit)}")
+                solapa = page.locator("[role=tab]:visible").filter(has_text=re.compile(r"Mis Comunicaciones", re.I))
+                try:
+                    solapa.first.wait_for(state="visible", timeout=8_000)
+                    solapa.first.click()
+                    arca.pausa(1.0, 2.0)
+                except Exception:
+                    pass
+            else:
+                _elegir_representado(page, cuit)
+            _guardar_html(page, cuit)
+            filas = _leer_tabla(page)
         hoy = date.today()
         com, alertas = [], []
         from .notificaciones import clasificar, responsable
         resp = responsable(cuit)
         for f in filas:
             cl = clasificar(f["asunto"], f["clasificacion"])
-            com.append({"fecha": f["recibido"], "notificado": f["notificado"], "leida": f["notificado"] is not None,
+            leida = f.get("leida_pantalla", f["notificado"] is not None)
+            com.append({"fecha": f["recibido"], "notificado": f["notificado"], "leida": leida,
+                        "notificada_sin_leer": bool(f["notificado"]) and not leida,
+                        "de_oficio": f.get("de_oficio", False),
                         "organismo": f["organismo"], "asunto": f["asunto"], "clasificacion": f["clasificacion"],
                         "importancia": cl["importancia"], "para": cl["para"], "motivo": cl["motivo"],
                         "responsable": resp if cl["motivo"] == "falta de presentación" else ""})
         no_leidas_altas = [c for c in com if not c["leida"] and c["importancia"] == "ALTA"]
         for c in com:
-            if c["importancia"] == "ALTA":
+            if c["notificada_sin_leer"]:
+                alertas.append({"prioridad": "ALTA", "tipo": "DFE",
+                                "texto": f"{c['fecha']} {c['organismo']}: {c['asunto'] or c['clasificacion']} — "
+                                         f"NOTIFICADA{' DE OFICIO' if c['de_oficio'] else ''} el {c['notificado']} SIN LEER (los plazos ya corren)"})
+            elif c["importancia"] == "ALTA":
                 alertas.append({"prioridad": "ALTA" if not c["leida"] else "Media", "tipo": "DFE",
                                 "texto": f"{c['fecha']} {c['organismo']}: {c['asunto']} [{c['motivo']} -> {c['para']}]"
                                          + (f" RESPONSABLE: {c['responsable']}" if c["responsable"] else "")
                                          + (" (SIN ABRIR)" if not c["leida"] else f" (notificada {c['notificado']})")})
         res = {"cuit": cuit, "fecha": hoy.isoformat(), "rango": "últimos 60 días (por defecto de ARCA)",
                "comunicaciones": com, "total": len(com), "sin_abrir": sum(1 for c in com if not c["leida"]),
-               "altas_sin_abrir": len(no_leidas_altas), "alertas": alertas}
+               "altas_sin_abrir": len(no_leidas_altas),
+               "notificadas_sin_leer": sum(1 for c in com if c["notificada_sin_leer"]),
+               "aviso": aviso, "alertas": alertas}
         destino = os.path.join(DATOS, cuit, "dfe", hoy.isoformat())
         os.makedirs(destino, exist_ok=True)
         with open(os.path.join(destino, "resultado.json"), "w", encoding="utf-8") as fh:
