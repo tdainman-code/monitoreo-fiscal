@@ -451,7 +451,7 @@ def correr(cuit: str, periodo: str | None, usuario: str, clave: str, metodo: str
     for parte in ("sct", "mis_facilidades"):
         if parte in res:
             res["alertas"] += res[parte]["alertas"]
-    nombres = {"sct": "Cuentas Tributarias", "mis_facilidades": "Mis Facilidades (planes)"}
+    nombres = {"sct": "Cuentas Tributarias", "mf": "Mis Facilidades (planes)", "mis_facilidades": "Mis Facilidades (planes)"}
     for parte, err in errores.items():
         res["alertas"].append({"prioridad": "Media", "tipo": "Robot",
                                "texto": f"No se pudo leer {nombres.get(parte, parte)}: {err}"})

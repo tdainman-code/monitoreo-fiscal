@@ -26,7 +26,7 @@ DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
 SERVICIOS = [("fiscalizacion_electronica", "Fiscalización Electrónica"),
              ("ordenes_intervencion", "Órdenes de Intervención"),
              ("siace", "SIACE")]
-FINALIZADA = re.compile(r"finaliz|cerrad|conclu|archiv", re.I)
+FINALIZADA = re.compile(r"finaliz|cerrad|conclu|archiv|cumplid|respondid|resuelt|anulad|sin efecto|baja", re.I)
 
 
 def _tablas(page) -> list[dict]:
@@ -54,7 +54,14 @@ def _como_dicts(tablas: list[dict]) -> list[dict]:
 
 
 def _estado(d: dict) -> str:
-    return next((v for k, v in d.items() if re.search(r"estado", k, re.I)), "")
+    return next((v for k, v in d.items() if re.search(r"estado|situaci", k, re.I)), "")
+
+
+def abiertas(filas: list[dict]) -> list[dict]:
+    """Solo cuenta como ABIERTA una fila que tiene columna de estado/situación con un valor que no esté
+    finalizado. Filas sin estado (menús, historial, tablas de ayuda) NO se cuentan (17/11/2026: BH
+    figuraba con 2 'controles' que eran filas sin estado de la pantalla de SIACE)."""
+    return [f for f in filas if _estado(f).strip() and not FINALIZADA.search(_estado(f))]
 
 
 def _abrir_si_existe(ctx, portal, clave):
@@ -105,13 +112,13 @@ def paso(cuit: str, estado: dict):
                 r["tablas"][clave] = tablas
                 filas = _como_dicts(tablas)
                 if clave == "ordenes_intervencion":
-                    r["en_curso"] = [f for f in filas if not FINALIZADA.search(_estado(f))]
+                    r["en_curso"] = abiertas(filas)
                     r["verificaciones"] = [f for f in filas if re.search(r"verific", " ".join(f.values()), re.I)]
                 elif clave == "siace":
-                    r["siace"] = filas
+                    r["siace"] = abiertas(filas)
                 else:
-                    r["fiscalizacion_electronica"] = [f for f in filas if not FINALIZADA.search(_estado(f))]
-                r["servicios"][clave] = f"OK ({len(filas)} filas)"
+                    r["fiscalizacion_electronica"] = abiertas(filas)
+                r["servicios"][clave] = f"OK ({len(filas)} filas leídas, {len(abiertas(filas))} abiertas)"
             finally:
                 page.close()
             arca.pausa()

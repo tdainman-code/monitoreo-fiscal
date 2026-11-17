@@ -231,9 +231,8 @@ def clasificar_cuota(c: dict, hoy: date) -> str:
         return "A vencer"
     # Estado vacío y vencida: PENDIENTE DE PAGO (todavía se puede pagar hasta el 2° vencimiento, o el banco
     # no informó el débito). Regla del estudio: Cancelada = bien; vacía = pendiente; Impaga = falta pagar.
-    if c.get("venc_2") and c["venc_2"] >= hoy:
-        return "Pendiente de pago"
-    return "Vencida sin pago informado"
+    # Regla del estudio: estado vacío = PENDIENTE de pago (nunca "impaga"). Impaga es SOLO lo que ARCA marca así.
+    return "Pendiente de pago"
 
 
 def resumir_plan(plan: dict, cronograma: list[dict], pagos: dict[int, dict], hoy: date | None = None) -> dict:
@@ -245,7 +244,7 @@ def resumir_plan(plan: dict, cronograma: list[dict], pagos: dict[int, dict], hoy
         c["situacion"] = clasificar_cuota(c, hoy)
         cuotas.append(c)
     pendientes = [c for c in cuotas if c["situacion"] != "Pagada"]
-    impagas = [c for c in cuotas if c["situacion"] in ("Vencida impaga", "Vencida sin pago informado")]
+    impagas = [c for c in cuotas if c["situacion"] == "Vencida impaga"]
     pend_pago = [c for c in cuotas if c["situacion"] == "Pendiente de pago"]
     proximas = [c for c in pendientes if c["venc_1"] and hoy <= c["venc_1"] <= hoy + timedelta(days=DIAS_A_VENCER)]
     siguiente = next((c for c in cuotas if c["situacion"] == "A vencer"), None)
@@ -282,9 +281,12 @@ def alertas_planes(planes: list[dict], resumenes: list[dict], hoy: date | None =
         for c in r["detalle_cuotas"]:
             if c["situacion"] == "Pendiente de pago":
                 al.append({"prioridad": "Media", "tipo": "Cuota pendiente de pago",
-                           "texto": f"Plan {r['numero']}: cuota {c['cuota']} venció el {c['venc_1']:%d/%m/%Y} sin pago; "
-                                    f"se puede pagar hasta el 2° venc. {c['venc_2']:%d/%m/%Y}"
-                                    + (f" por {pesos(c['total_2'])}" if c.get("total_2") else "") + "."})
+                           "texto": (f"Plan {r['numero']}: cuota {c['cuota']} venció el {c['venc_1']:%d/%m/%Y} sin pago; "
+                                     f"se puede pagar hasta el 2° venc. {c['venc_2']:%d/%m/%Y}"
+                                     + (f" por {pesos(c['total_2'])}" if c.get("total_2") else "") + "."
+                                     if c.get("venc_2") and c["venc_2"] >= hoy else
+                                     f"Plan {r['numero']}: cuota {c['cuota']} (venc. {c['venc_1']:%d/%m/%Y}) pendiente de pago: "
+                                     "ARCA todavía no la marca pagada ni impaga. Verificar el débito.")})
             elif c["situacion"] == "Vencida impaga":
                 al.append({"prioridad": "ALTA", "tipo": "Cuota impaga",
                            "texto": f"Plan {r['numero']}: cuota {c['cuota']} (venc. {c['venc_1']:%d/%m/%Y}) IMPAGA. "

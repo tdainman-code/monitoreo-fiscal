@@ -71,7 +71,9 @@ FILAS_F931 = [("Remuneraciones (Rem. 1)", "Remuneración total (Rem. 1)"),
 
 
 def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
-    mc = {p: _leer(os.path.join(DATOS, cuit, p, "resultado.json")) for p in periodos}
+    # Pedido del estudio (17/11/2026): la relación débito/crédito se arma SOLO con Portal IVA (Libro IVA de las DJ
+    # presentadas) y el F.931. Mis Comprobantes NO se usa acá (un mes sin DJ presentada queda vacío).
+    mc = {p: None for p in periodos}
     # Libro IVA (Portal IVA): en responsables inscriptos es la fuente de los meses ya presentados
     # (incluye despachos de importación, servicios públicos y tiques que no están en Mis Comprobantes).
     liva = {p: _leer(os.path.join(DATOS, cuit, "libro_iva", f"{p}.json")) for p in periodos}
@@ -161,9 +163,7 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
         if liva.get(p):
             s_ = liva[p].get("secuencia_portal") or 0
             return "Libro IVA" + (f" (rect. {s_})" if s_ else "")
-        if mc.get(p):
-            return "Mis Comp. PROVISORIO" if es_ri else "Mis Comprobantes"
-        return None
+        return "sin DJ presentada"
     r_fte = datos("Fuente de ventas y compras", fuente, "@")
     for j, p in enumerate(periodos, 2):
         c = ws.cell(r_fte, j)
@@ -173,7 +173,7 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
             c.fill = _fill(NARANJA)
     ws.cell(r_fte, 1).font = Font(italic=True, color="595959")
     # VENTAS
-    seccion("VENTAS (Libro IVA; mes sin DJ: Mis Comprobantes)" if es_ri else "VENTAS (Mis Comprobantes – emitidos)")
+    seccion("VENTAS (Libro IVA – Portal IVA)")
     r_v0 = fila[0]
     rv = [datos(t, lambda p, k=k: val(p, "emitidos", k)) for t, k in FILAS_VENTAS]
     r_vng = formula("Neto gravado total", f"SUM({{c}}{rv[0]}:{{c}}{rv[-1]})")
@@ -182,7 +182,7 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
     r_vtot = formula("TOTAL VENTAS NETAS", f"{{c}}{r_vng}+{{c}}{r_vnog}+{{c}}{r_vex}")
     r_deb = datos("IVA Débito fiscal", lambda p: val(p, "emitidos", "Total IVA"))
     # COMPRAS
-    seccion("COMPRAS (Libro IVA; mes sin DJ: Mis Comprobantes)" if es_ri else "COMPRAS (Mis Comprobantes – recibidos)")
+    seccion("COMPRAS (Libro IVA – Portal IVA)")
     rc = [datos(t, lambda p, k=k: val(p, "recibidos", k)) for t, k in FILAS_VENTAS]
     r_cng = formula("Neto gravado total", f"SUM({{c}}{rc[0]}:{{c}}{rc[-1]})")
     r_cnog = datos("No gravado", lambda p: val(p, "recibidos", "No gravado"))
@@ -288,11 +288,9 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
     # notas
     r = fila[0] + 1
     ws.cell(r, 1, "Notas").font = Font(bold=True)
-    notas = (["Ventas y compras: en los meses con DJ de IVA presentada se toman del Libro IVA (Portal IVA), que incluye "
-              "despachos de importación, servicios públicos y tiques de controlador fiscal que no están en Mis Comprobantes.",
-              "Naranja: mes sin DJ de IVA presentada todavía; se muestra con Mis Comprobantes como ensayo (números PROVISORIOS).",
-              "Facturas B y C de compra: se suman como gasto por el total (sin crédito fiscal), igual que las considera ARCA."]
-             if es_ri else []) + ["Amarillo: impuesto a los combustibles ESTIMADO a confirmar (ver alertas del mes en Mis Comprobantes).",
+    notas = ["Ventas y compras: SOLO del Libro IVA de las DJ presentadas (Portal IVA). Sueldos y cargas sociales: F.931. "
+             "No se usa Mis Comprobantes: un mes sin DJ de IVA presentada queda vacío.",
+             "Facturas B y C de compra: se suman como gasto por el total (sin crédito fiscal), igual que las considera ARCA."] + ["Amarillo: impuesto a los combustibles ESTIMADO a confirmar (ver alertas del mes en Mis Comprobantes).",
              "'No presentada': anticipo sin DDJJ en SIFERE a la fecha de consulta (posterior al alta en Convenio Multilateral).",
              "'ARBA s/dato': mes anterior al alta en Convenio Multilateral sin DJ local leída en ARBA (falta la CIT o la DJ).",
              "Resultado bruto en amarillo: falta alguna fuente del mes (F931 o IIBB); el saldo se calcula sin ese concepto.",
@@ -472,7 +470,7 @@ def situacion_fiscal(cuit: str, nombre: str, ruta: str, hoy: date | None = None)
                     cel.number_format = NUM
                 elif isinstance(v, date):
                     cel.number_format = "dd/mm/yyyy"
-                if c["situacion"] in ("Vencida impaga", "Vencida sin pago informado"):
+                if c["situacion"] == "Vencida impaga":
                     cel.fill = _fill(ROSA)
             r += 1
         r += 1

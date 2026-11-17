@@ -190,7 +190,7 @@ def armar(grupo: list[str]) -> dict:
                     "Próximo vencimiento": _f(p["proximo_vencimiento"]),
                     "Saldo capital": p["saldo_capital_pendiente"]})
                 for c in p["detalle_cuotas"]:
-                    if c["situacion"] in ("Vencida impaga", "Vencida sin pago informado") or (
+                    if c["situacion"] == "Vencida impaga" or (
                             c["situacion"] == "A vencer" and c["venc_1"]
                             and (date.fromisoformat(str(c["venc_1"])) - hoy).days <= 15):
                         hojas["cuotas"].append({

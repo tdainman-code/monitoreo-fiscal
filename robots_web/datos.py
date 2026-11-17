@@ -61,6 +61,21 @@ def lista_clientes() -> list[dict]:
     return pub
 
 
+_FINALIZADA = re.compile(r"finaliz|cerrad|conclu|archiv|cumplid|respondid|resuelt|anulad|sin efecto|baja", re.I)
+
+
+def _abiertas(filas) -> list:
+    """Fiscalizaciones/controles ABIERTOS: filas con columna de estado/situación no finalizada."""
+    out = []
+    for f in filas or []:
+        if not isinstance(f, dict):
+            continue
+        est = next((str(v) for k, v in f.items() if re.search(r"estado|situaci", str(k), re.I)), "")
+        if est.strip() and not _FINALIZADA.search(est):
+            out.append(f)
+    return out
+
+
 def situacion(cuit: str) -> dict:
     """Todo lo último de un cliente + semáforo."""
     base = os.path.join(DATOS, cuit)
@@ -76,7 +91,8 @@ def situacion(cuit: str) -> dict:
     r["ddjj"] = len(sct["ddjj_pendientes"]) if sct else None
     vig = (mf or {}).get("vigentes") or []
     r["planes"] = len(vig) if mf else None
-    r["cuotas_impagas"] = sum(p["vencidas_impagas"] for p in vig) if mf else None
+    r["cuotas_impagas"] = sum(sum(1 for c in (p.get("detalle_cuotas") or []) if c.get("situacion") == "Vencida impaga")
+                              if p.get("detalle_cuotas") is not None else p["vencidas_impagas"] for p in vig) if mf else None
     r["cuotas_15"] = sum(p["a_vencer_15_dias"] for p in vig) if mf else None
     r["caducos"] = sum(1 for a in (mf or {}).get("alertas", []) if a.get("tipo") == "Plan caduco")
     r["dfe_sin_abrir"] = dfe.get("sin_abrir") if dfe else None
@@ -91,8 +107,17 @@ def situacion(cuit: str) -> dict:
     r["agip"], r["fisc"] = agip, fisc
     r["agip_altas"] = (agip or {}).get("altas_sin_abrir") or 0
     r["agip_deuda"] = ((agip or {}).get("deuda") or {}).get("total") or 0.0
+    # Solo filas con estado abierto (mismo criterio que el robot desde el 17/11; corrige datos ya bajados)
+    if fisc:
+        fisc = {**fisc, **{k: _abiertas(fisc.get(k) or []) for k in ("en_curso", "siace", "fiscalizacion_electronica")}}
+        fisc["alertas"] = [a for a in (fisc.get("alertas") or []) if not (
+            (a.get("tipo") == "Fiscalización en curso" and not fisc["en_curso"]) or
+            (a.get("tipo") == "Control electrónico (SIACE)" and not fisc["siace"]) or
+            (a.get("tipo") == "Fiscalización electrónica" and not fisc["fiscalizacion_electronica"]))]
+        r["fisc"] = fisc
+    agip_f = _abiertas((agip or {}).get("fiscalizacion") or [])
     r["fiscalizaciones"] = (len((fisc or {}).get("en_curso") or []) + len((fisc or {}).get("siace") or [])
-                            + len((fisc or {}).get("fiscalizacion_electronica") or []) + len((agip or {}).get("fiscalizacion") or []))
+                            + len((fisc or {}).get("fiscalizacion_electronica") or []) + len(agip_f))
     r["ratio"] = analisis.ratio_dc(analisis.iva_mensual(cuit))
     r["alertas"] += ((agip or {}).get("alertas") or []) + ((fisc or {}).get("alertas") or [])
     ratio_mal = r["ratio"]["nivel"] if r["ratio"] and r["ratio"]["meses"] >= 6 else ""
@@ -167,9 +192,14 @@ def agenda(dias: int = 15) -> list[dict]:
         for p in (s["mf"] or {}).get("vigentes", []):
             for c in p["detalle_cuotas"]:
                 f = _fecha(c.get("venc_1"))
-                if c["situacion"] in ("Vencida impaga", "Vencida sin pago informado"):
+                if c["situacion"] == "Vencida impaga":
                     out.append({"fecha": f, "cuit": cuit, "nombre": nom, "que": f"Plan {p['numero']} cuota {c['cuota']}",
-                                "detalle": c["situacion"], "importe": c.get("total_2") or c.get("total_1"), "tipo": "impaga"})
+                                "detalle": "Impaga (ARCA)", "importe": c.get("total_2") or c.get("total_1"), "tipo": "impaga"})
+                elif c["situacion"] in ("Pendiente de pago", "Vencida sin pago informado"):
+                    f2 = _fecha(c.get("venc_2")) or f
+                    out.append({"fecha": f2, "cuit": cuit, "nombre": nom, "que": f"Plan {p['numero']} cuota {c['cuota']}",
+                                "detalle": "Pendiente de pago (2° vencimiento)" if c.get("venc_2") else "Pendiente de pago",
+                                "importe": c.get("total_2") or c.get("total_1"), "tipo": "cuota"})
                 elif c["situacion"] == "A vencer" and f and f <= lim:
                     out.append({"fecha": f, "cuit": cuit, "nombre": nom, "que": f"Plan {p['numero']} cuota {c['cuota']}",
                                 "detalle": "Débito de cuota", "importe": c.get("total_1"), "tipo": "cuota"})

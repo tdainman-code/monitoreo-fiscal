@@ -293,7 +293,11 @@ if __name__ == "__main__":
                        ["consultas_cuit"]) else f"reingresos {r['reingresos']}", cuit_datos_veces=1),
         caso("SCT trae datos de otro CUIT siempre -> se corta, no guarda datos ajenos", "SesionPerdida",
              cuit_datos_veces=9),
-        caso("'Ver Pagos' muestra otro plan -> se detiene", "ErrorRobot", plan_ver_pagos="W026105"),
+        caso("'Ver Pagos' muestra otro plan -> no guarda los planes, deja alerta y SCT queda", "OK",
+             lambda r: "" if "mis_facilidades" not in r and "sct" in r
+             and "otro plan" not in str(r.get("errores", {}).get("mf", "x")) and "muestra el plan" in
+             str(r.get("errores", {}).get("mf", "")) else f"errores {r.get('errores')}",
+             plan_ver_pagos="W026105"),
         caso("Empresa con clave del administrador: elige la empresa en SCT y en Mis Facilidades", "OK",
              chequeo_completo, usuario="20142836751"),
         caso("Empresa que no figura entre los representados -> se detiene sin reingresar", "ErrorRobot",
