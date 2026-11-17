@@ -1,0 +1,100 @@
+{% extends "base.html" %}{% block titulo %}{{ titulo }}{% endblock %}
+{% block cuerpo %}
+<nav class="menu-cartera">
+{% for k, t in [('dfe','Domicilio fiscal'),('deudas','Deudas'),('planes','Planes de pago'),('faltas','Falta de presentación'),('iva','Débito / crédito'),('proyeccion','Proyección de IVA'),('resultado','Resultado mensual'),('fiscalizaciones','Fiscalizaciones')] %}
+  <a class="{{ 'activo' if vista == k }}" href="{{ url_for('cartera', vista=k) }}">{{ t }}</a>
+{% endfor %}
+</nav>
+<h1>{{ titulo }}</h1>
+
+{% if vista == 'dfe' %}
+  <p class="sutil">Comunicaciones de ARCA, ARBA y AGIP de todos los clientes. El robot nunca abre una comunicación de ARCA ni de AGIP sin notificar.
+  Marcá "Informada" cuando ya se la pasaste al cliente: sale de la lista de pendientes.</p>
+  <div class="filtros"><a class="chip {{ 'activo' if x.ver == 'pendientes' }}" href="{{ url_for('cartera', vista='dfe') }}">Pendientes</a>
+  <a class="chip {{ 'activo' if x.ver == 'todas' }}" href="{{ url_for('cartera', vista='dfe', ver='todas') }}">Todas</a></div>
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Organismo</th><th>Fecha</th><th>Asunto</th><th>Importancia</th><th>Estado</th><th></th></tr></thead><tbody>
+  {% for n in filas %}<tr class="{{ 'fila-roja' if n.importancia == 'ALTA' and n.pendiente and not n.informada else 'fila-gris' if n.informada else '' }}">
+    <td><a href="{{ url_for('cliente_seccion', cuit=n.cuit, seccion='notificaciones') }}">{{ n.nombre }}</a></td>
+    <td data-l="Organismo">{{ n.origen }}</td><td data-l="Fecha">{{ n.fecha }}</td><td data-l="Asunto">{{ n.asunto }}{% if n.motivo %}<div class="sutil">{{ n.motivo }}</div>{% endif %}</td>
+    <td data-l="Importancia">{{ n.importancia }}</td><td data-l="Estado">{{ n.estado }}{% if n.informada %}<div class="sutil">informada por {{ n.informada.nombre }} {{ n.informada.fecha[:10] }}</div>{% endif %}</td>
+    <td><form method="post" action="{{ url_for('dfe_informada') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="id" value="{{ n.id }}"><input type="hidden" name="cuit" value="{{ n.cuit }}">
+      <input type="hidden" name="marcar" value="{{ '0' if n.informada else '1' }}"><input type="hidden" name="volver" value="{{ request.full_path }}">
+      <button class="{{ 'link' if n.informada else '' }}">{{ 'desmarcar' if n.informada else 'Informada' }}</button></form></td></tr>
+  {% else %}<tr><td colspan="7" class="sutil">No hay comunicaciones pendientes.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'deudas' %}
+  <p class="sutil">Clientes con deuda vencida de {{ reglas.deuda_minima|pesos }} o más (por debajo se considera sin deuda). Total: <b>{{ x.total|pesos }}</b></p>
+  <table class="tabla"><thead><tr><th>Cliente</th><th class="num">ARCA</th><th class="num">Convenio (SIFERE)</th><th class="num">AGIP</th><th class="num">Total</th><th>Datos al</th></tr></thead><tbody>
+  {% for d in filas %}<tr><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='deuda') }}">{{ d.nombre }}</a></td>
+    <td class="num" data-l="ARCA">{{ d.arca|pesos }}</td><td class="num" data-l="Convenio">{{ d.cm|pesos }}</td><td class="num" data-l="AGIP">{{ d.agip|pesos }}</td>
+    <td class="num" data-l="Total"><b>{{ d.total|pesos }}</b></td><td data-l="Datos al">{{ d.f.fecha|fecha }}</td></tr>
+  {% else %}<tr><td colspan="6" class="sutil">Ningún cliente con deuda vencida.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'planes' %}
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Plan</th><th>Tipo</th><th class="num">Cuotas</th><th class="num">Impagas</th><th>Próximo venc.</th></tr></thead><tbody>
+  {% for d in filas %}
+    {% if d.caduco %}<tr class="fila-roja"><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='planes') }}">{{ d.nombre }}</a></td><td colspan="5"><b>Plan caduco</b> — {{ d.caduco }}</td></tr>
+    {% else %}<tr class="{{ 'fila-roja' if d.p.vencidas_impagas }}"><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='planes') }}">{{ d.nombre }}</a></td>
+      <td data-l="Plan">{{ d.p.numero }}</td><td data-l="Tipo">{{ d.p.tipo }}</td><td class="num" data-l="Cuotas">{{ d.p.cuotas_total - d.p.cuotas_pendientes }}/{{ d.p.cuotas_total }}</td>
+      <td class="num" data-l="Impagas">{{ d.p.vencidas_impagas }}</td><td data-l="Próximo venc.">{{ d.p.proximo_vencimiento|fecha }}</td></tr>{% endif %}
+  {% else %}<tr><td colspan="6" class="sutil">Sin planes vigentes.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'faltas' %}
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Impuesto</th><th>Período</th><th>Vencimiento</th></tr></thead><tbody>
+  {% for d in filas %}<tr><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='ddjj') }}">{{ d.nombre }}</a></td>
+    <td data-l="Impuesto">{{ d.d.impuesto }}</td><td data-l="Período">{{ d.d.periodo_txt or d.d.periodo }}</td><td data-l="Vencimiento">{{ d.d.vencimiento|fecha }}</td></tr>
+  {% else %}<tr><td colspan="4" class="sutil">Ninguna declaración jurada vencida sin presentar.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'iva' %}
+  <p class="sutil">Relación débito / crédito fiscal de los últimos {{ reglas.meses }} meses (Libro IVA de las DJ presentadas).
+  Menos de {{ reglas.ratio_critico|string|replace('.', ',') }} = <span class="nivel-Crítico">Crítico</span>; menos de {{ reglas.ratio_advertencia|string|replace('.', ',') }} = <span class="nivel-Advertencia">Advertencia</span>.</p>
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Meses</th><th class="num">Débito</th><th class="num">Crédito</th><th class="num">D/C</th><th>Nivel</th><th class="num">Saldo último mes</th></tr></thead><tbody>
+  {% for d in filas %}{% set r = d.ratio %}<tr><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='iva') }}">{{ d.nombre }}</a></td>
+    <td data-l="Meses">{{ periodo_txt(r.desde) }} a {{ periodo_txt(r.hasta) }}</td><td class="num" data-l="Débito">{{ r.debito|pesos }}</td><td class="num" data-l="Crédito">{{ r.credito|pesos }}</td>
+    <td class="num" data-l="D/C"><b>{{ r.ratio|dec if r.credito else '—' }}</b></td><td data-l="Nivel" class="nivel-{{ r.nivel }}">{{ r.nivel }}</td>
+    <td class="num" data-l="Saldo">{{ d.ultimo.saldo|pesos }} <span class="sutil">{{ periodo_txt(d.ultimo.periodo) }}</span></td></tr>
+  {% else %}<tr><td colspan="7" class="sutil">Todavía no hay meses del Libro IVA bajados.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'proyeccion' %}
+  <p class="sutil">Tendencia lineal del débito y del crédito de los últimos {{ reglas.meses }} meses, proyectada al mes siguiente (hacen falta al menos 3 meses).</p>
+  {% if x.elegido %}
+  <h2>{{ x.elegido.nombre }} · proyección {{ periodo_txt(x.elegido.proy.periodo) }}</h2>
+  {{ x.grafico|safe }}
+  <p class="leyenda"><i style="background:#c0392b"></i>Débito<i style="background:#2e8b57"></i>Crédito · el último mes (*) es la proyección</p>
+  {% endif %}
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Período</th><th class="num">Débito proyectado</th><th class="num">Crédito proyectado</th><th class="num">D/C</th><th class="num">Saldo proyectado</th><th></th></tr></thead><tbody>
+  {% for d in filas %}{% set p = d.proy %}<tr><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='iva') }}">{{ d.nombre }}</a></td>
+    <td data-l="Período">{{ periodo_txt(p.periodo) }}</td><td class="num" data-l="Débito">{{ p.debito|pesos }}</td><td class="num" data-l="Crédito">{{ p.credito|pesos }}</td>
+    <td class="num" data-l="D/C">{{ p.ratio|dec if p.ratio else '—' }}</td>
+    <td class="num" data-l="Saldo"><b class="{{ 'txt-rojo' if p.saldo > 0 }}">{{ p.saldo|pesos if p.saldo > 0 else 'a favor ' ~ (-p.saldo)|pesos }}</b></td>
+    <td><a href="{{ url_for('cartera', vista='proyeccion', c=d.cuit) }}">ver gráfico</a></td></tr>
+  {% else %}<tr><td colspan="7" class="sutil">Faltan datos (al menos 3 meses del Libro IVA).</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'resultado' %}
+  <p class="sutil">Ventas netas − compras netas − sueldos netos − F.931, últimos 12 meses. Ordenado del peor al mejor.</p>
+  <table class="tabla"><thead><tr><th>Cliente</th><th class="num">Ventas</th><th class="num">Compras</th><th class="num">Sueldos</th><th class="num">F.931</th><th class="num">Resultado</th><th class="num">Margen</th><th>Meses</th></tr></thead><tbody>
+  {% for d in filas %}{% set t = d.r.total %}<tr class="{{ 'fila-roja' if t.resultado < 0 }}"><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='resultado') }}">{{ d.nombre }}</a></td>
+    <td class="num" data-l="Ventas">{{ t.ventas|pesos }}</td><td class="num" data-l="Compras">{{ t.compras|pesos }}</td><td class="num" data-l="Sueldos">{{ t.sueldos|pesos }}</td>
+    <td class="num" data-l="F.931">{{ t.f931|pesos }}</td><td class="num" data-l="Resultado"><b>{{ t.resultado|pesos }}</b></td><td class="num" data-l="Margen">{{ pct(t.margen) }}</td>
+    <td data-l="Meses">{{ d.r.meses|length }}{% if d.r.incompletos %} <span class="sutil">({{ d.r.incompletos|length }} incompletos)</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="8" class="sutil">Todavía no hay meses del Libro IVA ni del F.931 bajados.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'fiscalizaciones' %}
+  <p class="sutil">Órdenes de intervención, fiscalización electrónica y SIACE de ARCA; fiscalización electrónica de AGIP. Se actualizan en la corrida semanal.
+  {% if x.sin_datos %}{{ x.sin_datos }} cliente(s) todavía sin relevar.{% endif %}</p>
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Tipo</th><th>Detalle</th><th>Relevado</th></tr></thead><tbody>
+  {% for d in filas %}<tr class="fila-roja"><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='fiscalizaciones') }}">{{ d.nombre }}</a></td>
+    <td data-l="Tipo">{{ d.tipo }}</td><td data-l="Detalle">{% for k, v in d.d.items() if v %}{{ k }}: {{ v }}{{ ' · ' if not loop.last }}{% endfor %}</td><td data-l="Relevado">{{ d.fecha|fecha }}</td></tr>
+  {% else %}<tr><td colspan="4" class="sutil">Ninguna fiscalización ni control abierto.</td></tr>{% endfor %}
+  </tbody></table>
+{% endif %}
+<p class="sutil">{{ n }} clientes en la cartera.</p>
+{% endblock %}

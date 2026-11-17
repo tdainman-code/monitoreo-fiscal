@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block titulo %}Agenda{% endblock %}
+{% block cuerpo %}
+<div class="cabecera"><h1>Agenda de todos los clientes</h1>
+<div class="filtros">{% for d in (7, 15, 30) %}<a class="chip {{ 'activo' if dias == d }}" href="{{ url_for('agenda', dias=d) }}">{{ d }} días</a>{% endfor %}</div></div>
+<p class="sutil">Primero las cuotas vencidas impagas; después vencimientos y débitos de los próximos {{ dias }} días.</p>
+<table class="tabla"><thead><tr><th>Fecha</th><th>Cliente</th><th>Qué</th><th>Detalle</th><th class="num">Importe</th></tr></thead><tbody>
+{% for f in filas %}<tr class="{{ 'fila-roja' if f.tipo == 'impaga' }}"><td>{{ f.fecha|fecha }}</td>
+<td><a href="{{ url_for('cliente', cuit=f.cuit) }}">{{ f.nombre or cuit_fmt(f.cuit) }}</a></td><td data-l="Qué">{{ f.que }}</td><td data-l="Detalle">{{ f.detalle }}</td><td class="num" data-l="Importe">{{ f.importe|pesos }}</td></tr>
+{% else %}<tr><td colspan="5" class="sutil">Nada en este período.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

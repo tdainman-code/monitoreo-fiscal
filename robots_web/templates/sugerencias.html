@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block titulo %}Sugerencias{% endblock %}
+{% block cuerpo %}
+<h1>Sugerencias y problemas del sistema</h1>
+<p class="sutil">Contanos qué agregarías, qué no se entiende o qué dato te parece que está mal. Todo el equipo ve lo que se carga acá.</p>
+<form class="tarjeta" method="post">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  <select name="tipo"><option>Idea</option><option>Problema</option><option>Dato que parece mal</option><option>Pregunta</option></select>
+  <textarea name="texto" rows="3" placeholder="Escribí acá…" required></textarea>
+  <button>Enviar</button>
+</form>
+{% for s in filas %}
+<div class="nota"><div class="sutil"><span class="etiqueta">{{ s.tipo }}</span> <b>{{ s.estado }}</b> · {{ s.nombre }} · {{ s.fecha[:16]|replace('T',' ') }}</div>
+<div>{{ s.texto }}</div>
+{% if s.respuesta %}<div class="respuesta">Respuesta: {{ s.respuesta }}</div>{% endif %}
+{% if session.rol == 'admin' %}
+<form method="post" class="responder"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="responder">
+<input type="hidden" name="id" value="{{ s.id }}">
+<select name="estado">{% for e in ('Nueva','En curso','Hecha','Descartada') %}<option {{ 'selected' if e == s.estado }}>{{ e }}</option>{% endfor %}</select>
+<input name="respuesta" value="{{ s.respuesta or '' }}" placeholder="Respuesta (opcional)"><button>Guardar</button></form>
+{% endif %}</div>
+{% else %}<p class="sutil">Todavía no hay sugerencias.</p>{% endfor %}
+{% endblock %}

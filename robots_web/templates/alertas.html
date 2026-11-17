@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block titulo %}Alertas del día{% endblock %}
+{% block cuerpo %}
+<h1>Alertas del día</h1>
+<p class="sutil">Lo urgente de todos los clientes (prioridad ALTA), primero los clientes en rojo.</p>
+{% for g in grupos %}
+<h2><span class="punto {{ g.semaforo }}"></span> <a href="{{ url_for('cliente', cuit=g.cuit) }}">{{ g.nombre or cuit_fmt(g.cuit) }}</a> <span class="sutil">· {{ g.alertas|length }}</span></h2>
+<ul class="alertas">{% for a in g.alertas %}<li class="alta"><b>{{ a.tipo }}</b> — {{ a.texto }}</li>{% endfor %}</ul>
+{% else %}<p class="sutil">No hay alertas urgentes.</p>{% endfor %}
+{% endblock %}

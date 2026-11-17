@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block titulo %}Robots{% endblock %}
+{% block cuerpo %}
+<h1>Pedidos desde la web</h1>
+<table class="tabla"><thead><tr><th>Pedido</th><th>Cliente</th><th>Robot</th><th>Por</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>
+{% for p in pend %}<tr><td>{{ p.fecha[:16]|replace('T', ' ') }}</td><td data-l="Cliente"><a href="{{ url_for('cliente', cuit=p.cuit) }}">{{ cuit_fmt(p.cuit) }}</a></td>
+<td data-l="Robot">{{ nombres.get(p.robot, p.robot) }}</td><td data-l="Por">{{ p.por }}</td><td data-l="Estado">⏳ en la bandeja</td><td></td></tr>{% endfor %}
+{% for p in estado %}<tr class="{{ 'fila-roja' if p.estado in ('error', 'con problemas') }}"><td>{{ (p.fecha or '')[:16]|replace('T', ' ') }}</td>
+<td data-l="Cliente"><a href="{{ url_for('cliente', cuit=p.cuit) }}">{{ cuit_fmt(p.cuit) }}</a></td><td data-l="Robot">{{ nombres.get(p.robot, p.robot) }}</td>
+<td data-l="Por">{{ p.por }}</td><td data-l="Estado">{{ p.estado }} <span class="sutil">{{ (p.actualizado or '')[11:16] }}</span></td><td data-l="Detalle" class="sutil">{{ p.detalle }}</td></tr>
+{% else %}{% if not pend %}<tr><td colspan="6" class="sutil">Sin pedidos todavía. Se piden desde la ficha de cada cliente ("Actualizar ahora").</td></tr>{% endif %}{% endfor %}
+</tbody></table>
+<h1>Últimas corridas de los robots</h1>
+<table class="tabla"><thead><tr><th>Fecha</th><th>Robot</th><th>Cliente</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>
+{% for e in filas %}<tr class="{{ 'fila-roja' if e.estado in ('Clave inválida', 'Error', 'Requiere intervención') else '' }}">
+<td>{{ (e.fecha or '')[:16]|replace('T', ' ') }}</td><td data-l="Robot">{{ e.robot }}</td><td data-l="Cliente"><a href="{{ url_for('cliente', cuit=e.cuit) }}">{{ cuit_fmt(e.cuit) }}</a></td>
+<td data-l="Estado">{{ e.estado }}</td><td data-l="Detalle" class="sutil">{{ e.detalle }}</td></tr>
+{% else %}<tr><td colspan="5" class="sutil">Sin registros.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

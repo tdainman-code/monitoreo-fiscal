@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block titulo %}Actividad{% endblock %}
+{% block cuerpo %}
+<h1>Usuarios</h1>
+<table class="tabla"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último ingreso</th></tr></thead><tbody>
+{% for u in usuarios %}<tr><td>{{ u[0] }}</td><td>{{ u[1] }}</td><td>{{ u[2] }}</td><td>{{ 'activo' if u[3] else 'baja' }}</td><td>{{ (u[4] or '—')[:16]|replace('T',' ') }}</td></tr>{% endfor %}
+</tbody></table>
+<h1>Actividad reciente</h1>
+<table class="tabla"><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th><th>IP</th></tr></thead><tbody>
+{% for a in filas %}<tr><td>{{ a[0][:16]|replace('T',' ') }}</td><td>{{ a[1] }}</td><td>{{ a[2] }}</td><td>{{ a[3] }}</td><td class="sutil">{{ a[4] }}</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

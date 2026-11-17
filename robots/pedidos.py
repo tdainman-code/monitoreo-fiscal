@@ -1,0 +1,118 @@
+"""Corridas pedidas desde la web (17/11/2026).
+
+La web NO corre robots ni ve claves: deja un pedido (JSON) en la bandeja  /var/lib/robots-bandeja/pedidos/.
+Esta tarea (cada minuto, usuario robot) toma los pedidos de a uno, del más viejo al más nuevo, y los corre con el
+mismo lanzador de siempre (robots.correr). Usa el MISMO candado que las corridas automáticas: si hay una corrida
+nocturna en curso, el pedido queda "en espera" y se toma apenas termine.
+
+Pedido: {"id", "fecha", "por", "cuit", "robot"}   robot ∈ ROBOTS_PERMITIDOS
+Estado para la web: /var/lib/robots/publico/pedidos_estado.json  (últimos 50: en espera / corriendo / resultado)
+
+Cron (lo instala el instalador):
+  * * * * * cd /home/robot/app && xvfb-run -a flock -n /tmp/robots_pedidos.lock ~/venv/bin/python -m robots.pedidos
+"""
+from __future__ import annotations
+
+import datetime as dt
+import fcntl
+import json
+import os
+import re
+
+BANDEJA = os.environ.get("ROBOTS_BANDEJA", "/var/lib/robots-bandeja")
+PEDIDOS = os.path.join(BANDEJA, "pedidos")
+PUBLICO = os.environ.get("ROBOTS_PUBLICO", "/var/lib/robots/publico")
+CANDADO = os.environ.get("ROBOTS_CANDADO", "/tmp/robots_todo.lock")
+ROBOTS_PERMITIDOS = {
+    "todo": "Todo (ARCA + ARBA + AGIP + informes)",
+    "situacion_fiscal": "Deuda y planes (Cuentas Tributarias + Mis Facilidades)",
+    "dfe": "Domicilio fiscal electrónico ARCA",
+    "libro_iva": "Libro IVA (débito / crédito)",
+    "fiscalizaciones": "Fiscalizaciones ARCA",
+    "agip": "AGIP (DFE, deuda, fiscalización)",
+    "arba_dfe": "ARBA (domicilio fiscal electrónico)",
+}
+MAX_ESTADO = 50
+
+
+def _estado_leer() -> list[dict]:
+    try:
+        with open(os.path.join(PUBLICO, "pedidos_estado.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
+def _estado_guardar(lista: list[dict]) -> None:
+    os.makedirs(PUBLICO, exist_ok=True)
+    ruta = os.path.join(PUBLICO, "pedidos_estado.json")
+    tmp = ruta + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(lista[:MAX_ESTADO], f, ensure_ascii=False, indent=1)
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, ruta)
+
+
+def _anotar(p: dict, estado: str, detalle: str = "") -> None:
+    lista = [x for x in _estado_leer() if x.get("id") != p["id"]]
+    lista.insert(0, {"id": p["id"], "fecha": p.get("fecha"), "por": p.get("por"), "cuit": p["cuit"],
+                     "robot": p["robot"], "estado": estado, "detalle": detalle[:400],
+                     "actualizado": dt.datetime.now().isoformat(timespec="seconds")})
+    _estado_guardar(lista)
+
+
+def _valido(p: dict) -> bool:
+    return (isinstance(p, dict) and re.fullmatch(r"\d{11}", str(p.get("cuit", ""))) is not None
+            and p.get("robot") in ROBOTS_PERMITIDOS and re.fullmatch(r"[0-9a-f]{8,32}", str(p.get("id", ""))) is not None)
+
+
+def pendientes() -> list[tuple[str, dict]]:
+    out = []
+    try:
+        nombres = sorted(n for n in os.listdir(PEDIDOS) if n.endswith(".json"))
+    except OSError:
+        return []
+    for n in nombres:
+        ruta = os.path.join(PEDIDOS, n)
+        try:
+            with open(ruta, encoding="utf-8") as f:
+                p = json.load(f)
+        except (OSError, ValueError):
+            os.replace(ruta, ruta + ".mal")
+            continue
+        if not _valido(p):
+            os.replace(ruta, ruta + ".mal")
+            continue
+        out.append((ruta, p))
+    return out
+
+
+def procesar() -> int:
+    lista = pendientes()
+    if not lista:
+        return 0
+    with open(CANDADO, "a") as candado:
+        try:
+            fcntl.flock(candado, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            for _, p in lista:
+                if not any(x.get("id") == p["id"] and x.get("estado") == "en espera" for x in _estado_leer()):
+                    _anotar(p, "en espera", "hay otra corrida en curso; se toma apenas termine")
+            return 0
+        from .correr import _publicar, correr_uno
+        hechos = 0
+        for ruta, p in lista:
+            os.remove(ruta)                                  # se saca de la bandeja ANTES de correr (no repetir)
+            _anotar(p, "corriendo")
+            try:
+                res = correr_uno(p["robot"], p["cuit"], None, visible=False, modo="completo")
+                _anotar(p, "terminado" if res.startswith("OK") else "con problemas", res)
+            except Exception as e:                           # nunca dejar la tarea trabada
+                _anotar(p, "error", f"{type(e).__name__}: {e}")
+            hechos += 1
+        _publicar()
+        return hechos
+
+
+if __name__ == "__main__":
+    print(f"{procesar()} pedido(s) procesado(s)")

@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block titulo %}Más{% endblock %}
+{% block cuerpo %}
+<h1>Más</h1>
+<section class="botonera">
+  <a class="boton-ficha gris" href="{{ url_for('agenda') }}"><span class="titulo">📅 Agenda</span><span class="sub">vencimientos y cuotas de todos los clientes</span></a>
+  <a class="boton-ficha gris" href="{{ url_for('todas_las_notas') }}"><span class="titulo">📝 Notas</span><span class="sub">últimas notas del equipo</span></a>
+  <a class="boton-ficha gris" href="{{ url_for('sugerencias') }}"><span class="titulo">💡 Sugerencias</span><span class="sub">ideas y problemas del sistema</span></a>
+  <a class="boton-ficha gris" href="{{ url_for('robots') }}"><span class="titulo">🤖 Robots</span><span class="sub">últimas corridas</span></a>
+  {% if session.rol == 'admin' %}<a class="boton-ficha gris" href="{{ url_for('actividad') }}"><span class="titulo">👤 Actividad</span><span class="sub">quién entró y qué consultó</span></a>
+  <a class="boton-ficha gris" href="{{ url_for('pantalla_usuarios') }}"><span class="titulo">🔑 Usuarios</span><span class="sub">altas, contraseñas y bajas de empleados</span></a>
+  <a class="boton-ficha gris" href="{{ url_for('sistema') }}"><span class="titulo">🛠 Sistema</span><span class="sub">versión, cambios del código y su resultado</span></a>{% endif %}
+</section>
+{% endblock %}

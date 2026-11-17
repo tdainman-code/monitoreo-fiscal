@@ -1,0 +1,280 @@
+"""Prueba de la web v2.4 (lo traído de Radar fiscal) con datos de ejemplo: sin ARCA, sin claves, sin internet.
+
+Arma datos simulados de 3 clientes (situación fiscal simulada, Libro IVA y F.931 de 12 meses, DFE de ARCA y AGIP,
+fiscalizaciones) y recorre todas las pantallas nuevas y las de antes.
+Uso:  python3 pruebas/test_web_radar.py      (desde la carpeta que tiene robots/ y robots_web/)
+"""
+import json
+import os
+import re
+import sys
+import tempfile
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+RAIZ = os.path.dirname(AQUI)
+R = tempfile.mkdtemp()
+D = os.path.join(R, "datos")
+os.makedirs(D)
+BANDEJA = os.path.join(R, "bandeja")
+os.makedirs(os.path.join(BANDEJA, "pedidos"))
+sys.path.insert(0, os.path.join(RAIZ, "robots", "pruebas"))
+sys.path.insert(0, RAIZ)
+import test_situacion_simulado as t  # noqa: E402
+
+t.rsf.DATOS = D
+t.caso("datos de ejemplo", "OK", t.chequeo_completo)
+C = t.CUIT                              # cliente 1: situación simulada + IVA sano
+C2, C3 = "30717468631", "27169781295"   # cliente 2: D/C crítica + AGIP + fiscalización; cliente 3: sin datos
+
+
+def escribir(ruta, d):
+    os.makedirs(os.path.dirname(ruta), exist_ok=True)
+    with open(ruta, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+
+
+def meses(n=12, hasta=(2026, 10)):
+    a, m = hasta
+    out = []
+    for _ in range(n):
+        out.append(f"{a}-{m:02d}")
+        a, m = (a - 1, 12) if m == 1 else (a, m - 1)
+    return sorted(out)
+
+
+for i, per in enumerate(meses()):
+    # cliente 1: ventas que crecen, D/C ~ 1,6
+    escribir(f"{D}/{C}/libro_iva/{per}.json", {
+        "periodo": per, "ventas": {"Total IVA": 210_000 + i * 5_000, "Neto gravado total": 1_000_000 + i * 25_000, "Exento": 0, "No gravado": 0},
+        "compras": {"Crédito fiscal computable": 130_000, "Neto gravado total": 620_000, "Exento": 10_000, "No gravado": 0,
+                    "Comprobantes B/C (sin IVA discriminado)": 20_000}})
+    escribir(f"{D}/{C}/f931/{per}.json", {"Remuneración total (Rem. 1)": 300_000, "Total aportes (retenidos al empleado)": 51_000,
+                                           "TOTAL CARGAS SOCIALES": 80_000})
+    # cliente 2: crédito mayor que débito (D/C ~ 0,5) y resultado negativo; falta el F.931 de 2 meses
+    escribir(f"{D}/{C2}/libro_iva/{per}.json", {
+        "periodo": per, "ventas": {"Total IVA": 100_000, "Neto gravado total": 476_190, "Exento": 0, "No gravado": 0},
+        "compras": {"Crédito fiscal computable": 200_000, "Neto gravado total": 952_380, "Exento": 0, "No gravado": 0}})
+    if i < 10:
+        escribir(f"{D}/{C2}/f931/{per}.json", {"Remuneración total (Rem. 1)": 100_000, "Total aportes (retenidos al empleado)": 17_000,
+                                                "TOTAL CARGAS SOCIALES": 27_000})
+
+escribir(f"{D}/{C}/dfe/2026-11-15/resultado.json", {
+    "total": 2, "sin_abrir": 1, "altas_sin_abrir": 1, "alertas": [{"prioridad": "ALTA", "tipo": "DFE", "texto": "Seclo SIN ABRIR"}],
+    "comunicaciones": [{"fecha": "13/11/2026", "notificado": None, "leida": False, "organismo": "Trabajo",
+                        "asunto": "Notificaciones Seclo", "clasificacion": "x", "importancia": "ALTA"},
+                       {"fecha": "10/11/2026", "notificado": "11/11/2026", "leida": True, "organismo": "ARCA",
+                        "asunto": "Aviso de vencimiento", "clasificacion": "y", "importancia": "Media"}]})
+escribir(f"{D}/{C2}/agip/2026-11-15/resultado.json", {
+    "cuit": C2, "fecha": "2026-11-15", "servicios": {"dfe": "OK (1 filas)", "deuda": "OK (2 filas)", "fiscalizacion": "OK (1 filas)"},
+    "comunicaciones": [{"fecha": "12/11/2026", "organismo": "AGIP", "asunto": "Intimación de pago ISIB", "estado": "Sin notificar",
+                        "importancia": "ALTA", "leida": False, "clasificacion": "Intimación", "impuesto": "ISIB"}],
+    "sin_abrir": 1, "altas_sin_abrir": 1,
+    "deuda": {"total": 250_000.0, "tablas": [{"encabezados": ["Impuesto", "Período", "Total"],
+                                              "filas": [["ISIB", "2026-08", "150.000,00"], ["ISIB", "2026-09", "100.000,00"]]}]},
+    "fiscalizacion": [["FE-2026-123", "En curso", "ISIB"]],
+    "fiscalizacion_tablas": [{"encabezados": ["Número", "Estado", "Impuesto"], "filas": [["FE-2026-123", "En curso", "ISIB"]]}],
+    "alertas": [{"prioridad": "ALTA", "tipo": "AGIP: fiscalización electrónica", "texto": "1 registro(s)"}]})
+escribir(f"{D}/{C2}/fiscalizaciones/2026-11-15.json", {
+    "cuit": C2, "fecha": "2026-11-15", "servicios": {"ordenes_intervencion": "OK (1 filas)", "siace": "sin servicio",
+                                                    "fiscalizacion_electronica": "sin servicio"},
+    "en_curso": [{"Número": "OI 1.234.567", "Estado": "En curso", "Inspector": "PÉREZ"}], "verificaciones": [], "siace": [],
+    "fiscalizacion_electronica": [], "alertas": [{"prioridad": "ALTA", "tipo": "Fiscalización en curso", "texto": "1 OI"}]})
+
+os.makedirs(f"{R}/informes/2026-11-15")
+open(f"{R}/informes/2026-11-15/situacion_fiscal_{C}.xlsx", "wb").write(b"PK\x03\x04prueba")
+os.makedirs(f"{R}/publico")
+escribir(f"{R}/publico/clientes.json", [{"cuit": C, "razon_social": "GONCALVES VICENTE JUAN JOSE", "estado_arca": "OK"},
+                                        {"cuit": C2, "razon_social": "BH SOLUCIONES EMPRESARIALES"},
+                                        {"cuit": C3, "razon_social": "ACUÑA ANA MARIA"}])
+open(f"{R}/ejecuciones.jsonl", "w").write(json.dumps({"fecha": "2026-11-15T21:31:00", "robot": "todo", "cuit": C,
+                                                      "estado": "OK", "alertas": 29}) + "\n")
+os.environ.update(ROBOTS_RAIZ=R, ROBOTS_WEB_DATOS=os.path.join(R, "web"), ROBOTS_WEB_HTTP="1", ROBOTS_BANDEJA=BANDEJA,
+                  ROBOTS_DATOS=D, ROBOTS_PUBLICO=os.path.join(R, "publico"))
+
+from werkzeug.security import generate_password_hash  # noqa: E402
+
+from robots_web import analisis, usuarios  # noqa: E402
+
+con = usuarios.conectar()
+with con:
+    for u, n, p, rol in (("gabriel", "Gabriel", "claveadmin123", "admin"), ("ana", "Ana", "claveana12345", "empleado")):
+        con.execute("INSERT INTO usuarios (usuario,nombre,hash,rol,activo,creado) VALUES (?,?,?,?,1,'x')",
+                    (u, n, generate_password_hash(p), rol))
+from robots_web.app import app  # noqa: E402
+
+app.config["TESTING"] = True
+res = []
+
+
+def ok(c, m):
+    res.append(bool(c))
+    print(("✔" if c else "✘"), m)
+
+
+def login(cl, u, p):
+    r = cl.get("/ingresar")
+    tok = re.search(r'name="csrf" value="(\w+)"', r.text)[1]
+    return cl.post("/ingresar", data={"usuario": u, "clave": p, "csrf": tok}), tok
+
+
+def token(html):
+    return re.search(r'name="csrf" value="(\w+)"', html)[1]
+
+
+# ------------------------------------------------ cálculos
+iva = analisis.iva_mensual(C)
+rt = analisis.ratio_dc(iva)
+ok(len(iva) == 12 and rt["nivel"] == "Adecuado" and 1.5 < rt["ratio"] < 2.2, f"relación D/C cliente sano ({rt['ratio']:.2f})")
+rt2 = analisis.ratio_dc(analisis.iva_mensual(C2))
+ok(rt2["nivel"] == "Crítico" and abs(rt2["ratio"] - 0.5) < 0.01, f"relación D/C crítica ({rt2['ratio']:.2f})")
+pr = analisis.proyectar_iva(iva)
+ok(pr["periodo"] == "2026-11" and abs(pr["debito"] - 270_000) < 2 and pr["credito"] == 130_000, f"proyección {pr['periodo']} débito {pr['debito']}")
+ok(analisis.proyectar_iva(iva[:2]) is None, "sin proyección con menos de 3 meses")
+r1 = analisis.analizar_resultado(analisis.resultado_mensual(C))
+m0 = r1["meses"][0]
+ok(abs(m0["ventas"] - 1_000_000) < 1 and abs(m0["compras"] - 650_000) < 1 and abs(m0["sueldos"] - 249_000) < 1
+   and abs(m0["f931"] - 131_000) < 1 and abs(m0["resultado"] + 30_000) < 1, f"resultado de un mes ({m0['resultado']:,.0f})")
+ok(r1["total"]["resultado"] > 0 and any("sube" in c for c in r1["conclusiones"]), "resultado 12 meses y tendencia en palabras")
+r2 = analisis.analizar_resultado(analisis.resultado_mensual(C2))
+ok(r2["total"]["resultado"] < 0 and len(r2["incompletos"]) == 2 and any("NEGATIVO" in c for c in r2["conclusiones"]),
+   "resultado negativo y meses incompletos (falta F.931)")
+import shutil  # noqa: E402
+r3 = analisis.resultado_mensual(C3)
+os.makedirs(f"{D}/{C3}/libro_iva", exist_ok=True)
+shutil.copy(f"{D}/{C2}/libro_iva/2026-10.json", f"{D}/{C3}/libro_iva/2026-10.json")
+r3 = analisis.analizar_resultado(analisis.resultado_mensual(C3))
+ok(r3["meses"][0]["completo"] and any("sin empleados" in c for c in r3["conclusiones"]), "sin F.931 = sin empleados (no incompleto)")
+shutil.rmtree(f"{D}/{C3}/libro_iva")
+ok(r2["mejor"]["completo"] and r2["peor"]["completo"], "mejor y peor mes se eligen entre los completos")
+svg = analisis.grafico_iva(iva, pr)
+ok(svg.startswith("<svg") and svg.count("<rect") == 26 and "nov-26*" in svg, "gráfico SVG con el mes proyectado")
+ok(analisis.tendencia([1, 2, 3])[1] == 4, "tendencia lineal")
+
+# ------------------------------------------------ pantallas
+cl = app.test_client()
+ok(cl.get("/cartera/dfe").status_code == 302, "cartera pide ingresar")
+r, _ = login(cl, "ana", "claveana12345")
+r = cl.get("/")
+ok("BH SOLUCIONES" in r.text and r.text.count("punto rojo") >= 2, "panel con semáforo (incluye D/C crítica / AGIP)")
+ok("relación D/C crítica" in r.text or "aviso(s) de AGIP" in r.text, "motivo del rojo nuevo en el panel")
+r = cl.get(f"/cliente/{C2}")
+ok("Débito / crédito y proyección" in r.text and "Resultado mensual" in r.text and "Fiscalizaciones" in r.text
+   and "AGIP (Ciudad)" in r.text and "Pedir corrida" in r.text, "ficha con botones nuevos y pedir corrida")
+escribir(f"{R}/publico/grupos.json", {C2: {"dia": 2, "semana": 1}, C3: {"dia": 4, "semana": 0}})
+ok("<b>todos los miércoles</b>" in cl.get(f"/cliente/{C2}").text, "inscripto (o sin clasificar): todas las semanas")
+escribir(f"{D}/{C3}/categoria.json", {"categoria": "sin Portal IVA (monotributo/exento)"})
+ok("viernes por medio (dos veces por mes" in cl.get(f"/cliente/{C3}").text, "monotributista: semana por medio")
+r = cl.get(f"/cliente/{C2}/iva")
+ok("<svg" in r.text and "Crítico" in r.text and "0,50" in r.text, "sección débito/crédito con gráfico")
+r = cl.get(f"/cliente/{C2}/resultado")
+ok("Conclusiones" in r.text and "NEGATIVO" in r.text and "falta F.931" in r.text, "sección resultado mensual")
+r = cl.get(f"/cliente/{C2}/fiscalizaciones")
+ok("OI 1.234.567" in r.text and "FE-2026-123" in r.text, "sección fiscalizaciones ARCA + AGIP")
+r = cl.get(f"/cliente/{C2}/agip")
+ok("250.000" in r.text and "ISIB" in r.text, "sección AGIP con deuda")
+r = cl.get(f"/cliente/{C2}/notificaciones?org=AGIP")
+ok("Intimación de pago ISIB" in r.text and "marcar informada" in r.text, "notificaciones de AGIP en la ficha")
+for v in ("dfe", "deudas", "planes", "faltas", "iva", "proyeccion", "resultado", "fiscalizaciones"):
+    r = cl.get(f"/cartera/{v}")
+    ok(r.status_code == 200 and "menu-cartera" in r.text, f"cartera/{v}")
+r = cl.get("/cartera/dfe")
+ok("Notificaciones Seclo" in r.text and "Intimación de pago ISIB" in r.text and "Aviso de vencimiento" in r.text,
+   "DFE de toda la cartera (ARCA + AGIP)")
+ident = re.search(r'name="id" value="(\w+)"><input type="hidden" name="cuit" value="' + C2, r.text)[1]
+cl.post("/dfe/informada", data={"id": ident, "cuit": C2, "marcar": "1", "csrf": token(r.text), "volver": "/cartera/dfe"})
+r = cl.get("/cartera/dfe")
+ok("Intimación de pago ISIB" not in r.text and "Notificaciones Seclo" in r.text, "marcar informada la saca de pendientes")
+ok("informada por Ana" in cl.get("/cartera/dfe?ver=todas").text, "en 'todas' se ve quién la informó")
+ok("250.000" in cl.get("/cartera/deudas").text, "deudas incluye AGIP")
+ok("BH SOLUCIONES" in cl.get("/cartera/proyeccion").text and "<svg" in cl.get("/cartera/proyeccion").text, "proyección de la cartera")
+ok("OI 1.234.567" in cl.get("/cartera/fiscalizaciones").text, "fiscalizaciones de la cartera")
+r = cl.get(f"/cliente/{C2}/datos")
+cl.post(f"/cliente/{C2}/datos", data={"csrf": token(r.text), "condicion_iva": "Responsable inscripto", "contadores": "Tomás",
+                                      "regimen_iibb": "Convenio Multilateral", "mes_cierre": "Diciembre", "emails": "a@b.com"})
+r = cl.get(f"/cliente/{C2}")
+ok("Responsable inscripto" in r.text and "Tomás" in r.text, "datos del cliente guardados")
+cl.post(f"/cliente/{C2}/datos", data={"csrf": token(r.text), "condicion_iva": "<script>"})
+ok("<script>" not in cl.get(f"/cliente/{C2}").text, "datos del cliente: opción inválida descartada")
+r = cl.get(f"/cliente/{C2}")
+r = cl.post(f"/cliente/{C2}/pedir", data={"csrf": token(r.text), "robot": "agip"}, follow_redirects=True)
+ok("Pedido enviado" in r.text and len(os.listdir(os.path.join(BANDEJA, "pedidos"))) == 1, "pedido de corrida en la bandeja")
+r = cl.post(f"/cliente/{C2}/pedir", data={"csrf": token(r.text), "robot": "agip"}, follow_redirects=True)
+ok("Ya hay un pedido igual" in r.text, "no duplica pedidos")
+r = cl.post(f"/cliente/{C2}/pedir", data={"csrf": token(r.text), "robot": "rm -rf"}, follow_redirects=True)
+ok("Robot desconocido" in r.text, "robot inválido rechazado")
+ok(cl.post(f"/cliente/{C2}/pedir", data={"csrf": "malo", "robot": "agip"}).status_code == 400, "pedir corrida con CSRF")
+ok(cl.post("/dfe/informada", data={"csrf": "malo", "id": "abc", "cuit": C2, "marcar": "1"}).status_code == 400, "informada con CSRF")
+ok(cl.post(f"/cliente/{C2}/datos", data={"csrf": "malo", "condicion_iva": "Exento"}).status_code == 400, "datos del cliente con CSRF")
+ok("en la bandeja" in cl.get("/robots").text, "pedido visible en Robots")
+
+# ------------------------------------------------ robot: toma el pedido (sin correr nada real)
+from robots import pedidos as rp  # noqa: E402
+
+rp.PEDIDOS, rp.PUBLICO, rp.CANDADO = os.path.join(BANDEJA, "pedidos"), os.path.join(R, "publico"), os.path.join(R, "candado.lock")
+import robots.correr as rc  # noqa: E402
+
+llamados = []
+rc.correr_uno = lambda robot, cuit, *a, **k: llamados.append((robot, cuit)) or "OK\n     agip: simulado"
+rc._publicar = lambda: None
+ok(rp.procesar() == 1 and llamados == [("agip", C2)] and not os.listdir(rp.PEDIDOS), "el robot toma el pedido y lo corre")
+ok("terminado" in cl.get("/robots").text, "la web muestra el pedido terminado")
+import fcntl  # noqa: E402
+
+open(os.path.join(BANDEJA, "pedidos", "x_12345678.json"), "w").write(json.dumps(
+    {"id": "1234567890ab", "cuit": C, "robot": "todo", "fecha": "2026-11-17T10:00:00", "por": "ana"}))
+with open(rp.CANDADO, "a") as f:
+    fcntl.flock(f, fcntl.LOCK_EX)
+    ok(rp.procesar() == 0 and len(os.listdir(rp.PEDIDOS)) == 1, "con una corrida en curso el pedido espera")
+ok("en espera" in cl.get("/robots").text, "estado 'en espera' visible")
+open(os.path.join(BANDEJA, "pedidos", "y_mal.json"), "w").write(json.dumps({"cuit": "1; rm", "robot": "todo", "id": "zz"}))
+rp.procesar()
+ok(os.path.exists(os.path.join(BANDEJA, "pedidos", "y_mal.json.mal")), "pedido mal formado se descarta")
+
+# ------------------------------------------------ reparto por día y repechaje
+import datetime as _dt  # noqa: E402
+
+import robots.correr as rc2  # noqa: E402
+
+rc2.GRUPOS = os.path.join(R, "publico", "grupos_prueba.json")
+cs = [f"30{n:09d}" for n in range(523)]
+m = rc2.asignar_grupos(cs)
+cuenta = [sum(1 for v in m.values() if v["dia"] == d) for d in range(5)]
+ok(max(cuenta) - min(cuenta) <= 1, f"523 clientes repartidos parejo de lunes a viernes {cuenta}")
+pares = [sum(1 for v in m.values() if v["dia"] == 0 and v["semana"] == w) for w in (0, 1)]
+ok(abs(pares[0] - pares[1]) <= 1, f"y parejo entre semanas pares e impares {pares}")
+rc2.robot_libro_iva.DATOS = D
+lunes_par, lunes_impar = _dt.date(2026, 11, 16), _dt.date(2026, 11, 23)      # semanas ISO 47 (impar) y 48 (par)
+ok(rc2.le_toca_hoy(C2, {"dia": 0, "semana": 0}, lunes_par) and rc2.le_toca_hoy(C2, {"dia": 0, "semana": 0}, lunes_impar),
+   "inscripto: corre todos los lunes")
+ok([rc2.le_toca_hoy(C3, {"dia": 0, "semana": 0}, f) for f in (lunes_par, lunes_impar)] == [False, True],
+   "monotributista: un lunes sí y otro no")
+ok(rc2.asignar_grupos(cs + ["30999999999"])[cs[7]] == m[cs[7]], "un cliente no cambia de día al sumar otros")
+escribir(rc2.GRUPOS, {"30000000005": 3})
+ok(rc2.asignar_grupos(["30000000005"])["30000000005"]["dia"] == 3, "lee el formato anterior de grupos.json")
+rc2.REGISTRO = os.path.join(R, "reg_prueba.jsonl")
+import datetime as _dt  # noqa: E402
+
+ahora = _dt.datetime.now().isoformat(timespec="seconds")
+with open(rc2.REGISTRO, "w") as f:
+    for c, e in (("30000000001", "Error"), ("30000000001", "OK"), ("30000000002", "Error"), ("30000000003", "Clave inválida")):
+        f.write(json.dumps({"fecha": ahora, "cuit": c, "estado": e}) + "\n")
+ok(rc2.fallidos_recientes() == {"30000000002"}, "repechaje: solo los que siguen con error (no clave inválida)")
+
+# ------------------------------------------------ lo de antes sigue andando
+r = cl.get(f"/cliente/{C}")
+ok("Seclo" in r.text and "Situación fiscal" not in r.text or "Informes" in r.text, "ficha del cliente 1")
+ok(cl.get(f"/informe/2026-11-15/situacion_fiscal_{C}.xlsx").status_code == 200, "descarga de informe")
+ok(cl.get("/informe/../../etc/passwd").status_code == 404, "no se sale de la carpeta de informes")
+ok("Plan" in cl.get("/agenda").text, "agenda")
+ok(cl.get("/alertas").status_code == 200 and "Relación débito/crédito crítica" in cl.get("/alertas").text, "alertas del día con D/C")
+ok(cl.get("/actividad").status_code == 403, "empleado no ve actividad")
+cl2 = app.test_client()
+login(cl2, "gabriel", "claveadmin123")
+ok("pidió corrida agip" in cl2.get("/actividad").text, "el admin ve quién pidió corridas")
+escribir(f"{R}/publico/actualizaciones.json", [{"fecha": "2026-11-17T13:00:00", "estado": "rechazada: fallaron las pruebas",
+                                               "commit": "abc1234", "mensaje": "cambio de prueba", "detalle": "✘ algo"}])
+ok("cambio de prueba" in cl2.get("/sistema").text and "Sistema" in cl2.get("/mas").text, "el admin ve la pantalla Sistema")
+ok(cl.get("/sistema").status_code == 403, "un empleado no ve Sistema")
+ok(cl.get(f"/cliente/{C3}").status_code == 200 and cl.get(f"/cliente/{C3}/iva").status_code == 200, "cliente sin datos no rompe")
+print(f"\n{sum(res)}/{len(res)} OK")
+sys.exit(0 if all(res) else 1)

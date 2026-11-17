@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block titulo %}Notas{% endblock %}
+{% block cuerpo %}
+<h1>Últimas notas del equipo</h1>
+{% for n in notas %}
+<div class="nota"><div class="sutil"><a href="{{ url_for('cliente', cuit=n.cuit) }}#notas"><b>{{ nombres.get(n.cuit) or cuit_fmt(n.cuit) }}</b></a>
+ · {{ n.nombre }} · {{ n.fecha[:16]|replace('T',' ') }}</div><div>{{ n.texto }}</div></div>
+{% else %}<p class="sutil">Todavía no hay notas. Se cargan desde la ficha de cada cliente.</p>{% endfor %}
+{% endblock %}

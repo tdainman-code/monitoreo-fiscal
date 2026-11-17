@@ -1,0 +1,173 @@
+{% extends "base.html" %}{% block titulo %}{{ titulo }} · {{ c.razon_social or cuit_fmt(c.cuit) }}{% endblock %}
+{% block cuerpo %}
+<p><a href="{{ url_for('cliente', cuit=c.cuit) }}">← {{ c.razon_social or cuit_fmt(c.cuit) }}</a></p>
+<h1>{{ titulo }}</h1>
+
+{% if sec == 'deuda' %}
+  {% if s.sct %}
+  <p><b>Deuda vencida: {{ s.deuda_vencida|pesos }}</b> <span class="sutil">(capital + intereses, {{ s.sct.deudas|length }} obligaciones)</span></p>
+  <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Vencimiento</th><th class="num">Capital</th><th class="num">Intereses</th><th class="num">Total</th></tr></thead><tbody>
+  {% for d in s.sct.deudas|sort(attribute='total', reverse=True) %}<tr class="{{ 'fila-roja' if d.vencida }}"><td>{{ d.impuesto }}</td><td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td>
+  <td class="num" data-l="Capital">{{ d.capital|pesos }}</td><td class="num" data-l="Intereses">{{ (d.int_resarcitorio + d.int_punitorio)|pesos }}</td><td class="num" data-l="Total"><b>{{ d.total|pesos }}</b></td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="sutil">Sin datos de Cuentas Tributarias todavía.</p>{% endif %}
+
+{% elif sec == 'planes' %}
+  {% set mf = s.mf %}
+  {% if mf and mf.vigentes %}
+  {% set imp = mf.alertas|selectattr('tipo', 'in', ['Cuota impaga', 'Plan caduco'])|list %}
+  {% if imp %}<ul class="alertas">{% for a in imp %}<li class="alta"><b>{{ a.tipo }}</b> — {{ a.texto }}</li>{% endfor %}</ul>{% endif %}
+  <table class="tabla"><thead><tr><th>Plan</th><th>Tipo</th><th class="num">Valor cuota</th><th class="num">Pendientes</th><th class="num">Impagas</th><th>Próximo venc.</th></tr></thead><tbody>
+  {% for p in mf.vigentes|sort(attribute='vencidas_impagas', reverse=True) %}<tr class="{{ 'fila-roja' if p.vencidas_impagas }}"><td>{{ p.numero }}</td><td data-l="Tipo">{{ p.tipo }}</td><td class="num" data-l="Valor cuota">{{ p.valor_cuota|pesos }}</td>
+  <td class="num" data-l="Pendientes">{{ p.cuotas_pendientes }}/{{ p.cuotas_total }}</td><td class="num" data-l="Impagas">{{ p.vencidas_impagas }}</td><td data-l="Próximo venc.">{{ p.proximo_vencimiento|fecha }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="sutil">Sin planes vigentes o sin datos.</p>{% endif %}
+
+{% elif sec == 'vencimientos' %}
+  <table class="tabla"><thead><tr><th>Fecha</th><th>Obligación</th><th>Detalle</th></tr></thead><tbody>
+  {% for v in s.proximos %}<tr><td>{{ v.fecha|fecha }}</td><td>{{ v.que }}</td><td data-l="Detalle">{{ v.detalle }}</td></tr>
+  {% else %}<tr><td colspan="3" class="sutil">Nada en los próximos 15 días.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif sec == 'ddjj' %}
+  <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Vencimiento</th></tr></thead><tbody>
+  {% for d in (s.sct or {}).get('ddjj_pendientes', []) %}<tr class="fila-roja"><td>{{ d.impuesto }}</td><td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td></tr>
+  {% else %}<tr><td colspan="3" class="sutil">No hay DDJJ pendientes.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif sec == 'notificaciones' %}
+  <section class="botonera">
+  {% for o in s.organismos %}
+    <a class="boton-ficha {{ o.color }} {{ 'elegido' if org == o.id }}" href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='notificaciones', org=o.id) }}">
+      <span class="titulo">{{ o.titulo }}</span><span class="numero">{{ o.nuevas }}</span>
+      <span class="sub">importantes nuevas · {{ o.altas }} importantes · {{ o.total }} en total</span></a>
+  {% else %}<p class="sutil">Sin notificaciones leídas todavía.</p>{% endfor %}
+  </section>
+  {% if org %}
+  {% set lista = s.notificaciones|selectattr('origen', 'equalto', org)|list %}
+  {% set imp = lista|rejectattr('importancia', 'equalto', 'Baja')|list %}
+  {% set baja = lista|selectattr('importancia', 'equalto', 'Baja')|list %}
+  <h2>{{ org }}</h2>
+  <table class="tabla"><thead><tr><th>Fecha</th><th>Origen</th><th>Asunto</th><th>Motivo · para</th><th>Estado</th></tr></thead><tbody>
+  {% for n in imp %}<tr class="{{ 'fila-roja' if n.importancia == 'ALTA' and (n.pendiente or 'HOY' in n.estado) }}">
+  <td>{{ n.fecha }}</td><td data-l="Origen">{{ n.origen }}</td>
+  <td data-l="Asunto"><b>{{ n.asunto }}</b>{% if n.organismo and n.organismo not in ('ARCA', 'ARBA') %}<div class="sutil">{{ n.organismo }}</div>{% endif %}
+    {% if n.plazo %}<div class="txt-rojo">{{ n.plazo }}</div>{% endif %}{% if n.resumen %}<div class="sutil">{{ n.resumen[:300] }}</div>{% endif %}</td>
+  <td data-l="Motivo">{{ n.importancia }}{% if n.motivo %} · {{ n.motivo }}{% endif %}{% if n.para %}<div class="sutil">→ {{ n.para }}</div>{% endif %}
+    {% if n.responsable %}<div class="txt-rojo">Responsable: {{ n.responsable }}</div>{% endif %}</td>
+  <td data-l="Estado">{{ n.estado }}{% set inf = informadas.get(n.id) %}{% if inf %}<div class="sutil">✔ informada por {{ inf.nombre }} {{ inf.fecha[:10] }}</div>{% endif %}
+    <form method="post" action="{{ url_for('dfe_informada') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+    <input type="hidden" name="id" value="{{ n.id }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="{{ '0' if inf else '1' }}">
+    <input type="hidden" name="volver" value="{{ request.full_path }}"><button class="link">{{ 'desmarcar' if inf else 'marcar informada' }}</button></form></td></tr>
+  {% else %}<tr><td colspan="5" class="sutil">Sin notificaciones.</td></tr>{% endfor %}
+  </tbody></table>
+  {% if baja %}<details class="plegado"><summary>{{ baja|length }} no importantes (Libro de sueldos, SICNEA, MALVINA…)</summary>
+  <ul>{% for n in baja %}<li class="sutil">{{ n.fecha }} · {{ n.origen }} · {{ n.asunto }}</li>{% endfor %}</ul></details>{% endif %}
+  {% else %}<p class="sutil">Elegí un organismo para ver sus notificaciones.</p>{% endif %}
+
+{% elif sec == 'iibb' %}
+  {% if s.cm %}
+  <h2>Convenio Multilateral (SIFERE) — deuda {{ s.cm.deuda_total|pesos }}</h2>
+  <p class="sutil">Capital original sin actualizar, anticipos {{ s.cm.desde }} a {{ s.cm.hasta }}, consulta del {{ s.cm.fecha|fecha }}. Solo para el estudio.</p>
+  {% for j, v in s.cm.jurisdicciones.items() %}
+  <h3>{{ j }} {{ v.nombre }} — {{ v.deuda|pesos }} ({{ v.impagos }} impagos)</h3>
+  <table class="tabla"><thead><tr><th>Anticipo</th><th class="num">Saldo fisco</th><th class="num">Pagado</th><th class="num">Impago</th><th>Estado</th></tr></thead><tbody>
+  {% for a in v.anticipos|reverse if a.impago or a.saldo_fisco %}<tr class="{{ 'fila-roja' if a.impago }}"><td>{{ a.anticipo }}</td><td class="num" data-l="Saldo fisco">{{ a.saldo_fisco|pesos }}</td>
+  <td class="num" data-l="Pagado">{{ (a.pagado_ddjj + a.pagado_otro)|pesos }}</td><td class="num" data-l="Impago">{{ a.impago|pesos }}</td><td data-l="Estado">{{ a.estado }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% endfor %}
+  {% else %}<p class="sutil">Sin datos de Convenio Multilateral.</p>{% endif %}
+
+{% elif sec == 'relacion' or sec == 'compras' or sec == 'informes' %}
+  {% if sec == 'relacion' %}<p class="sutil">{{ s.meses_liva }} meses tomados del Libro IVA (Portal IVA); el mes sin DJ presentada sale de Mis Comprobantes como provisorio.</p>{% endif %}
+  {% if sec == 'compras' and s.observados %}
+  <h2>Comprobantes observados por ARCA (APOC): {{ s.observados.comprobantes|length }}</h2>
+  <table class="tabla"><thead><tr><th>Fecha</th><th>Emisor</th><th>Comprobante</th><th class="num">IVA</th><th class="num">Total</th><th>Anulación</th></tr></thead><tbody>
+  {% for o in s.observados.comprobantes %}<tr class="{{ '' if o.anulada_con else 'fila-roja' }}"><td>{{ o.fecha|fecha }}</td><td data-l="Emisor">{{ o.nombre }}<div class="sutil">{{ o.cuit }}</div></td>
+  <td data-l="Comprobante">{{ o.tipo_txt }} {{ '%04d'|format(o.punto_venta) }}-{{ '%08d'|format(o.numero) }}</td><td class="num" data-l="IVA">{{ o.iva|pesos }}</td><td class="num" data-l="Total">{{ o.total|pesos }}</td><td data-l="Anulación">{{ o.anulada_con }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="sutil">El cruce con el Libro IVA (si quedaron computados) está en el Excel de conciliación.</p>
+  {% endif %}
+  {% set tipos = {'relacion': ['Relación débito/crédito'], 'compras': ['Conciliación de compras'], 'informes': None}[sec] %}
+  <h2>Excel</h2>
+  <ul class="informes">
+  {% for i in s.informes_lista if not tipos or i.tipo in tipos %}{% if loop.index <= 9 %}<li><a class="boton" href="{{ url_for('bajar_informe', ruta=i.ruta) }}">⬇ {{ i.tipo }}</a> <span class="sutil">{{ i.fecha|fecha }} · {{ i.archivo }}</span></li>{% endif %}
+  {% else %}<li class="sutil">Todavía no hay informes.</li>{% endfor %}
+  </ul>
+
+{% elif sec == 'notas' %}
+<form class="nota-form" method="post" action="{{ url_for('nueva_nota', cuit=c.cuit) }}">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  <textarea name="texto" rows="2" placeholder="Ej.: llamé al cliente, dice que paga el jueves" required></textarea>
+  <button>Agregar nota</button>
+</form>
+{% for n in notas %}
+<div class="nota"><div class="sutil">{{ n.nombre }} · {{ n.fecha[:16]|replace('T',' ') }}
+  {% if n.usuario == session.usuario or session.rol == 'admin' %}
+  <form method="post" action="{{ url_for('borrar_nota', id_=n.id) }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+  <input type="hidden" name="volver" value="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='notas') }}"><button class="link">borrar</button></form>{% endif %}</div>
+  <div>{{ n.texto }}</div></div>
+{% else %}<p class="sutil">Todavía no hay notas.</p>{% endfor %}
+{% elif sec == 'iva' %}
+  {% set r = s.ratio %}{% set p = s.proyeccion %}
+  {% if r %}
+  <div class="tarjetas">
+    <div class="tarjeta"><span class="sutil">Relación D/C {{ r.meses }} meses</span><b class="nivel-{{ r.nivel }}">{{ r.ratio|dec if r.credito else '—' }}</b><span class="sutil nivel-{{ r.nivel }}">{{ r.nivel }}</span></div>
+    <div class="tarjeta"><span class="sutil">Débito {{ periodo_txt(r.desde) }} a {{ periodo_txt(r.hasta) }}</span><b>{{ r.debito|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Crédito {{ periodo_txt(r.desde) }} a {{ periodo_txt(r.hasta) }}</span><b>{{ r.credito|pesos }}</b></div>
+    {% if p %}<div class="tarjeta"><span class="sutil">Saldo proyectado {{ periodo_txt(p.periodo) }}</span><b class="{{ 'txt-rojo' if p.saldo > 0 }}">{{ p.saldo|pesos if p.saldo > 0 else 'a favor ' ~ (-p.saldo)|pesos }}</b>
+      <span class="sutil">débito {{ p.debito|pesos }} · crédito {{ p.credito|pesos }}</span></div>{% endif %}
+  </div>
+  {{ grafico|safe }}
+  <p class="leyenda"><i style="background:#c0392b"></i>Débito<i style="background:#2e8b57"></i>Crédito{% if p %} · el último mes (*) es la proyección por tendencia lineal{% endif %}</p>
+  <p class="sutil">Menos de 0,8 = Crítico (mucho crédito para lo que vende); menos de 1,2 = Advertencia. {% if r.meses < 6 %}Con menos de 6 meses no se marca alerta.{% endif %}</p>
+  <table class="tabla"><thead><tr><th>Período</th><th class="num">Débito</th><th class="num">Crédito</th><th class="num">Saldo</th><th class="num">D/C</th></tr></thead><tbody>
+  {% for m in s.iva|reverse %}<tr><td>{{ periodo_txt(m.periodo) }}</td><td class="num" data-l="Débito">{{ m.debito|pesos }}</td><td class="num" data-l="Crédito">{{ m.credito|pesos }}</td>
+    <td class="num" data-l="Saldo">{{ m.saldo|pesos }}</td><td class="num" data-l="D/C">{{ (m.debito / m.credito)|dec if m.credito else '—' }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="sutil">Todavía no hay meses del Libro IVA bajados (se bajan en la corrida semanal).</p>{% endif %}
+
+{% elif sec == 'resultado' %}
+  {% set a = s.resultado %}
+  {% if a %}
+  <div class="tarjetas">
+    <div class="tarjeta"><span class="sutil">Ventas netas</span><b>{{ a.total.ventas|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Compras netas</span><b>{{ a.total.compras|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Sueldos netos (estimado)</span><b>{{ a.total.sueldos|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">F.931</span><b>{{ a.total.f931|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Resultado · margen {{ pct(a.total.margen) }}</span><b class="{{ 'txt-rojo' if a.total.resultado < 0 }}">{{ a.total.resultado|pesos }}</b></div>
+  </div>
+  <h2>Conclusiones</h2>
+  <ul class="conclusiones">{% for x in a.conclusiones %}<li>{{ x }}</li>{% endfor %}</ul>
+  <table class="tabla"><thead><tr><th>Período</th><th class="num">Ventas</th><th class="num">Compras</th><th class="num">Sueldos</th><th class="num">F.931</th><th class="num">Resultado</th><th class="num">Margen</th></tr></thead><tbody>
+  {% for m in a.meses|reverse %}<tr class="{{ 'fila-roja' if m.resultado < 0 else 'fila-gris' if not m.completo }}"><td>{{ periodo_txt(m.periodo) }}{% if not m.completo %}<div class="sutil">falta {{ m.faltantes|join(', ') }}</div>{% endif %}</td>
+    <td class="num" data-l="Ventas">{{ m.ventas|pesos }}</td><td class="num" data-l="Compras">{{ m.compras|pesos }}</td><td class="num" data-l="Sueldos">{{ m.sueldos|pesos }}</td>
+    <td class="num" data-l="F.931">{{ m.f931|pesos }}</td><td class="num" data-l="Resultado"><b>{{ m.resultado|pesos }}</b></td><td class="num" data-l="Margen">{{ pct(m.margen) }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="sutil">Todavía no hay meses del Libro IVA ni del F.931 bajados.</p>{% endif %}
+
+{% elif sec == 'fiscalizaciones' %}
+  {% set f = s.fisc or {} %}{% set ag = s.agip or {} %}
+  <p class="sutil">ARCA relevado el {{ f.fecha|fecha if f else '—' }} · AGIP relevado el {{ ag.fecha|fecha if ag else '—' }}.
+  {% for k, v in (f.servicios or {}).items() %}{{ k|replace('_', ' ') }}: {{ v }}{{ ' · ' if not loop.last }}{% endfor %}</p>
+  {% for k, titulo in [('en_curso', 'Órdenes de intervención en curso (ARCA)'), ('fiscalizacion_electronica', 'Fiscalización electrónica (ARCA)'), ('siace', 'Controles electrónicos SIACE (ARCA)')] %}
+  {% set lista = f.get(k) or [] %}
+  <h2>{{ titulo }}: {{ lista|length }}</h2>
+  {% if lista %}<table class="tabla"><thead><tr>{% for h in lista[0].keys() %}<th>{{ h }}</th>{% endfor %}</tr></thead><tbody>
+  {% for d in lista %}<tr class="fila-roja">{% for h, v in d.items() %}<td data-l="{{ h }}">{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>{% endif %}
+  {% endfor %}
+  <h2>Fiscalización electrónica (AGIP): {{ (ag.fiscalizacion or [])|length }}</h2>
+  {% for t in ag.get('fiscalizacion_tablas') or [] %}<table class="tabla"><thead><tr>{% for h in t.encabezados %}<th>{{ h }}</th>{% endfor %}</tr></thead><tbody>
+  {% for fila in t.filas %}<tr class="fila-roja">{% for v in fila %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>{% endfor %}
+
+{% elif sec == 'agip' %}
+  {% set ag = s.agip or {} %}
+  {% if ag %}
+  <p class="sutil">Relevado el {{ ag.fecha|fecha }} · {% for k, v in (ag.servicios or {}).items() %}{{ k }}: {{ v }}{{ ' · ' if not loop.last }}{% endfor %}</p>
+  <h2>Estado de cuenta: {{ (ag.deuda or {}).total|pesos }}</h2>
+  {% for t in (ag.deuda or {}).tablas or [] %}<table class="tabla"><thead><tr>{% for h in t.encabezados %}<th>{{ h }}</th>{% endfor %}</tr></thead><tbody>
+  {% for fila in t.filas %}<tr>{% for v in fila %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>{% endfor %}
+  <p><a href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='notificaciones', org='AGIP') }}">Ver las {{ (ag.comunicaciones or [])|length }} comunicaciones del DFE de AGIP →</a></p>
+  {% else %}<p class="sutil">Todavía no se relevó AGIP (falta la Clave Ciudad o la corrida semanal).</p>{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block titulo %}{{ 'Nuevo cliente' if nuevo else 'Claves' }}{% endblock %}
+{% block cuerpo %}
+{% if nuevo %}<p><a href="{{ url_for('inicio') }}">← Clientes</a></p><h1>Nuevo cliente</h1>
+{% else %}<p><a href="{{ url_for('cliente', cuit=c.cuit) }}">← {{ c.razon_social or cuit_fmt(c.cuit) }}</a></p>
+<h1>Claves de {{ c.razon_social or cuit_fmt(c.cuit) }}</h1><p class="sutil">CUIT {{ cuit_fmt(c.cuit) }}</p>{% endif %}
+{% if not listo %}<div class="aviso error">La carga de claves todavía no está habilitada en el servidor (falta la llave del robot). Avisale al administrador.</div>{% endif %}
+
+{% if not nuevo and c.accesos %}
+<h2>Estado actual</h2>
+<table class="tabla"><thead><tr><th>Organismo</th><th>Usuario</th><th>Estado</th><th>Actualizada</th></tr></thead><tbody>
+{% for a in c.accesos %}<tr><td data-l="Organismo">{{ a.organismo }}</td><td data-l="Usuario">{{ a.usuario }}</td>
+<td data-l="Estado">{% if a.estado == 'Clave inválida' %}<b class="txt-rojo">Clave inválida, actualizar</b>{% else %}{{ a.estado }}{% endif %}</td>
+<td data-l="Actualizada">{{ (a.actualizado or '')[:16]|replace('T',' ') }}</td></tr>{% endfor %}
+</tbody></table>
+<p class="sutil">Las claves cargadas no se pueden ver: solo se pueden reemplazar.</p>
+{% endif %}
+
+<form class="tarjeta" method="post" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  {% if nuevo %}
+  <label>CUIT del cliente<input name="cuit" value="{{ c.cuit }}" inputmode="numeric" required autocomplete="off" placeholder="20-12345678-6"></label>
+  <label>Nombre o razón social<input name="razon" value="{{ c.razon_social }}" required autocomplete="off"></label>
+  {% endif %}
+  <p class="sutil">Escribí solo las claves que quieras {{ 'cargar' if nuevo else 'cambiar' }}. Se ven mientras escribís para que verifiques que están bien; al guardar desaparecen y no se vuelven a mostrar.</p>
+  {% for k, nombre in orgs.items() %}
+  <fieldset><legend>{{ nombre }}{% if nuevo and k == 'ARCA' %} (obligatoria){% endif %}</legend>
+    {% if k == 'ARCA' %}<label>Usuario, solo si ingresa con otro CUIT<input name="u_ARCA" inputmode="numeric" autocomplete="off" placeholder="si no completás, se usa el CUIT del cliente"></label>{% endif %}
+    <label>Clave<input class="clave-vis" name="k_{{ k }}" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="100" data-lpignore="true" data-1p-ignore="true"></label>
+  </fieldset>
+  {% endfor %}
+  <label class="en-linea"><input type="checkbox" onchange="ocultar(this)"> Ocultar mientras escribo</label>
+  <button {{ 'disabled' if not listo }}>Enviar al robot</button>
+</form>
+
+{% if pend %}<h2>Esperando al robot</h2>
+<table class="tabla"><thead><tr><th>Cliente</th><th>Organismo</th><th>Cargó</th><th>Cuándo</th></tr></thead><tbody>
+{% for p in pend %}<tr><td data-l="Cliente">{{ p.razon_social or cuit_fmt(p.cuit) }}</td><td data-l="Organismo">{{ p.organismo }}</td><td data-l="Cargó">{{ p.por }}</td><td data-l="Cuándo">{{ p.fecha[:16]|replace('T',' ') }}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+{% if res %}<h2>Últimas cargas procesadas</h2>
+<table class="tabla"><thead><tr><th>Cuándo</th><th>Cliente</th><th>Organismo</th><th>Resultado</th></tr></thead><tbody>
+{% for r in res %}<tr><td data-l="Cuándo">{{ (r.fecha or '')[:16]|replace('T',' ') }}</td><td data-l="Cliente">{{ cuit_fmt(r.cuit) }}</td><td data-l="Organismo">{{ r.organismo }}</td>
+<td data-l="Resultado">{% if r.estado == 'rechazado' %}<b class="txt-rojo">Rechazada: {{ r.motivo }}</b>{% else %}{{ r.motivo or 'Aplicada' }}{% endif %}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+<script>
+function ocultar(c){document.querySelectorAll('.clave-vis').forEach(function(i){i.type=c.checked?'password':'text'})}
+</script>
+{% endblock %}

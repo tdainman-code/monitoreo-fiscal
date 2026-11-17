@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block titulo %}{{ c.razon_social or cuit_fmt(c.cuit) }}{% endblock %}
+{% block cuerpo %}
+<p><a href="{{ url_for('inicio') }}">← Clientes</a></p>
+<div class="cabecera">
+  <h1><span class="punto {{ s.semaforo }}"></span> {{ c.razon_social or cuit_fmt(c.cuit) }}</h1>
+  <div class="sutil">CUIT {{ cuit_fmt(c.cuit) }}{% if s.categoria %} · {{ s.categoria }}{% endif %} · datos al {{ s.fecha|fecha }}{% if c.ingresa_con_otro_cuit %} · ingresa con la clave de otra persona{% endif %}{% if c.estado_arca and c.estado_arca != 'OK' %} · <b class="txt-rojo">clave ARCA: {{ c.estado_arca }}</b>{% endif %}</div>
+</div>
+<p class="sutil">{{ s.motivo }}</p>
+<section class="botonera">
+{% for b in s.botones %}
+  <a class="boton-ficha {{ b.color }}" href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion=b.id) }}">
+    <span class="titulo">{{ b.titulo }}</span>
+    <span class="numero">{% if b.valor is none %}ver{% elif b.pesos %}{{ b.valor|pesos }}{% else %}{{ b.valor }}{% endif %}</span>
+    <span class="sub">{{ b.sub }}</span>
+  </a>
+{% endfor %}
+  <a class="boton-ficha gris" href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='notas') }}">
+    <span class="titulo">📝 Notas del equipo</span><span class="numero">{{ n_notas }}</span><span class="sub">notas</span></a>
+  <a class="boton-ficha {{ 'rojo' if claves_mal else 'gris' }}" href="{{ url_for('cliente_claves', cuit=c.cuit) }}">
+    <span class="titulo">🔐 Claves</span><span class="numero">{{ 'Actualizar' if claves_mal else 'Cambiar' }}</span><span class="sub">{{ 'Clave inválida, actualizar' if claves_mal else 'cargar o cambiar una clave' }}</span></a>
+  <a class="boton-ficha gris" href="{{ url_for('datos_del_cliente', cuit=c.cuit) }}">
+    <span class="titulo">🗂 Datos del cliente</span><span class="numero">{{ dc.condicion_iva or 'Completar' }}</span>
+    <span class="sub">{{ dc.contadores or 'condiciones, contadores, mails' }}</span></a>
+</section>
+<form class="pedir" method="post" action="{{ url_for('pedir_corrida', cuit=c.cuit) }}">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  <span class="sutil">Corrida completa: <b>{{ dia_corrida }}</b> a la noche ·</span>
+  <b>🤖 Actualizar ahora:</b>
+  <select name="robot">{% for k, v in robots_pedir.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+  <button {{ '' if pedir_listo else 'disabled title="Falta habilitar los pedidos en el servidor"' }}>Pedir corrida</button>
+  {% for p in pedidos_pend %}<span class="sutil">⏳ {{ robots_pedir.get(p.robot, p.robot) }} pedido por {{ p.por }} ({{ p.fecha[11:16] }})</span>{% endfor %}
+  {% for p in pedidos_ult %}<span class="sutil">{{ '✅' if p.estado == 'terminado' else '⏳' if p.estado in ('corriendo', 'en espera') else '⚠' }} {{ robots_pedir.get(p.robot, p.robot) }}: {{ p.estado }} {{ (p.actualizado or '')[11:16] }}</span>{% endfor %}
+</form>
+{% if s.errores %}<p class="sutil">⚠ La última corrida tuvo errores en: {{ s.errores.keys()|join(', ') }}</p>{% endif %}
+{% endblock %}

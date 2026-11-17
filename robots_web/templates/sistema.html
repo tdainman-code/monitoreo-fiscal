@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block titulo %}Sistema{% endblock %}
+{% block cuerpo %}
+<h1>Sistema</h1>
+<div class="tarjetas">
+  <div class="tarjeta"><span class="sutil">Versión instalada</span><b>{{ version.commit or 'inicial' }}</b><span class="sutil">{{ version.mensaje or '' }}</span></div>
+  <div class="tarjeta"><span class="sutil">Instalada el</span><b>{{ (version.fecha or '—')[:16]|replace('T', ' ') }}</b></div>
+  <div class="tarjeta"><span class="sutil">Pedidos de corrida</span><b>{{ 'habilitados' if pedidos_listo else 'no habilitados' }}</b></div>
+  <div class="tarjeta"><span class="sutil">Carga de claves desde la web</span><b>{{ 'habilitada' if claves_listo else 'no habilitada' }}</b></div>
+</div>
+<h2>Cómo cambiar el robot o la web</h2>
+<p>Pedile el cambio a Claude Code sobre el repositorio de GitHub. Cuando el cambio queda en la rama <b>main</b>, el servidor
+lo detecta (cada 5 minutos), <b>corre las pruebas</b> y, si pasan, lo instala sin cortar una corrida en curso. Si fallan, no lo
+instala y queda anotado acá abajo. Para volver a la versión anterior: <code>sudo bash /opt/monitoreo/repo/nube/actualizar_desde_github.sh --volver</code></p>
+<h2>Últimos cambios</h2>
+<table class="tabla"><thead><tr><th>Fecha</th><th>Versión</th><th>Cambio</th><th>Resultado</th></tr></thead><tbody>
+{% for c in cambios %}<tr class="{{ 'fila-roja' if c.estado.startswith('rechazada') }}"><td>{{ c.fecha[:16]|replace('T', ' ') }}</td><td data-l="Versión"><code>{{ c.commit }}</code></td>
+<td data-l="Cambio">{{ c.mensaje }}</td><td data-l="Resultado">{{ c.estado }}{% if c.estado.startswith('rechazada') and c.detalle %}<pre class="sutil">{{ c.detalle }}</pre>{% endif %}</td></tr>
+{% else %}<tr><td colspan="4" class="sutil">Todavía no hubo cambios desde GitHub.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

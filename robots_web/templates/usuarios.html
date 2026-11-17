@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block titulo %}Usuarios{% endblock %}
+{% block cuerpo %}
+<h1>Usuarios del sistema</h1>
+<p class="sutil">Son los ingresos de las personas del estudio a esta aplicación. No son claves fiscales.</p>
+
+<h2>Nuevo usuario</h2>
+<form class="tarjeta" method="post" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="crear">
+  <label>Usuario (minúsculas, sin espacios ni tildes)<input name="usuario" required pattern="[a-z0-9._-]{2,30}" autocapitalize="none" autocomplete="off"></label>
+  <label>Nombre y apellido<input name="nombre" required autocomplete="off"></label>
+  <label>Contraseña inicial (mínimo 10 caracteres)
+    <input class="clave-vis" name="clave" type="text" minlength="10" required autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+  <label class="en-linea"><input type="checkbox" onchange="ocultar(this)"> Ocultar mientras escribo</label>
+  <label class="en-linea"><input type="checkbox" name="rol" value="admin"> Es administrador (puede ver Actividad y manejar usuarios)</label>
+  <button>Crear usuario</button>
+</form>
+
+<h2>Usuarios existentes</h2>
+<table class="tabla"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último ingreso</th><th>Acciones</th></tr></thead><tbody>
+{% for u in lista %}
+<tr><td data-l="Usuario">{{ u[0] }}</td><td data-l="Nombre">{{ u[1] }}</td><td data-l="Rol">{{ u[2] }}</td><td data-l="Estado">{{ 'activo' if u[3] else 'baja' }}</td>
+<td data-l="Último ingreso">{{ (u[4] or '—')[:16]|replace('T',' ') }}</td>
+<td>
+  <form class="en-linea" method="post" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="clave"><input type="hidden" name="usuario" value="{{ u[0] }}">
+    <input class="clave-vis" name="clave" type="text" placeholder="Nueva contraseña" minlength="10" required autocomplete="off" autocapitalize="none" spellcheck="false" style="width:150px">
+    <button>Cambiar contraseña</button>
+  </form>
+  <form class="en-linea" method="post">
+    <input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="usuario" value="{{ u[0] }}">
+    {% if u[3] %}{% if u[0] != session.usuario %}<input type="hidden" name="accion" value="baja"><button>Dar de baja</button>{% endif %}
+    {% else %}<input type="hidden" name="accion" value="alta"><button>Reactivar</button>{% endif %}
+  </form>
+</td></tr>
+{% endfor %}
+</tbody></table>
+<p class="sutil">Una baja no borra al usuario ni su historial: solo le impide ingresar.</p>
+<script>
+function ocultar(c){document.querySelectorAll('.clave-vis').forEach(function(i){i.type=c.checked?'password':'text'})}
+</script>
+{% endblock %}
