@@ -365,6 +365,30 @@ def conciliar(cuit: str) -> dict:
             "hasta": hasta, "bc_fuera_libro": bc_fuera, "bc_fuera_libro_detalle": bc_fuera_det}
 
 
+def ajustes_por_mes(r: dict) -> dict:
+    """Lo que la conciliación cambia en los saldos (pedido de Gaby, 17/11/2026: "el informe principal sale del
+    Portal IVA, pero tomado 2 veces o no tomado cambia los saldos"). Por mes, en importes con signo:
+      duplicados: copia de más en el Libro IVA (mes del Libro)          -> resta compras y crédito
+      nc:         nota de crédito de Mis Comprobantes no computada        -> resta (importes ya negativos)
+      no_tomadas: factura A de Mis Comprobantes que no está en el Libro   -> sumaría, si correspondía tomarla
+    "neto" = total − IVA (lo que entra en compras netas)."""
+    out = {}
+
+    def sumar(per, clave, neto, iva):
+        d = out.setdefault(per, {})
+        d[f"{clave}_neto"] = round(d.get(f"{clave}_neto", 0.0) + neto, 2)
+        d[f"{clave}_iva"] = round(d.get(f"{clave}_iva", 0.0) + iva, 2)
+    vistos = set()
+    for d in r.get("duplicados_libro") or []:
+        k = (str(d["CUIT emisor"]).lstrip("0"), d["Pto. venta"], d["Número"])
+        if k in vistos:                     # la primera copia es la buena; las siguientes son de más
+            sumar(d["Período"], "duplicados", -(d["Total"] - d["IVA"]), -d["IVA"])
+        vistos.add(k)
+    for f in r.get("no_tomadas") or []:
+        sumar(f["Período MC"], "nc" if f.get("Nota de crédito") else "no_tomadas", f["Total"] - f["IVA"], f["IVA"])
+    return out
+
+
 def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
     r = conciliar(cuit)
     if r.get("sin_libro_iva"):
@@ -436,6 +460,8 @@ def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
     os.makedirs(os.path.join(DATOS, cuit, "conciliacion"), exist_ok=True)
     with open(os.path.join(DATOS, cuit, "conciliacion", "compras_bc_fuera_libro.json"), "w", encoding="utf-8") as f:
         json.dump({"fecha": date.today().isoformat(), "por_mes": r["bc_fuera_libro"]}, f, ensure_ascii=False, indent=1)
+    with open(os.path.join(DATOS, cuit, "conciliacion", "ajustes_conciliacion.json"), "w", encoding="utf-8") as f:
+        json.dump({"fecha": date.today().isoformat(), "por_mes": ajustes_por_mes(r)}, f, ensure_ascii=False, indent=1)
     hoja("Facturas C fuera del Libro", "Facturas C de compra (sin crédito fiscal) que están en Mis Comprobantes y no "
          "en el Libro IVA: se suman como gasto en la relación débito/crédito. Las facturas B no se toman nunca.", r["bc_fuera_libro_detalle"],
          ["Período MC", "Fecha", "Comprobante", "Pto. venta", "Número", "CUIT emisor", "Emisor", "Total"])

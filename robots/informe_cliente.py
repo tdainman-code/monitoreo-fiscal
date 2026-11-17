@@ -272,6 +272,24 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
             ws.cell(r_, j).font = Font(italic=True, bold=(j == 1))
     r_mar = formula("Margen de utilidad bruto (1 − índice)", f'IF({{c}}{r_vtot}=0,"",1-{{c}}{r_ind})',
                     "0.00%;[Red]\\-0.00%")
+    # AJUSTES DE LA CONCILIACIÓN (Gaby, 17/11/2026): el informe principal es el de arriba (Portal IVA), pero
+    # lo tomado dos veces, las NC no computadas y lo no tomado cambian los saldos -> se muestran aparte.
+    _aj = (_leer(os.path.join(DATOS, cuit, "conciliacion", "ajustes_conciliacion.json")) or {}).get("por_mes") or {}
+    if any(v for d in _aj.values() for v in d.values()):
+        fila[0] += 1
+        seccion("AJUSTES POR CONCILIACIÓN (Mis Comprobantes vs Libro IVA) – informativo")
+        aj = lambda k: (lambda p: ((_aj.get(p) or {}).get(k) or 0.0) if liva.get(p) else None)
+        r_a1 = datos("Duplicados en el Libro IVA (a restar)", aj("duplicados_neto"))
+        r_a2 = datos("Notas de crédito no computadas (a restar)", aj("nc_neto"))
+        r_a3 = datos("Facturas A no tomadas (si correspondía tomarlas)", aj("no_tomadas_neto"))
+        r_eaj = formula("Total erogaciones con ajustes",
+                        f'IF({{c}}{r_vtot}=0,"",{{c}}{r_ero}+N({{c}}{r_a1})+N({{c}}{r_a2})+N({{c}}{r_a3}))')
+        formula("SALDO MENSUAL con ajustes", f'IF({{c}}{r_vtot}=0,"",{{c}}{r_vtot}-{{c}}{r_eaj})')
+        formula("Índice con ajustes", f'IF({{c}}{r_vtot}=0,"",{{c}}{r_eaj}/{{c}}{r_vtot})', PCT, total=False)
+        r_ai = datos("Ajuste al IVA crédito fiscal (duplicados, NC, no tomadas)",
+                     lambda p: (sum((_aj.get(p) or {}).get(f"{k}_iva") or 0.0 for k in ("duplicados", "nc", "no_tomadas"))
+                                if liva.get(p) else None))
+        formula("IVA: saldo técnico con ajustes", f"{{c}}{r_deb}-{{c}}{r_cred}-N({{c}}{r_ai})")
     # rojo: mes con ventas o compras netas NEGATIVAS (notas de crédito mayores a lo facturado/comprado).
     # Puede ser real (movimiento no ordinario) pero distorsiona el saldo y los acumulados: hay que mirarlo.
     from openpyxl.formatting.rule import FormulaRule
@@ -308,6 +326,9 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
              "Columnas en blanco: meses todavía no descargados por el robot.",
              "Rojo en TOTAL VENTAS/COMPRAS NETAS: el mes da negativo (notas de crédito mayores a lo facturado/comprado); revisar si es un movimiento no ordinario.",
              "Saldo e índice acumulados: muestran si la falencia del cliente se va corrigiendo o empeorando mes a mes.",
+             "Ajustes por conciliación (si los hay): duplicados en el Libro IVA, notas de crédito de Mis Comprobantes no "
+             "computadas y facturas A no tomadas. No cambian el informe principal (Portal IVA): muestran cómo quedarían "
+             "los saldos corrigiendo la carga. Detalle en la planilla de conciliación de compras.",
              "Indicadores de la relación débito/crédito: a definir."]
     for i, t in enumerate(notas, 1):
         ws.cell(r + i, 1, t).font = Font(color="595959")

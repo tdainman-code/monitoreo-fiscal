@@ -327,6 +327,7 @@ def ficha(cuit: str) -> dict:
     if iva:
         rt = s["ratio"]
         b.append({"id": "iva", "titulo": "Débito / crédito y proyección", "valor": f"{rt['ratio']:.2f}".replace(".", ",") if rt and rt["credito"] else None,
+                  "utilidad": (rt["ratio"] - 1) if rt and rt["credito"] else None,
                   "sub": f"relación D/C {rt['meses']} meses · {rt['nivel']}" if rt else "",
                   "color": {"Crítico": "rojo", "Advertencia": "amarillo"}.get((rt or {}).get("nivel"), "verde")})
     res = analisis.resultado_mensual(cuit)

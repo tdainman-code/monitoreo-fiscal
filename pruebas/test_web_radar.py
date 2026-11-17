@@ -169,6 +169,22 @@ r2 = cl.get(f"/cliente/{C2}/relacion")
 ok(r2.status_code == 200 and all(t in r2.text for t in ("Cargas sociales (F.931)", "Total erogaciones", "SALDO MENSUAL",
    "Índice erogaciones / ventas", "Índice acumulado", "Margen de utilidad bruto", "IIBB determinado")),
    "relación débito crédito: cuadro como la planilla (erogaciones, saldo, índices y margen)")
+from robots_web.app import utilidad  # noqa: E402
+ok(utilidad(1.5) == "50,00%" and utilidad(0.87) == "−13,00%" and utilidad(1.23456) == "23,46%", "utilidad = D/C − 1 con 2 decimales")
+_ri = cl.get(f"/cliente/{C2}/iva").text
+ok("Utilidad (D/C − 1)" in _ri and "−50,00%" in _ri and "txt-rojo" in _ri, "utilidad negativa con signo menos y en rojo")
+ok("· utilidad −50,00%" in r.text, "ficha del cliente: D/C con utilidad")
+ok("con ajustes" not in r2.text, "sin conciliación: no muestra el bloque de ajustes")
+_per = analisis.resultado_mensual(C2)[0]["periodo"]
+escribir(f"{D}/{C2}/conciliacion/ajustes_conciliacion.json",
+         {"por_mes": {_per: {"duplicados_neto": -10_000.0, "duplicados_iva": -2_100.0, "nc_neto": -50_000.0, "nc_iva": -10_500.0}}})
+_m = analisis.resultado_mensual(C2)[0]
+ok(abs(_m["erogaciones_ajustadas"] - (_m["erogaciones"] - 60_000)) < 1 and abs(_m["aj_iva_credito"] + 12_600) < 1
+   and abs(_m["saldo_tecnico_ajustado"] - (_m["saldo_tecnico"] + 12_600)) < 1, "ajustes de conciliación en los saldos")
+r2 = cl.get(f"/cliente/{C2}/relacion")
+ok("SALDO MENSUAL con ajustes" in r2.text and "Duplicados en el Libro IVA" in r2.text and "IVA: saldo técnico con ajustes" in r2.text,
+   "relación D/C muestra los ajustes de la conciliación aparte")
+os.remove(f"{D}/{C2}/conciliacion/ajustes_conciliacion.json")
 ok("Débito / crédito y proyección" in r.text and "Relación débito crédito" in r.text and "Fiscalizaciones" in r.text
    and "AGIP (Ciudad)" in r.text and "Pedir corrida" in r.text, "ficha con botones nuevos y pedir corrida")
 escribir(f"{R}/publico/grupos.json", {C2: {"dia": 2, "semana": 1}, C3: {"dia": 4, "semana": 0}})

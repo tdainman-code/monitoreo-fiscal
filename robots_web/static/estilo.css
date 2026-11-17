@@ -168,5 +168,6 @@ a.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.10)}
 .desplazable{overflow-x:auto}.tabla.relacion th,.tabla.relacion td{white-space:nowrap}
 .tabla.relacion td:first-child{position:sticky;left:0;background:#fff;z-index:1}
 .tabla.relacion tr.fila-total td{background:#f8fafc;border-top:2px solid var(--borde)}
+.tabla.relacion tr.fila-seccion td{background:#e0f2fe;color:#075985;padding-top:10px}
 .celda-falta{background:#fffbeb!important}
 @media (max-width:900px){.tabla.relacion thead{display:table-header-group}.tabla.relacion tr{display:table-row}.tabla.relacion td{display:table-cell}.tabla.relacion td[data-l]::before{content:none}}

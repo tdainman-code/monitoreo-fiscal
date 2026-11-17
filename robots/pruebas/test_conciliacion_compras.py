@@ -92,5 +92,16 @@ conciliacion.generar(CUIT, "Prueba", ruta)
 from openpyxl import load_workbook  # noqa: E402
 hojas = load_workbook(ruta).sheetnames
 chk("Excel con hojas nuevas", "Tomadas con otro número" in hojas and "Duplicados en Libro IVA" in hojas)
+aj = json.load(open(os.path.join(TMP, CUIT, "conciliacion", "ajustes_conciliacion.json")))["por_mes"]
+chk("ajustes: duplicado resta en 2025-12 (IVA −3.752,86)", abs(aj["2025-12"]["duplicados_iva"] + 3752.86) < 0.01
+    and abs(aj["2025-12"]["duplicados_neto"] + 17870.76) < 0.01)
+chk("ajustes: NC no computada resta en 2025-11 (IVA −8.056.125)", abs(aj["2025-11"]["nc_iva"] + 8056125) < 1)
+chk("ajustes: no tomada 27611 suma en 2026-01", abs(aj["2026-01"]["no_tomadas_iva"] - 3735.80) < 0.01)
+from robots import informe_cliente  # noqa: E402
+rel = os.path.join(TMP, "rel.xlsx")
+informe_cliente.relacion_dc(CUIT, "Prueba", ["2025-11", "2025-12", "2026-01", "2026-02"], rel)
+textos = [c.value for row in load_workbook(rel).active.iter_rows() for c in row if isinstance(c.value, str)]
+chk("Relación D/C con bloque de ajustes", any("AJUSTES POR CONCILIACIÓN" in t for t in textos)
+    and any("SALDO MENSUAL con ajustes" in t for t in textos))
 print("OK" if ok else "FALLÓ")
 sys.exit(0 if ok else 1)

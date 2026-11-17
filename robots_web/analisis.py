@@ -202,6 +202,8 @@ def resultado_mensual(cuit: str) -> list[dict]:
     iibb = _iibb(cuit)
     bc_mc = ((_leer(os.path.join(datos.DATOS, cuit, "conciliacion", "compras_bc_fuera_libro.json")) or {})
              .get("por_mes") or {})
+    ajustes = ((_leer(os.path.join(datos.DATOS, cuit, "conciliacion", "ajustes_conciliacion.json")) or {})
+               .get("por_mes") or {})
     hay_iibb = bool(iibb) or os.path.isdir(os.path.join(datos.DATOS, cuit, "sifere"))
     out = []
     acum_v = acum_e = acum_s = 0.0
@@ -234,7 +236,20 @@ def resultado_mensual(cuit: str) -> list[dict]:
             acum_e += erog
             acum_s += saldo
         indice = erog / ventas if ventas else None
-        out.append({"periodo": per, "ventas": ventas, "compras": compras, "compras_bc_mc": bc, "sueldos": sueldos, "cargas": cargas,
+        # Ajustes de la conciliación (informativos: el informe principal sale del Portal IVA)
+        aj = ajustes.get(per) or {} if l else {}
+        aj_dup, aj_nc, aj_nt = (_num(aj.get(f"{k}_neto")) for k in ("duplicados", "nc", "no_tomadas"))
+        aj_iva = sum(_num(aj.get(f"{k}_iva")) for k in ("duplicados", "nc", "no_tomadas"))
+        erog_aj = erog + aj_dup + aj_nc + aj_nt
+        out.append({"aj_duplicados": aj_dup, "aj_nc": aj_nc, "aj_no_tomadas": aj_nt, "aj_iva_credito": aj_iva,
+                    "erogaciones_ajustadas": erog_aj, "resultado_ajustado": ventas - erog_aj,
+                    "indice_ajustado": erog_aj / ventas if ventas else None,
+                    "debito": _num((l or {}).get("ventas", {}).get("Total IVA")),
+                    "credito": _num((l or {}).get("compras", {}).get("Total IVA")),
+                    "saldo_tecnico": _num((l or {}).get("ventas", {}).get("Total IVA"))
+                    - _num((l or {}).get("compras", {}).get("Total IVA")),
+                    "saldo_tecnico_ajustado": _num((l or {}).get("ventas", {}).get("Total IVA"))
+                    - _num((l or {}).get("compras", {}).get("Total IVA")) - aj_iva,"periodo": per, "ventas": ventas, "compras": compras, "compras_bc_mc": bc, "sueldos": sueldos, "cargas": cargas,
                     "f931": cargas, "iibb": ib, "erogaciones": erog, "resultado": saldo, "saldo_acumulado": acum_s,
                     "indice": indice, "indice_acumulado": (acum_e / acum_v) if acum_v else None,
                     "margen": (1 - indice) if indice is not None else None,
@@ -246,7 +261,12 @@ def analizar_resultado(meses: list[dict]) -> dict | None:
     if not meses:
         return None
     tot = {k: sum((m.get(k) or 0) for m in meses) for k in ("ventas", "compras", "compras_bc_mc", "sueldos", "cargas", "f931", "iibb",
-                                                          "erogaciones", "resultado")}
+                                                          "erogaciones", "resultado", "aj_duplicados", "aj_nc",
+                                                          "aj_no_tomadas", "aj_iva_credito", "erogaciones_ajustadas",
+                                                          "resultado_ajustado", "debito", "credito", "saldo_tecnico",
+                                                          "saldo_tecnico_ajustado")}
+    tot["indice_ajustado"] = tot["erogaciones_ajustadas"] / tot["ventas"] if tot["ventas"] else None
+    tot["hay_ajustes"] = any(tot[k] for k in ("aj_duplicados", "aj_nc", "aj_no_tomadas"))
     tot["indice"] = tot["erogaciones"] / tot["ventas"] if tot["ventas"] else None
     tot["margen"] = (1 - tot["indice"]) if tot["indice"] is not None else None
     negativos = [m for m in meses if m["resultado"] < 0]
@@ -269,6 +289,10 @@ def analizar_resultado(meses: list[dict]) -> dict | None:
     if tot["resultado"] < 0:
         c.append("El resultado acumulado es NEGATIVO: los costos superan a las ventas declaradas. Conviene revisar si faltan "
                  "ventas o si hay costos que no corresponden.")
+    if tot["hay_ajustes"]:
+        c.append(f"Con los ajustes de la conciliación (duplicados en el Libro IVA, notas de crédito no computadas y "
+                 f"facturas no tomadas) el saldo sería {_pesos(tot['resultado_ajustado'])} (índice "
+                 f"{pct(tot['indice_ajustado'])}) y el saldo técnico de IVA cambiaría en {_pesos(-tot['aj_iva_credito'])}.")
     c.append(f"{len(negativos)} de {len(meses)} meses dieron negativo: {', '.join(periodo_txt(m['periodo']) for m in negativos)}."
              if negativos else "Ningún mes dio negativo.")
     if mejor is not peor:

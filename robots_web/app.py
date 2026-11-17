@@ -55,6 +55,16 @@ def fecha(v):
 app.jinja_env.globals["cuit_fmt"] = datos.cuit_fmt
 
 
+@app.template_filter("utilidad")
+def utilidad(ratio):
+    """Relación D/C como utilidad: 1,50 -> "50,00%"; 0,87 -> "−13,00%" (2 decimales, pedido de Gaby 17/11/2026)."""
+    try:
+        u = (float(ratio) - 1) * 100
+    except (TypeError, ValueError):
+        return "—"
+    return ("−" if u < 0 else "") + f"{abs(u):,.2f}%".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 @app.template_filter("dec")
 def dec(v, n=2):
     try:
