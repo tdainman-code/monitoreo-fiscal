@@ -327,14 +327,13 @@ def generar_cliente(cuit: str, periodos: list[str] | None = None, carpeta: str |
     carpeta = carpeta or os.path.join(INFORMES, date.today().isoformat())
     r1 = os.path.join(carpeta, f"relacion_dc_{cuit}.xlsx")
     r2 = os.path.join(carpeta, f"situacion_fiscal_{cuit}.xlsx")
-    ic.relacion_dc(cuit, nom, periodos, r1)
-    ic.situacion_fiscal(cuit, nom, r2)
-    salida = [r1, r2]
-    # Responsables inscriptos con Libro IVA bajado: conciliación Mis Comprobantes vs Libro IVA (+ APOC)
+    # Primero la conciliación: deja las facturas B/C fuera del Libro IVA que suma la relación débito/crédito
     from . import conciliacion
     r3 = os.path.join(carpeta, f"conciliacion_compras_{cuit}.xlsx")
-    if conciliacion.generar(cuit, nom, r3) is not None:
-        salida.append(r3)
+    hay_conc = conciliacion.generar(cuit, nom, r3) is not None
+    ic.relacion_dc(cuit, nom, periodos, r1)
+    ic.situacion_fiscal(cuit, nom, r2)
+    salida = [r1, r2] + ([r3] if hay_conc else [])
     return salida
 
 

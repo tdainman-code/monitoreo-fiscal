@@ -35,6 +35,9 @@ from datetime import date
 DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
 INFORMES = os.environ.get("ROBOTS_INFORMES", "/var/lib/robots/informes")
 TIPOS_B = {6, 7, 8, 9, 10, 82}            # B: no se concilian (no dan crédito)
+# B y C (y sus NC/ND): no dan crédito fiscal, así que no son "no tomadas". Las C que están en Mis Comprobantes y no en
+# el Libro IVA son un GASTO que se suma a las erogaciones; las B no se toman jamás (pedido de Gaby, 17/11/2026).
+from .lector_libro_iva import TIPOS_B_C, TIPOS_C  # noqa: E402
 NOTAS_CREDITO = {3, 8, 13, 53, 110, 112, 113, 114, 203, 208, 213}
 NOMBRES = {1: "Factura A", 2: "Nota de Débito A", 3: "Nota de Crédito A", 11: "Factura C", 12: "Nota de Débito C",
            13: "Nota de Crédito C", 17: "Liq. Servicios Públicos A", 51: "Factura M", 63: "Liquidación A",
@@ -224,6 +227,7 @@ def conciliar(cuit: str) -> dict:
             tomado.setdefault(k, per)
             tomado_sin_tipo.setdefault(k[:1] + k[2:], per)
     no_tomadas, otro_mes, vistos_mc = [], [], set()
+    bc_fuera, bc_fuera_det = {}, []
     resumen = []
     for per in sorted(liva):
         mc = _mc_recibidos(cuit, per)
@@ -236,7 +240,14 @@ def conciliar(cuit: str) -> dict:
             k = _clave(c["cuit"], c["tipo"], c["punto_venta"], c["numero"])
             vistos_mc.add(k)
             vistos_mc.add(k[:1] + k[2:])
-            if c["tipo"] in TIPOS_B:
+            if c["tipo"] in TIPOS_B_C:
+                # B: no se toman jamás (ni crédito ni gasto). C: si no está en el Libro IVA, se suma como gasto.
+                if c["tipo"] in TIPOS_C and not (tomado.get(k) or tomado_sin_tipo.get(k[:1] + k[2:])):
+                    bc_fuera[per] = round(bc_fuera.get(per, 0.0) + c["total"], 2)
+                    bc_fuera_det.append({"Período MC": per, "Fecha": c["fecha"],
+                                         "Comprobante": NOMBRES.get(c["tipo"], f"Tipo {c['tipo']}"),
+                                         "Pto. venta": c["punto_venta"], "Número": c["numero"], "CUIT emisor": c["cuit"],
+                                         "Emisor": c["nombre"], "Total": c["total"]})
                 continue
             n += 1
             donde = tomado.get(k) or tomado_sin_tipo.get(k[:1] + k[2:])
@@ -307,7 +318,7 @@ def conciliar(cuit: str) -> dict:
             "apoc": ("sin verificar (falta correr el robot de observados)" if obs_d is None
                      else f"{len(observados)} comprobantes observados por ARCA (consulta del {obs_d.get('fecha')})"),
             "alertas_apoc": apoc_alertas, "observados": obs_filas,
-            "hasta": hasta}
+            "hasta": hasta, "bc_fuera_libro": bc_fuera, "bc_fuera_libro_detalle": bc_fuera_det}
 
 
 def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
@@ -371,6 +382,12 @@ def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
          ["Fecha", "Comprobante", "Pto. venta", "Número", "CUIT emisor", "Emisor", "IVA", "Total", "Anulación",
           "En Libro IVA", "Riesgo"],
          lambda f: ROJO_FUERTE if f["Riesgo"].startswith("ALTO") else AMARILLO if f["Riesgo"].startswith(("Revisar", "Neutro")) else None)
+    os.makedirs(os.path.join(DATOS, cuit, "conciliacion"), exist_ok=True)
+    with open(os.path.join(DATOS, cuit, "conciliacion", "compras_bc_fuera_libro.json"), "w", encoding="utf-8") as f:
+        json.dump({"fecha": date.today().isoformat(), "por_mes": r["bc_fuera_libro"]}, f, ensure_ascii=False, indent=1)
+    hoja("Facturas C fuera del Libro", "Facturas C de compra (sin crédito fiscal) que están en Mis Comprobantes y no "
+         "en el Libro IVA: se suman como gasto en la relación débito/crédito. Las facturas B no se toman nunca.", r["bc_fuera_libro_detalle"],
+         ["Período MC", "Fecha", "Comprobante", "Pto. venta", "Número", "CUIT emisor", "Emisor", "Total"])
     v = conciliar_ventas(cuit)
     r["ventas"] = v
     if not v.get("sin_libro_iva"):

@@ -23,6 +23,9 @@ import xml.etree.ElementTree as ET
 
 # B y C (sin IVA discriminado). Para el gasto se toma el importe total (pedido del 16/11/2026).
 TIPOS_B_C = {6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 82, 111, 113, 114, 206, 207, 208, 211, 212, 213}
+# Regla de Gaby (17/11/2026): en responsables inscriptos las facturas B de COMPRA no se toman JAMÁS (no son
+# computables para nada). Solo las C (y sus notas de crédito/débito) se suman como gasto.
+TIPOS_C = {11, 12, 13, 15, 111, 211, 212, 213}
 NOTAS_CREDITO = {3, 8, 13, 53, 110, 112, 113, 114, 203, 208, 213}
 TOL_ABS, TOL_REL = 1.0, 0.0001
 
@@ -143,7 +146,8 @@ def _resumir(comps: list[dict], periodo: str, compras: bool) -> dict:
     if compras:
         r["Impuesto a los combustibles"] = s(a, "otros_costos")       # combustibles / internos / otros tributos
         r["  de ello estimado a confirmar"] = 0.0                     # en el Libro IVA viene informado, no estimado
-        r["Comprobantes B/C (sin IVA discriminado)"] = s(bc, "total")
+        r["Comprobantes B/C (sin IVA discriminado)"] = s([c for c in bc if c["tipo"] in TIPOS_C], "total")   # solo C
+        r["Comprobantes B (no computables, informativo)"] = s([c for c in bc if c["tipo"] not in TIPOS_C], "total")
         r["Crédito fiscal computable"] = s(a, "credito_computable")
     else:
         r["Ventas a consumidor final (sin identificar)"] = round(sum(c["total"] for c in comps if not c["cuit"].strip("0")), 2)

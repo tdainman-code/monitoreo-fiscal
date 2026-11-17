@@ -145,7 +145,8 @@
   <table class="tabla relacion"><thead><tr><th>Concepto</th>{% for m in a.meses %}<th class="num">{{ periodo_txt(m.periodo) }}</th>{% endfor %}<th class="num">Total</th></tr></thead><tbody>
   {% set filas_rel = [
       ('Ventas netas', 'ventas', 'pesos', true),
-      ('Compras netas', 'compras', 'pesos', true),
+      ('Compras netas (Libro IVA)', 'compras', 'pesos', true),
+      ('Facturas C de Mis Comprobantes no cargadas en el Libro IVA', 'compras_bc_mc', 'pesos', true),
       ('Remuneraciones (F.931)', 'sueldos', 'pesos', true),
       ('Cargas sociales (F.931)', 'cargas', 'pesos', true),
       ('IIBB determinado (SIFERE / ARBA)', 'iibb', 'pesos', true),
@@ -162,7 +163,7 @@
     <td class="num"><b>{% if k == 'indice' or k == 'indice_acumulado' %}{{ pct(a.total.indice) }}{% elif k == 'margen' %}{{ pct(a.total.margen) }}{% elif k == 'saldo_acumulado' %}{{ a.total.resultado|pesos }}{% else %}{{ a.total[k]|pesos }}{% endif %}</b></td></tr>
   {% endfor %}
   </tbody></table></div>
-  <p class="sutil">Mismas fórmulas que la planilla "Relación DC": ventas y compras del Libro IVA (Portal IVA, DJ presentadas); remuneraciones y cargas sociales del F.931; IIBB determinado de SIFERE y ARBA. Las celdas en amarillo son meses con alguna fuente faltante (pasá el mouse para ver cuál).</p>
+  <p class="sutil">Mismas fórmulas que la planilla "Relación DC": ventas y compras del Libro IVA (Portal IVA, DJ presentadas), más las facturas C de compra que están en Mis Comprobantes y no se cargaron en el Libro IVA (no dan crédito, pero son gasto; las facturas B no se toman nunca); remuneraciones y cargas sociales del F.931; IIBB determinado de SIFERE y ARBA. Las celdas en amarillo son meses con alguna fuente faltante (pasá el mouse para ver cuál).</p>
   {% else %}<p class="sutil">Todavía no hay meses del Libro IVA ni del F.931 bajados.</p>{% endif %}
   {% if sec == 'relacion' %}<h2>Excel</h2><ul class="informes">
   {% for i in s.informes_lista if i.tipo == 'Relación débito/crédito' %}{% if loop.index <= 6 %}<li><a class="boton" href="{{ url_for('bajar_informe', ruta=i.ruta) }}">⬇ {{ i.tipo }}</a> <span class="sutil">{{ i.fecha|fecha }} · {{ i.archivo }}</span></li>{% endif %}

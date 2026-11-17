@@ -77,6 +77,11 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
     # Libro IVA (Portal IVA): en responsables inscriptos es la fuente de los meses ya presentados
     # (incluye despachos de importación, servicios públicos y tiques que no están en Mis Comprobantes).
     liva = {p: _leer(os.path.join(DATOS, cuit, "libro_iva", f"{p}.json")) for p in periodos}
+    from .lector_libro_iva import TIPOS_C
+    for d_ in liva.values():                    # facturas B de compra: no se toman jamás (Gaby, 17/11/2026)
+        if d_ and d_.get("comprobantes_compras") is not None and d_.get("compras"):
+            d_["compras"]["Comprobantes B/C (sin IVA discriminado)"] = round(sum(
+                c["total"] for c in d_["comprobantes_compras"] if c.get("b_c") and int(c.get("tipo") or 0) in TIPOS_C), 2)
     es_ri = any(liva.values()) or bool(glob.glob(os.path.join(DATOS, cuit, "libro_iva", "*.json")))
     provisorio = [p for p in periodos if es_ri and not liva.get(p) and mc.get(p)]
     f931 = {p: _leer(os.path.join(DATOS, cuit, "f931", f"{p}.json")) for p in periodos}
@@ -187,13 +192,18 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
     r_cng = formula("Neto gravado total", f"SUM({{c}}{rc[0]}:{{c}}{rc[-1]})")
     r_cnog = datos("No gravado", lambda p: val(p, "recibidos", "No gravado"))
     r_cex = datos("Exento", lambda p: val(p, "recibidos", "Exento"))
-    r_cbc = datos("Comprobantes B/C (sin IVA discriminado)", lambda p: val(p, "recibidos", "Comprobantes B/C (sin IVA discriminado)"))
+    r_cbc = datos("Facturas C (sin IVA discriminado; las B no se toman)",
+                  lambda p: val(p, "recibidos", "Comprobantes B/C (sin IVA discriminado)"))
     r_comb = datos("Impuesto a los combustibles / otros tributos" if es_ri else "Impuesto a los combustibles",
                    lambda p: val(p, "recibidos", "Impuesto a los combustibles"))
     for j, p in enumerate(periodos, 2):
         if combustible_estimado.get(p):
             ws.cell(r_comb, j).fill = _fill(AMARILLO)
-    r_ctot = formula("TOTAL COMPRAS NETAS", f"{{c}}{r_cng}+{{c}}{r_cnog}+{{c}}{r_cex}+{{c}}{r_cbc}+{{c}}{r_comb}")
+    _bcmc = (_leer(os.path.join(DATOS, cuit, "conciliacion", "compras_bc_fuera_libro.json")) or {}).get("por_mes") or {}
+    r_bcmc = datos("Facturas C de Mis Comprobantes no cargadas en el Libro IVA",
+                   lambda p: (_bcmc.get(p) or 0.0) if liva.get(p) else None)
+    r_ctot = formula("TOTAL COMPRAS NETAS",
+                     f"{{c}}{r_cng}+{{c}}{r_cnog}+{{c}}{r_cex}+{{c}}{r_cbc}+{{c}}{r_comb}+N({{c}}{r_bcmc})")
     r_cred = datos("IVA Crédito fiscal", lambda p: val(p, "recibidos", "Total IVA"))
     r_perc = datos("Percepciones / otros tributos (informativo)", lambda p: val(p, "recibidos", "Otros tributos / percepciones"))
     for j, p in enumerate(periodos, 2):            # meses provisorios: todo el bloque de IVA en naranja
@@ -290,7 +300,8 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
     ws.cell(r, 1, "Notas").font = Font(bold=True)
     notas = ["Ventas y compras: SOLO del Libro IVA de las DJ presentadas (Portal IVA). Sueldos y cargas sociales: F.931. "
              "No se usa Mis Comprobantes: un mes sin DJ de IVA presentada queda vacío.",
-             "Facturas B y C de compra: se suman como gasto por el total (sin crédito fiscal), igual que las considera ARCA."] + ["Amarillo: impuesto a los combustibles ESTIMADO a confirmar (ver alertas del mes en Mis Comprobantes).",
+             "Facturas C de compra: se suman como gasto por el total (sin crédito fiscal). Las facturas B de compra no "
+             "se toman nunca (no son computables)."] + ["Amarillo: impuesto a los combustibles ESTIMADO a confirmar (ver alertas del mes en Mis Comprobantes).",
              "'No presentada': anticipo sin DDJJ en SIFERE a la fecha de consulta (posterior al alta en Convenio Multilateral).",
              "'ARBA s/dato': mes anterior al alta en Convenio Multilateral sin DJ local leída en ARBA (falta la CIT o la DJ).",
              "Resultado bruto en amarillo: falta alguna fuente del mes (F931 o IIBB); el saldo se calcula sin ese concepto.",

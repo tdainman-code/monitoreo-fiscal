@@ -162,6 +162,16 @@ def proyectar_iva(iva: list[dict]) -> dict | None:
 
 
 # ---------------------------------------------------------------- resultado mensual
+TIPOS_C = {11, 12, 13, 15, 111, 211, 212, 213}      # facturas C de compra (las B no se toman jamás: Gaby 17/11/2026)
+
+
+def _compras_c(l: dict) -> float | None:
+    cc = l.get("comprobantes_compras")
+    if cc is None:
+        return None
+    return sum(_num(c.get("total")) for c in cc if c.get("b_c") and int(_num(c.get("tipo"))) in TIPOS_C)
+
+
 def _neto(res: dict, compras: bool) -> float:
     """Igual que la planilla 'Relación DC': ventas = neto gravado + no gravado + exento;
     compras = lo mismo + comprobantes B/C + impuesto a los combustibles."""
@@ -190,6 +200,8 @@ def resultado_mensual(cuit: str) -> list[dict]:
     liva = _meses(cuit, "libro_iva")
     f931 = _meses(cuit, "f931")
     iibb = _iibb(cuit)
+    bc_mc = ((_leer(os.path.join(datos.DATOS, cuit, "conciliacion", "compras_bc_fuera_libro.json")) or {})
+             .get("por_mes") or {})
     hay_iibb = bool(iibb) or os.path.isdir(os.path.join(datos.DATOS, cuit, "sifere"))
     out = []
     acum_v = acum_e = acum_s = 0.0
@@ -198,6 +210,9 @@ def resultado_mensual(cuit: str) -> list[dict]:
         l, f = liva.get(per), f931.get(per)
         if l:
             ventas, compras = _neto(l.get("ventas") or {}, False), _neto(l.get("compras") or {}, True)
+            solo_c = _compras_c(l)
+            if solo_c is not None:                         # saca las facturas B (datos bajados antes del 17/11)
+                compras += solo_c - _num((l.get("compras") or {}).get("Comprobantes B/C (sin IVA discriminado)"))
         else:
             ventas = compras = 0.0
             faltan.append("Libro IVA")
@@ -211,14 +226,15 @@ def resultado_mensual(cuit: str) -> list[dict]:
         ib = iibb.get(per)
         if ib is None and hay_iibb and ventas:
             faltan.append("IIBB")
-        erog = compras + sueldos + cargas + (ib or 0.0)
+        bc = _num(bc_mc.get(per)) if l else 0.0     # facturas B/C de Mis Comprobantes que no están en el Libro IVA
+        erog = compras + bc + sueldos + cargas + (ib or 0.0)
         saldo = ventas - erog
         if ventas:
             acum_v += ventas
             acum_e += erog
             acum_s += saldo
         indice = erog / ventas if ventas else None
-        out.append({"periodo": per, "ventas": ventas, "compras": compras, "sueldos": sueldos, "cargas": cargas,
+        out.append({"periodo": per, "ventas": ventas, "compras": compras, "compras_bc_mc": bc, "sueldos": sueldos, "cargas": cargas,
                     "f931": cargas, "iibb": ib, "erogaciones": erog, "resultado": saldo, "saldo_acumulado": acum_s,
                     "indice": indice, "indice_acumulado": (acum_e / acum_v) if acum_v else None,
                     "margen": (1 - indice) if indice is not None else None,
@@ -229,7 +245,7 @@ def resultado_mensual(cuit: str) -> list[dict]:
 def analizar_resultado(meses: list[dict]) -> dict | None:
     if not meses:
         return None
-    tot = {k: sum((m.get(k) or 0) for m in meses) for k in ("ventas", "compras", "sueldos", "cargas", "f931", "iibb",
+    tot = {k: sum((m.get(k) or 0) for m in meses) for k in ("ventas", "compras", "compras_bc_mc", "sueldos", "cargas", "f931", "iibb",
                                                           "erogaciones", "resultado")}
     tot["indice"] = tot["erogaciones"] / tot["ventas"] if tot["ventas"] else None
     tot["margen"] = (1 - tot["indice"]) if tot["indice"] is not None else None
@@ -247,7 +263,7 @@ def analizar_resultado(meses: list[dict]) -> dict | None:
          f"y le quedó {_pesos(tot['resultado'])} después de compras, sueldos, cargas sociales e IIBB "
          f"(índice erogaciones/ventas {pct(tot['indice'])}, margen {pct(tot['margen'])})."]
     if tot["ventas"]:
-        c.append(f"De cada $100 vendidos: ${round(tot['compras'] / tot['ventas'] * 100)} en compras, "
+        c.append(f"De cada $100 vendidos: ${round((tot['compras'] + tot['compras_bc_mc']) / tot['ventas'] * 100)} en compras, "
                  f"${round(tot['sueldos'] / tot['ventas'] * 100)} en remuneraciones, ${round(tot['cargas'] / tot['ventas'] * 100)} "
                  f"en cargas sociales y ${round(tot['iibb'] / tot['ventas'] * 100)} en IIBB.")
     if tot["resultado"] < 0:
