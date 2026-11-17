@@ -9,7 +9,7 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 echo "== Contraseña del paquete:"
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 300000 -in "$ENC" -out "$TMP/m.tgz"
 mkdir "$TMP/m"; tar -C "$TMP/m" -xzf "$TMP/m.tgz"
-exec 9>/tmp/robots_todo.lock; flock -w 3600 9
+if [ -e /tmp/robots_todo.lock ]; then exec 9</tmp/robots_todo.lock; else exec 9>/tmp/robots_todo.lock; fi; flock -w 3600 9
 if [ -f /etc/robots/llave_maestra.key ] && ! cmp -s /etc/robots/llave_maestra.key "$TMP/m/etc_robots/llave_maestra.key"; then
   mv /etc/robots "/etc/robots.antes.$(date +%Y%m%d%H%M%S)"; mkdir /etc/robots
 fi

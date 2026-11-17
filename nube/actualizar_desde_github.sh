@@ -38,7 +38,10 @@ PY
 }
 
 instalar_desde() {   # $1 = carpeta con robots/ y robots_web/
-  exec 9>/tmp/robots_todo.lock; flock -w 7200 9 || { echo "corrida muy larga, se reintenta"; return 1; }
+  # /tmp tiene protected_regular: root no puede ABRIR PARA ESCRIBIR un archivo de otro usuario en /tmp.
+  # El candado lo crea el usuario robot; se abre solo para lectura (flock funciona igual).
+  if [ -e /tmp/robots_todo.lock ]; then exec 9</tmp/robots_todo.lock; else exec 9>/tmp/robots_todo.lock; fi
+  flock -w 7200 9 || { echo "corrida muy larga, se reintenta"; return 1; }
   rm -rf "$ANT"; mkdir -p "$ANT"
   cp -a /home/robot/app/robots "$ANT/robots"; cp -a /opt/robots-web/robots_web "$ANT/robots_web"
   rsync -a --delete --exclude '__pycache__' "$1/robots/" /home/robot/app/robots/
