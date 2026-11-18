@@ -41,6 +41,9 @@ SERVICIOS = {
     "fiscalizacion_electronica": "texto:FISCALIZACI[OÓ]N\\s+ELECTR[OÓ]NICA",
     "ordenes_intervencion": "texto:(CONSULTA\\s+DE\\s+)?[OÓ]RDENES\\s+DE\\s+INTERVENCI[OÓ]N",
     "siace": "texto:SIACE|CONTROLES\\s+ELECTR[OÓ]NICOS",
+    # relevados con Gaby el 17/11/2026 (control de pagos de autónomos y monotributo)
+    "ccma": "texto:CCMA\\s*-\\s*CUENTA\\s+CORRIENTE\\s+DE\\s+CONTRIBUYENTES",   # NO "CCMA - ARBA - ..."
+    "monotributo": "texto:^\\s*MONOTRIBUTO\\s*$",
 }
 
 

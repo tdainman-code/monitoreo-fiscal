@@ -34,13 +34,13 @@ from contextlib import closing
 
 from . import almacen_claves as alm
 from . import arca, robot_agip, robot_arba, robot_arba_dfe, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_situacion_fiscal, robot_todo
-from . import robot_fiscalizaciones
+from . import robot_ccma, robot_fiscalizaciones
 
 REGISTRO = os.environ.get("ROBOTS_REGISTRO", "/var/lib/robots/ejecuciones.jsonl")
 ROBOTS = {"mis_comprobantes": robot_mis_comprobantes, "situacion_fiscal": robot_situacion_fiscal,
           "f931": robot_f931, "sifere": robot_sifere, "dfe": robot_dfe, "todo": robot_todo, "arba": robot_arba,
           "libro_iva": robot_libro_iva, "observados": robot_observados, "arba_dfe": robot_arba_dfe,
-          "agip": robot_agip, "fiscalizaciones": robot_fiscalizaciones}
+          "agip": robot_agip, "fiscalizaciones": robot_fiscalizaciones, "ccma": robot_ccma}
 
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -245,7 +245,7 @@ def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, 
             extra_txt += "".join(f"\n     informe: {v}" for v in (res.get("informes") or []))
         if robot == "todo":
             extra_txt = "".join(f"\n     {k}: {_resumir(v)}" for k, v in res.items()
-                                if k in ("mis_comprobantes", "f931", "sifere", "libro_iva", "arba", "arba_dfe", "dfe", "agip", "fiscalizaciones") and v)
+                                if k in ("mis_comprobantes", "f931", "sifere", "libro_iva", "arba", "arba_dfe", "dfe", "agip", "fiscalizaciones", "ccma") and v)
             extra_txt += "".join(f"\n     ERROR {k}: {v[:150]}" for k, v in errores.items())
             extra_txt += "".join(f"\n     informe: {v}" for v in (res.get("informes") or []))
         return f"OK ({n_alertas} alertas){extra_txt}"

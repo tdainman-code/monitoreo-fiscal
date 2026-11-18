@@ -105,6 +105,10 @@ def situacion(cuit: str) -> dict:
     agip = _leer(_ultimo(os.path.join(base, "agip", "[0-9]*", "resultado.json")))
     fisc = _leer(_ultimo(os.path.join(base, "fiscalizaciones", "*.json")))
     r["agip"], r["fisc"] = agip, fisc
+    ccma = _leer(_ultimo(os.path.join(base, "ccma", "*.json")))   # autónomos / monotributo (17/11/2026)
+    r["ccma"] = ccma
+    r["ccma_impagos"] = len((ccma or {}).get("impagos") or [])
+    r["ccma_deuda"] = (ccma or {}).get("deuda_impaga") or 0.0
     r["agip_altas"] = (agip or {}).get("altas_sin_abrir") or 0
     r["agip_deuda"] = ((agip or {}).get("deuda") or {}).get("total") or 0.0
     # Solo filas con estado abierto (mismo criterio que el robot desde el 17/11; corrige datos ya bajados)
@@ -119,13 +123,13 @@ def situacion(cuit: str) -> dict:
     r["fiscalizaciones"] = (len((fisc or {}).get("en_curso") or []) + len((fisc or {}).get("siace") or [])
                             + len((fisc or {}).get("fiscalizacion_electronica") or []) + len(agip_f))
     r["ratio"] = analisis.ratio_dc(analisis.iva_mensual(cuit))
-    r["alertas"] += ((agip or {}).get("alertas") or []) + ((fisc or {}).get("alertas") or [])
+    r["alertas"] += ((agip or {}).get("alertas") or []) + ((fisc or {}).get("alertas") or []) + ((ccma or {}).get("alertas") or [])
     ratio_mal = r["ratio"]["nivel"] if r["ratio"] and r["ratio"]["meses"] >= 6 else ""
     minima = analisis.REGLAS["deuda_minima"]
-    if not sit and not dfe and not agip and not fisc:
+    if not sit and not dfe and not agip and not fisc and not ccma:
         r["semaforo"], r["motivo"] = "gris", "Sin datos todavía"
     elif (r["cuotas_impagas"] or r["ddjj"] or r["dfe_altas"] or r["caducos"] or r["deuda_cm"] or r["arba_altas"]
-          or r["agip_altas"] or r["fiscalizaciones"] or ratio_mal == "Crítico"):
+          or r["agip_altas"] or r["fiscalizaciones"] or r["ccma_impagos"] or ratio_mal == "Crítico"):
         r["semaforo"] = "rojo"
         r["motivo"] = ", ".join(x for x in [
             f"{r['cuotas_impagas']} cuota(s) impaga(s)" if r["cuotas_impagas"] else "",
@@ -136,6 +140,7 @@ def situacion(cuit: str) -> dict:
             f"{r['arba_altas']} aviso(s) de ARBA" if r["arba_altas"] else "",
             f"{r['agip_altas']} aviso(s) de AGIP" if r["agip_altas"] else "",
             f"{r['fiscalizaciones']} fiscalización(es)/control(es) abiertos" if r["fiscalizaciones"] else "",
+            f"{r['ccma_impagos']} período(s) de autónomos/monotributo impago(s)" if r["ccma_impagos"] else "",
             f"relación D/C crítica ({r['ratio']['ratio']:.2f})".replace(".", ",") if ratio_mal == "Crítico" else ""] if x)
     elif ((r["deuda_vencida"] or 0) >= minima or r["agip_deuda"] >= minima or r["cuotas_15"] or r["errores"]
           or ratio_mal == "Advertencia"):
@@ -341,6 +346,13 @@ def ficha(cuit: str) -> dict:
     if s["fisc"] or (s["agip"] or {}).get("fiscalizacion") is not None:
         b.append({"id": "fiscalizaciones", "titulo": "Fiscalizaciones", "valor": s["fiscalizaciones"],
                   "sub": "ARCA (OI, SIACE) y AGIP", "color": "rojo" if s["fiscalizaciones"] else "verde"})
+    if s["ccma"]:
+        cm_ = s["ccma"]
+        b.append({"id": "ccma", "titulo": "Autónomos / Monotributo", "valor": s["ccma_deuda"] or (0 if not cm_.get("sin_ccma") else None),
+                  "pesos": bool(s["ccma_deuda"]),
+                  "sub": (f"{s['ccma_impagos']} período(s) impago(s)" if s["ccma_impagos"] else
+                          "sin deuda" if cm_.get("sin_ccma") else "pagos al día") + f" · CCMA {cm_.get('fecha', '')[8:10]}/{cm_.get('fecha', '')[5:7]}",
+                  "color": "rojo" if s["ccma_impagos"] else "amarillo" if (cm_.get("totales") or {}).get("deudor_accesorios") else "verde"})
     if s["agip"]:
         b.append({"id": "agip", "titulo": "AGIP (Ciudad)", "valor": s["agip_deuda"] or None, "pesos": True,
                   "sub": f"{(s['agip'] or {}).get('sin_abrir') or 0} comunicaciones sin abrir · deuda",

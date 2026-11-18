@@ -192,7 +192,8 @@ SECCIONES = {"deuda": "Deuda ARCA", "planes": "Planes de pago", "vencimientos": 
              "ddjj": "DDJJ / faltas de presentación", "notificaciones": "Notificaciones", "iibb": "Ingresos Brutos",
              "relacion": "Relación débito crédito", "compras": "Compras y APOC", "informes": "Informes Excel",
              "notas": "Notas del equipo", "iva": "Débito / crédito y proyección de IVA",
-             "resultado": "Resultado mensual", "fiscalizaciones": "Fiscalizaciones y verificaciones", "agip": "AGIP (Ciudad)"}
+             "resultado": "Resultado mensual", "fiscalizaciones": "Fiscalizaciones y verificaciones", "agip": "AGIP (Ciudad)",
+             "ccma": "Autónomos y Monotributo (CCMA)"}
 
 
 def _cliente_info(cuit):

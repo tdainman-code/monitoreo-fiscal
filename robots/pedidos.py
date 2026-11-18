@@ -29,6 +29,7 @@ ROBOTS_PERMITIDOS = {
     "dfe": "Domicilio fiscal electrónico ARCA",
     "libro_iva": "Libro IVA (débito / crédito)",
     "fiscalizaciones": "Fiscalizaciones ARCA",
+    "ccma": "Autónomos y Monotributo (pagos, CCMA)",
     "agip": "AGIP (DFE, deuda, fiscalización)",
     "arba_dfe": "ARBA (domicilio fiscal electrónico)",
     # botones de la pantalla Avisos (cuotas impagas): no entran a ARCA salvo para el VEP

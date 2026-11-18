@@ -203,6 +203,29 @@
   {% for t in ag.get('fiscalizacion_tablas') or [] %}<table class="tabla"><thead><tr>{% for h in t.encabezados %}<th>{{ h }}</th>{% endfor %}</tr></thead><tbody>
   {% for fila in t.filas %}<tr class="fila-roja">{% for v in fila %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>{% endfor %}
 
+{% elif sec == 'ccma' %}
+  {% set cm = s.ccma %}
+  {% if cm and cm.sin_ccma %}
+  <p>Monotributo no derivó a la cuenta corriente (CCMA) el {{ cm.fecha|fecha }}: según ARCA <b>no hay deuda</b>.</p>
+  <p class="sutil">{{ cm.texto[:400] }}</p>
+  {% elif cm %}
+  {% set t = cm.totales or {} %}
+  <div class="tarjetas">
+    <div class="tarjeta"><span class="sutil">Períodos impagos (más de 4 días)</span><b class="{{ 'txt-rojo' if cm.impagos }}">{{ cm.impagos|length }}</b></div>
+    <div class="tarjeta"><span class="sutil">Deuda impaga</span><b class="{{ 'txt-rojo' if cm.deuda_impaga }}">{{ cm.deuda_impaga|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Saldo deudor según ARCA</span><b>{{ t.deudor|pesos if t.deudor is not none else '—' }}</b><span class="sutil">obligación {{ t.deudor_obligacion|pesos if t.deudor_obligacion is not none else '—' }} · intereses {{ t.deudor_accesorios|pesos if t.deudor_accesorios is not none else '—' }}</span></div>
+    <div class="tarjeta"><span class="sutil">Saldo a favor</span><b>{{ t.acreedor|pesos if t.acreedor is not none else '—' }}</b></div>
+  </div>
+  <p class="sutil">{{ t.tipo or 'Autónomos / Monotributo' }} · consultado el {{ cm.fecha|fecha }}. Un período vencido se marca impago recién a los 4 días corridos (el pago tarda en verse en ARCA).</p>
+  <table class="tabla"><thead><tr><th>Período</th><th>Impuesto</th><th>Vencimiento</th><th class="num">Obligación</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Estado</th></tr></thead><tbody>
+  {% for p in cm.periodos %}<tr class="{{ 'fila-roja' if p.estado == 'IMPAGO' }}"><td>{{ p.periodo }}</td><td data-l="Impuesto">{{ p.impuestos }}</td>
+    <td data-l="Vencimiento">{{ p.vencimiento|fecha if p.vencimiento else '—' }}</td><td class="num" data-l="Obligación">{{ p.obligacion|pesos }}</td>
+    <td class="num" data-l="Pagado">{{ p.pagado|pesos }}</td><td class="num {{ 'txt-rojo' if p.saldo < 0 }}" data-l="Saldo">{{ p.saldo|pesos }}</td>
+    <td data-l="Estado"><b class="{{ 'txt-rojo' if p.estado == 'IMPAGO' }}">{{ p.estado }}</b>{% if p.estado == 'IMPAGO' %} <span class="sutil">({{ p.dias_vencido }} días)</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="7" class="sutil">Sin movimientos.</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="sutil">Todavía no se consultó la cuenta de autónomos / monotributo (se lee en la corrida "Todo" o pidiendo "Autónomos y Monotributo").</p>{% endif %}
+
 {% elif sec == 'agip' %}
   {% set ag = s.agip or {} %}
   {% if ag %}

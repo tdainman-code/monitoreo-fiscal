@@ -169,6 +169,18 @@ r2 = cl.get(f"/cliente/{C2}/relacion")
 ok(r2.status_code == 200 and all(t in r2.text for t in ("Cargas sociales (F.931)", "Total erogaciones", "SALDO MENSUAL",
    "Índice erogaciones / ventas", "Índice acumulado", "Margen de utilidad bruto", "IIBB determinado")),
    "relación débito crédito: cuadro como la planilla (erogaciones, saldo, índices y margen)")
+escribir(f"{D}/{C}/ccma/2026-11-17.json", {"cuit": C, "fecha": "2026-11-17", "totales": {"deudor": 120036.74, "deudor_obligacion": 120000.0,
+         "deudor_accesorios": 36.74, "acreedor": 0.0, "tipo": "MONOTRIBUTISTA"},
+         "periodos": [{"periodo": "09/2026", "impuestos": "MON", "vencimiento": "2026-10-20", "obligacion": 120000.0, "pagado": 0.0,
+                       "saldo": -120000.0, "estado": "IMPAGO", "dias_vencido": 28}],
+         "impagos": [{"periodo": "09/2026", "saldo": -120000.0}], "deuda_impaga": 120000.0,
+         "alertas": [{"prioridad": "ALTA", "tipo": "Autónomos / Monotributo impago", "texto": "Monotributista: 1 período(s) impago(s) (09/2026)"}]})
+_rc = cl.get(f"/cliente/{C}/ccma").text
+ok("09/2026" in _rc and "IMPAGO" in _rc and "120.000,00" in _rc and "28 días" in _rc, "autónomos / monotributo: períodos impagos")
+_f = cl.get(f"/cliente/{C}").text
+ok("Autónomos / Monotributo" in _f and "1 período(s) impago(s)" in _f, "ficha: tarjeta de autónomos / monotributo")
+ok("Autónomos / Monotributo impago" in cl.get("/alertas").text, "alertas del día: monotributo impago")
+os.remove(f"{D}/{C}/ccma/2026-11-17.json")
 _mf = app.test_client().get("/manifest.webmanifest")
 ok(_mf.status_code == 200 and "icono-512.png" in _mf.text and _mf.mimetype == "application/manifest+json"
    and app.test_client().get("/static/icono-192.png").status_code == 200, "celular: se instala como app (manifest con íconos)")
