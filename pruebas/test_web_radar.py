@@ -264,6 +264,59 @@ ok(usuarios.datos_cliente(C).get("emails") == "x@y.com", "el resto de los datos 
 ok(f"/cliente/{C}" in cb.get("/").text, "Beto ahora ve el cliente asignado por planilla")
 ok(ca.post("/asignaciones", data={"csrf": token(_r.text), "planilla": (_io.BytesIO(b"no"), "x.txt")},
            content_type="multipart/form-data", follow_redirects=True).status_code == 200, "archivo que no es Excel: rechazado")
+# planilla completa: datos del cliente, claves (cifradas al instante) y alta de un cliente nuevo
+import subprocess as _sp  # noqa: E402
+from robots_web import claves as _claves  # noqa: E402
+_priv, _pub = os.path.join(R, "priv.pem"), os.path.join(R, "pub.pem")
+_sp.run(["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048", "-out", _priv], check=True, capture_output=True)
+_sp.run(["openssl", "pkey", "-in", _priv, "-pubout", "-out", _pub], check=True, capture_output=True)
+_claves.PUB = _pub
+def _cuit_ok(base10):
+    s_ = sum(int(d) * m for d, m in zip(base10, (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)))
+    v_ = {11: 0, 10: 9}.get(11 - s_ % 11, 11 - s_ % 11)
+    return base10 + str(v_)
+NUEVO = _cuit_ok("2730123456")
+_x = ca.get("/asignaciones?bajar=1")
+_wb = _lw(_io.BytesIO(_x.data)); _ws = _wb["Clientes"]
+_tit = [c.value for c in _ws[1]]
+_col = {t: i for i, t in enumerate(_tit)}
+ok(all(t in _tit for t in ("Condición frente al IVA", "Mails del cliente", "Teléfonos", "Clave fiscal ARCA", "CIT ARBA", "Clave Ciudad AGIP")),
+   "planilla con todos los datos del cliente y columnas de claves")
+ok(all(r[_col["Clave fiscal ARCA"]].value in (None, "") for r in _ws.iter_rows(min_row=2)), "las claves nunca se bajan")
+_fila_c = next(r for r in _ws.iter_rows(min_row=2) if str(r[0].value).replace("-", "") == C)
+_fila_c[_col["Condición frente al IVA"]].value = "Monotributo"
+_fila_c[_col["Teléfonos"]].value = "11 4444-5555"
+_fila_c[_col["Mails del cliente"]].value = "-"
+_fila_c[_col["Medios de pago del VEP (según sus bancos)"]].value = "banelco, interbanking"
+_fila_c[_col["CIT ARBA"]].value = "CitSecreta#1"
+_fila_c[_col["Mes de cierre"]].value = "Trece"
+_n = [None] * len(_tit)
+_n[_col["CUIT"]], _n[_col["Razón social"]], _n[_col["Clave fiscal ARCA"]] = NUEVO, "CLIENTE NUEVO SRL", "ArcaSecreta#2"
+_n[_col["Encargado (usuario)"]] = "beto"
+_ws.append(_n)
+_ws.append([_cuit_ok("2033333333")] + [None] * (len(_tit) - 1))          # nuevo sin clave: no se da de alta
+_buf = _io.BytesIO(); _wb.save(_buf); _buf.seek(0)
+_antes = set(os.listdir(BANDEJA))
+_r = ca.post("/asignaciones", data={"csrf": token(ca.get("/asignaciones").text), "planilla": (_buf, "clientes.xlsx")},
+             content_type="multipart/form-data", follow_redirects=True)
+_d = usuarios.datos_cliente(C)
+ok(_d["condicion_iva"] == "Monotributo" and _d["telefonos"] == "11 4444-5555" and _d["emails"] == ""
+   and _d["medios_vep"] == "Pago Mis Cuentas (Banelco), Interbanking" and _d.get("equipo") == "ana",
+   "datos del cliente cargados por planilla (vacío no cambia, guion borra)")
+ok("Trece" in _r.text and "no es una opción válida" in _r.text, "valor fuera de lista: avisa y no lo cambia")
+_sobres = [json.load(open(os.path.join(BANDEJA, n))) for n in set(os.listdir(BANDEJA)) - _antes if n.endswith(".json")]
+ok(sorted((x["cuit"], x["organismo"]) for x in _sobres) == sorted([(C, "ARBA"), (NUEVO, "ARCA")]), "claves enviadas al robot (un sobre por clave)")
+_txt = json.dumps(_sobres) + _r.text
+ok("CitSecreta" not in _txt and "ArcaSecreta" not in _txt, "las claves no quedan a la vista (ni en sobres ni en mensajes)")
+_sello = next(x for x in _sobres if x["organismo"] == "ARBA")["clave_sellada"]
+_dec = _sp.run(["openssl", "pkeyutl", "-decrypt", "-inkey", _priv, "-pkeyopt", "rsa_padding_mode:oaep", "-pkeyopt", "rsa_oaep_md:sha256",
+                "-pkeyopt", "rsa_mgf1_md:sha256"], input=__import__("base64").b64decode(_sello), capture_output=True).stdout.decode()
+ok(_dec == "CitSecreta#1", "solo el robot (llave privada) puede abrir la clave")
+ok(usuarios.datos_cliente(NUEVO).get("encargado") == "beto" and "1 alta(s) nueva(s)" in _r.text
+   and "sin Clave fiscal ARCA" in _r.text, "alta de cliente nuevo con clave de ARCA; sin clave no se da de alta")
+for n in set(os.listdir(BANDEJA)) - _antes:
+    if n.endswith(".json"):
+        os.remove(os.path.join(BANDEJA, n))
 usuarios.guardar_datos_cliente(C, {**usuarios.datos_cliente(C), "encargado": "", "equipo": "ana"}, "gabriel")
 _mf = app.test_client().get("/manifest.webmanifest")
 ok(_mf.status_code == 200 and "icono-512.png" in _mf.text and _mf.mimetype == "application/manifest+json"

@@ -21,7 +21,7 @@
     {% elif k in opciones %}<select name="{{ k }}">{% for o in opciones[k] %}<option value="{{ o }}" {{ 'selected' if d.get(k) == o }}>{{ o or '—' }}</option>{% endfor %}</select>
     {% elif k == 'observaciones' %}<textarea name="{{ k }}" rows="3">{{ d.get(k, '') }}</textarea>
     {% else %}<input name="{{ k }}" value="{{ d.get(k, '') }}" maxlength="500"
-      placeholder="{{ {'emails': 'separados por coma', 'contadores': 'quién lo lleva', 'jurisdicciones_iibb': 'ej.: CABA, Buenos Aires', 'agente': 'ej.: SICORE, ARBA percepción', 'whatsapp': '+54 9 11 ...', 'convenios': 'ej.: Comercio'}.get(k, '') }}">{% endif %}
+      placeholder="{{ {'emails': 'separados por coma', 'contadores': 'quién lo lleva', 'jurisdicciones_iibb': 'ej.: CABA, Buenos Aires', 'agente': 'ej.: SICORE, ARBA percepción', 'whatsapp': '+54 9 11 ...', 'telefonos': 'ej.: 11 4444-5555, 11 15 6666-7777', 'convenios': 'ej.: Comercio'}.get(k, '') }}">{% endif %}
     </label>
   {% endfor %}
   <div class="ancho"><button>Guardar</button></div>

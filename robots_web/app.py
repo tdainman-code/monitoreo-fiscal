@@ -445,7 +445,7 @@ CAMPOS_CLIENTE = {
     "equipo": "También lo llevan (ven este cliente)",
     "contadores": "Contador/es a cargo", "emails": "Mails del cliente",
     "medios_vep": "Medios de pago del VEP (según sus bancos)",
-    "whatsapp": "WhatsApp", "observaciones": "Observaciones",
+    "telefonos": "Teléfonos", "whatsapp": "WhatsApp", "observaciones": "Observaciones",
 }
 OPCIONES_CLIENTE = {
     "condicion_iva": ["", "Responsable inscripto", "Monotributo", "Exento", "No alcanzado"],
@@ -620,61 +620,91 @@ def actividad():
 @app.route("/asignaciones", methods=["GET", "POST"])
 @requiere_admin
 def asignaciones():
-    """Asignar los clientes de cada empleado con una planilla (18/11/2026)."""
+    """Planilla de clientes (18/11/2026): quién lleva cada cliente, sus datos, claves y altas nuevas."""
     from . import asignaciones as asg
     activos = [u for u in usuarios.listar() if u[3]]
+    clientes = datos.lista_clientes()
     if request.method == "POST":
         _controlar_csrf()
         f = request.files.get("planilla")
         if not f or not f.filename.lower().endswith(".xlsx"):
             flash("Subí la planilla en formato Excel (.xlsx)", "error")
             return redirect(url_for("asignaciones"))
-        contenido = f.read(5_000_001)
-        if len(contenido) > 5_000_000:
+        contenido = f.read(10_000_001)
+        if len(contenido) > 10_000_000:
             flash("La planilla es demasiado grande", "error")
             return redirect(url_for("asignaciones"))
         try:
-            nuevos, errores = asg.leer(contenido, {u[0] for u in activos})
+            filas, errores = asg.leer(contenido, {u[0] for u in activos}, CAMPOS_CLIENTE, OPCIONES_CLIENTE, MEDIOS_VEP)
         except ImportError:
             flash("Falta instalar openpyxl en la web (se instala sola con la próxima actualización)", "error")
             return redirect(url_for("asignaciones"))
-        conocidos = {c["cuit"] for c in datos.lista_clientes()}
-        cambiados = 0
-        for cuit, a in nuevos.items():
-            if cuit not in conocidos:
-                errores.append(f"{cuit}: no es un cliente del sistema (no se cargó)")
+        finally:
+            contenido = None                                   # el archivo no se guarda en ningún lado
+        conocidos = {c["cuit"]: c.get("razon_social") or "" for c in clientes}
+        cambiados = altas = n_claves = 0
+        for cuit, x in filas.items():
+            nuevo_cli = cuit not in conocidos
+            if nuevo_cli:
+                if not claves.cuit_valido(cuit):
+                    errores.append(f"Fila {x['fila']}: el CUIT {cuit} no es válido")
+                    continue
+                if "ARCA" not in x["claves"] or not x["razon_social"]:
+                    errores.append(f"Fila {x['fila']} ({cuit}): cliente nuevo sin Razón social o sin Clave fiscal ARCA (no se dio de alta)")
+                    continue
+            # claves: un sobre cifrado por clave (la de ARCA primero: da de alta al cliente nuevo)
+            enviados = []
+            for org in sorted(x["claves"], key=lambda o: o != "ARCA"):
+                u, k = x["claves"][org]
+                try:
+                    claves.encolar(cuit, x["razon_social"] or conocidos.get(cuit, ""), org, u or cuit, k, session["usuario"])
+                    enviados.append(org)
+                except claves.ErrorClaves as e:
+                    errores.append(f"Fila {x['fila']} ({cuit}) {org}: {e}")
+            x["claves"] = None
+            if enviados:
+                n_claves += len(enviados)
+                usuarios.registrar(session["usuario"], "clave enviada por planilla", f"{cuit} {', '.join(enviados)}", _ip())
+            if nuevo_cli and "ARCA" not in enviados:
                 continue
+            altas += nuevo_cli
             d = usuarios.datos_cliente(cuit) or {}
-            if (d.get("encargado") or "", d.get("equipo") or "") != (a["encargado"], a["equipo"]):
-                usuarios.guardar_datos_cliente(cuit, {**d, **a}, session["usuario"])
+            nuevos = {**d, **x["datos"]}
+            if nuevos != d:
+                usuarios.guardar_datos_cliente(cuit, nuevos, session["usuario"])
                 cambiados += 1
-        usuarios.registrar(session["usuario"], "asignación de clientes por planilla", f"{cambiados} cambiados", _ip())
-        flash(f"Planilla importada: {cambiados} cliente(s) cambiados, {len(nuevos) - cambiados} sin cambios.", "ok")
-        for e in errores[:30]:
+        filas = None
+        usuarios.registrar(session["usuario"], "planilla de clientes",
+                           f"{cambiados} con datos cambiados, {altas} altas, {n_claves} claves", _ip())
+        flash(f"Planilla importada: {cambiados} cliente(s) con datos cambiados, {altas} alta(s) nueva(s), "
+              f"{n_claves} clave(s) enviada(s) al robot (las comprueba en unos minutos). "
+              "Si la planilla tenía claves, borrá el archivo de tu computadora.", "ok")
+        for e in errores[:40]:
             flash(e, "error")
-        if len(errores) > 30:
-            flash(f"… y {len(errores) - 30} observaciones más", "error")
+        if len(errores) > 40:
+            flash(f"… y {len(errores) - 40} observaciones más", "error")
         return redirect(url_for("asignaciones"))
     if request.args.get("bajar"):
         try:
-            cont = asg.generar(datos.lista_clientes(), {c["cuit"]: usuarios.datos_cliente(c["cuit"]) or {}
-                                                         for c in datos.lista_clientes()},
-                               [(u[0], u[1], u[2]) for u in activos])
+            cont = asg.generar(clientes, {c["cuit"]: usuarios.datos_cliente(c["cuit"]) or {} for c in clientes},
+                               [(u[0], u[1], u[2]) for u in activos], CAMPOS_CLIENTE, OPCIONES_CLIENTE, MEDIOS_VEP)
         except ImportError:
             flash("Falta instalar openpyxl en la web (se instala sola con la próxima actualización)", "error")
             return redirect(url_for("asignaciones"))
-        usuarios.registrar(session["usuario"], "bajó la planilla de asignación de clientes", "", _ip())
+        usuarios.registrar(session["usuario"], "bajó la planilla de clientes", "", _ip())
         from io import BytesIO
-        return send_file(BytesIO(cont), as_attachment=True, download_name="asignacion_clientes.xlsx",
+        return send_file(BytesIO(cont), as_attachment=True, download_name="planilla_clientes.xlsx",
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     resumen = {}
-    for c in datos.lista_clientes():
+    sin = 0
+    for c in clientes:
         d = usuarios.datos_cliente(c["cuit"]) or {}
-        for u in [d.get("encargado")] + [x.strip() for x in str(d.get("equipo") or "").split(",")]:
+        sin += not d.get("encargado")
+        for u in {d.get("encargado")} | {x.strip() for x in str(d.get("equipo") or "").split(",")}:
             if u:
                 resumen[u] = resumen.get(u, 0) + 1
-    sin = sum(1 for c in datos.lista_clientes() if not (usuarios.datos_cliente(c["cuit"]) or {}).get("encargado"))
-    return render_template("asignaciones.html", activos=activos, resumen=resumen, sin=sin, total=len(datos.lista_clientes()))
+    return render_template("asignaciones.html", activos=activos, resumen=resumen, sin=sin, total=len(clientes),
+                           claves_listo=claves.listo())
 
 
 @app.route("/usuarios", methods=["GET", "POST"])
