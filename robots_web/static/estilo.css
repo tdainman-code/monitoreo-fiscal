@@ -171,3 +171,17 @@ a.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.10)}
 .tabla.relacion tr.fila-seccion td{background:#e0f2fe;color:#075985;padding-top:10px}
 .celda-falta{background:#fffbeb!important}
 @media (max-width:900px){.tabla.relacion thead{display:table-header-group}.tabla.relacion tr{display:table-row}.tabla.relacion td{display:table-cell}.tabla.relacion td[data-l]::before{content:none}}
+/* celular, ajustes finales (17/11/2026): fichas en 2 columnas, importes sin cortar, filas compactas */
+@media (max-width:700px){
+ .botonera{grid-template-columns:1fr 1fr;gap:10px}
+ .boton-ficha{min-height:96px;padding:12px}.boton-ficha .numero{font-size:20px}.boton-ficha .titulo{font-size:11px}
+ .tarjetas{grid-template-columns:1fr 1fr}
+ .tarjeta b,.kpi b{white-space:nowrap;font-size:17px;overflow:hidden;text-overflow:ellipsis}
+ .tabla:not(.relacion) td{padding:4px 12px;min-height:0;line-height:1.35}
+ .tabla:not(.relacion) tr{padding:8px 0}
+ .tabla:not(.relacion) td[data-l]::before{flex:0 0 auto}
+ .boton,button{min-height:40px}
+ h1{font-size:22px}
+}
+@media (max-width:700px){.boton-ficha .numero{white-space:nowrap;font-size:18px;overflow:hidden;text-overflow:ellipsis}
+ .boton-ficha .numero small{display:block;font-size:13px;margin-top:2px}}

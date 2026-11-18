@@ -169,6 +169,9 @@ r2 = cl.get(f"/cliente/{C2}/relacion")
 ok(r2.status_code == 200 and all(t in r2.text for t in ("Cargas sociales (F.931)", "Total erogaciones", "SALDO MENSUAL",
    "Índice erogaciones / ventas", "Índice acumulado", "Margen de utilidad bruto", "IIBB determinado")),
    "relación débito crédito: cuadro como la planilla (erogaciones, saldo, índices y margen)")
+_mf = app.test_client().get("/manifest.webmanifest")
+ok(_mf.status_code == 200 and "icono-512.png" in _mf.text and _mf.mimetype == "application/manifest+json"
+   and app.test_client().get("/static/icono-192.png").status_code == 200, "celular: se instala como app (manifest con íconos)")
 from robots_web.app import utilidad  # noqa: E402
 ok(utilidad(1.5) == "50,00%" and utilidad(0.87) == "−13,00%" and utilidad(1.23456) == "23,46%", "utilidad = D/C − 1 con 2 decimales")
 _ri = cl.get(f"/cliente/{C2}/iva").text
@@ -338,7 +341,13 @@ ok(cl.get("/sistema").status_code == 403, "un empleado no ve Sistema")
 ok(cl.get(f"/cliente/{C3}").status_code == 200 and cl.get(f"/cliente/{C3}/iva").status_code == 200, "cliente sin datos no rompe")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
-    for nom, url in (("inicio", "/"), ("ficha", f"/cliente/{C2}"), ("relacion", f"/cliente/{C2}/relacion")):
-        open(os.path.join(os.environ["VOLCAR_HTML"], nom + ".html"), "w", encoding="utf-8").write(cl.get(url).text)
+    css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()
+    for nom, url in (("inicio", "/"), ("ficha", f"/cliente/{C2}"), ("relacion", f"/cliente/{C2}/relacion"),
+                     ("iva", f"/cliente/{C2}/iva"), ("deuda", f"/cliente/{C}/deuda"), ("planes", f"/cliente/{C}/planes"),
+                     ("notificaciones", f"/cliente/{C2}/notificaciones"), ("cartera_dfe", "/cartera/dfe"),
+                     ("cartera_iva", "/cartera/iva"), ("alertas", "/alertas"), ("avisos", "/avisos"),
+                     ("datos", f"/cliente/{C2}/datos")):
+        html = re.sub(r'<link[^>]+estilo\.css[^>]*>', "<style>" + css + "</style>", cl.get(url).text)
+        open(os.path.join(os.environ["VOLCAR_HTML"], nom + ".html"), "w", encoding="utf-8").write(html)
 print(f"\n{sum(res)}/{len(res)} OK")
 sys.exit(0 if all(res) else 1)

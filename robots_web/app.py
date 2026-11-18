@@ -680,7 +680,9 @@ def cliente_claves(cuit):
 
 @app.route("/manifest.webmanifest")
 def manifest():
-    return app.send_static_file("manifest.webmanifest")
+    r = app.send_static_file("manifest.webmanifest")
+    r.mimetype = "application/manifest+json"
+    return r
 
 
 @app.errorhandler(403)
