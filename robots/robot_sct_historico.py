@@ -13,7 +13,8 @@ Recorrido:
      impuesto ("28 - SEGURO DE VIDA COLECTIVO"): Est. | Período | Concepto | Ant./Cuota | DEUDA | S.L.D. | SALDO TECNICO |
      OTROS CREDITOS | MULTAS NO FIRMES | Temp. DDJJ | Estado DDJJ | Temp. Pago | Estado Pago, con fila Subtotal.
      La DEUDA viene en ROJO si es propia de ARCA (IVA, 301, 351...) y en VERDE si ARCA la recauda para TERCEROS
-     (obras sociales 302/352, ART 312, seguro de vida 28) — explicado por Gaby el 17/11/2026.
+     (obras sociales 302/352, ART 312, seguro de vida 28) — explicado por Gaby el 17/11/2026. Para el estudio tienen
+     la MISMA importancia: el cliente la debe igual y lo pueden embargar o hacerle juicio. Solo se informa el destino.
   -> AÑO ANTERIOR y se repite, año por año.
 Solo consulta.
 """
