@@ -97,9 +97,12 @@ from robots_web import analisis, datos, usuarios  # noqa: E402
 
 con = usuarios.conectar()
 with con:
-    for u, n, p, rol in (("gabriel", "Gabriel", "claveadmin123", "admin"), ("ana", "Ana", "claveana12345", "empleado")):
+    for u, n, p, rol in (("gabriel", "Gabriel", "claveadmin123", "admin"), ("ana", "Ana", "claveana12345", "empleado"),
+                         ("beto", "Beto", "clavebeto12345", "empleado")):
         con.execute("INSERT INTO usuarios (usuario,nombre,hash,rol,activo,creado) VALUES (?,?,?,?,1,'x')",
                     (u, n, generate_password_hash(p), rol))
+for _c in (C, C2, C3):                       # Ana lleva los tres clientes de ejemplo (en el equipo, sin ser encargada)
+    usuarios.guardar_datos_cliente(_c, {"equipo": "ana"}, "gabriel")
 from robots_web.app import app  # noqa: E402
 
 app.config["TESTING"] = True
@@ -208,6 +211,35 @@ ok(cl.post("/revision/visto", data={"clave": "cm:99999999999:x", "cuit": C, "mar
    "visto: clave de otro cliente rechazada")
 for _x in ("sifere_deuda", "sct_historico"):
     os.remove(f"{D}/{C}/{_x}/2026-11-17.json")
+# cada empleado ve solo sus clientes; los administradores ven todo (18/11/2026)
+cb = app.test_client()
+login(cb, "beto", "clavebeto12345")
+_i = cb.get("/").text
+ok("0 cliente(s) que llevás vos" in _i and "no tenés clientes asignados" in _i, "empleado sin clientes asignados no ve ninguno")
+ca = app.test_client()
+login(ca, "gabriel", "claveadmin123")
+_r = ca.get(f"/cliente/{C2}/datos")
+ok('name="encargado"' in _r.text and 'name="equipo"' in _r.text, "administrador: asigna encargado y equipo")
+ca.post(f"/cliente/{C2}/datos", data={"csrf": token(_r.text), "encargado": "beto", "equipo": ["ana", "fantasma"]})
+_d = usuarios.datos_cliente(C2)
+ok(_d["encargado"] == "beto" and _d["equipo"] == "ana", "encargado Beto, equipo Ana (usuarios inexistentes descartados)")
+_i = cb.get("/").text
+ok("BH SOLUCIONES" in _i and "1 cliente(s) que llevás vos" in _i, "Beto ve solo el cliente que lleva")
+ok(cb.get(f"/cliente/{C}").status_code == 403 and cb.get(f"/cliente/{C}/deuda").status_code == 403,
+   "Beto no puede abrir un cliente que no lleva (ni por la dirección)")
+_tk = token(cb.get(f"/cliente/{C2}").text)
+ok(cb.post(f"/cliente/{C}/pedir", data={"csrf": _tk, "robot": "todo"}).status_code == 403, "ni pedir corridas de otro cliente")
+ok(cb.post(f"/cliente/{C}/nota", data={"csrf": _tk, "texto": "x"}).status_code == 403, "ni dejar notas en otro cliente")
+_otro = f"{C[:2]}-{C[2:10]}-{C[10]}"
+ok(f"/cliente/{C}" not in cb.get("/alertas").text and f"/cliente/{C}" in ca.get("/alertas").text, "alertas del día: solo de sus clientes")
+ok(all(f"/cliente/{C}" not in cb.get(f"/cartera/{v}").text for v in ("deudas", "dfe", "iva", "planes")), "cartera: solo sus clientes")
+_r = cb.get(f"/cliente/{C2}/datos")
+cb.post(f"/cliente/{C2}/datos", data={"csrf": token(_r.text), "encargado": "", "equipo": ["beto"], "emails": "z@z.com"})
+ok(usuarios.datos_cliente(C2)["encargado"] == "beto" and usuarios.datos_cliente(C2)["equipo"] == "ana",
+   "un empleado no puede cambiar quién lleva el cliente")
+_ia = ca.get("/").text
+ok("3 cliente(s)" in _ia and "que llevás vos" not in _ia, "el administrador ve todos los clientes")
+usuarios.guardar_datos_cliente(C2, {**usuarios.datos_cliente(C2), "encargado": "", "equipo": "ana"}, "gabriel")
 _mf = app.test_client().get("/manifest.webmanifest")
 ok(_mf.status_code == 200 and "icono-512.png" in _mf.text and _mf.mimetype == "application/manifest+json"
    and app.test_client().get("/static/icono-192.png").status_code == 200, "celular: se instala como app (manifest con íconos)")
@@ -311,7 +343,8 @@ pa = [json.load(open(os.path.join(BANDEJA, "pedidos", n))) for n in os.listdir(o
 ok(any(p.get("robot") == "aviso_vep" and p.get("aviso") == f"{C2}:W631300:2" for p in pa), "botón 'Enviar aviso + VEP' deja el pedido")
 ok(cl.post("/avisos", data={"csrf": "malo", "aviso": "x", "accion": "aviso_enviar"}).status_code == 400, "avisos con CSRF")
 r = cl.get(f"/cliente/{C2}/datos")
-ok('name="encargado"' in r.text and 'name="medios_vep"' in r.text, "datos del cliente: encargado y medios de pago del VEP")
+ok('name="encargado"' not in r.text and "Lo asigna un administrador" in r.text and 'name="medios_vep"' in r.text,
+   "datos del cliente (empleado): ve el encargado pero no lo cambia; medios de pago del VEP")
 cl.post(f"/cliente/{C2}/datos", data={"csrf": token(r.text), "medios_vep": ["Interbanking", "Pagar (Red Link)", "trucho"],
                                       "emails": "a@b.com"})
 ct = json.load(open(os.path.join(BANDEJA, "pedidos", "_contactos.txt")))

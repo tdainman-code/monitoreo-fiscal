@@ -244,6 +244,25 @@ def informadas() -> dict:
     return r
 
 
+def asignados(usuario: str) -> set:
+    """CUITs que lleva un usuario: es el encargado o está en el equipo del cliente (pedido del 18/11/2026:
+    cada empleado ve solo sus clientes; los administradores ven todo)."""
+    import json as _json
+    con = conectar()
+    filas = con.execute("SELECT cuit, datos FROM datos_cliente").fetchall()
+    con.close()
+    out = set()
+    for cuit, txt in filas:
+        try:
+            d = _json.loads(txt or "{}")
+        except ValueError:
+            continue
+        equipo = {x.strip() for x in str(d.get("equipo") or "").split(",") if x.strip()}
+        if d.get("encargado") == usuario or usuario in equipo:
+            out.add(cuit)
+    return out
+
+
 def datos_cliente(cuit) -> dict:
     import json as _json
     con = conectar()

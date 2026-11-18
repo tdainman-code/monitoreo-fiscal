@@ -1,7 +1,8 @@
 {% extends "base.html" %}{% block titulo %}Tablero{% endblock %}
 {% block cuerpo %}
 <div class="cabecera">
-  <div><h1>Tablero de clientes</h1><div class="sutil">{{ kpi.clientes }} cliente(s) · tocá una tarjeta para filtrar</div></div>
+  <div><h1>Tablero de clientes</h1><div class="sutil">{{ kpi.clientes }} cliente(s){% if solo_mios %} que llevás vos{% endif %} · tocá una tarjeta para filtrar</div>
+  {% if solo_mios and not kpi.clientes %}<div class="aviso">Todavía no tenés clientes asignados. Pedile a un administrador que te ponga como encargado (o en el equipo) en "Datos del cliente".</div>{% endif %}</div>
   <form class="buscar" method="get">
     <input name="q" value="{{ q }}" placeholder="🔍  Buscar por nombre o CUIT">
     {% if f %}<input type="hidden" name="f" value="{{ f }}">{% endif %}

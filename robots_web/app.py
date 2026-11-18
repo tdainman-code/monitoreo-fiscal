@@ -10,7 +10,7 @@ import secrets
 from datetime import date, timedelta
 from functools import wraps
 
-from flask import (Flask, abort, flash, redirect, render_template, request, send_file, session, url_for)
+from flask import (Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for)
 
 from . import analisis, claves, datos, pedidos, usuarios
 
@@ -176,7 +176,7 @@ def inicio():
     q = request.args.get("q", "").strip().lower()
     filtro = request.args.get("f", "")
     todos = []
-    for c in datos.lista_clientes():
+    for c in datos.lista_clientes(_solo()):
         if q and q not in c["cuit"] and q not in (c.get("razon_social") or "").lower():
             continue
         todos.append({**c, **datos.situacion(c["cuit"])})
@@ -186,7 +186,7 @@ def inicio():
     suma = lambda k: sum(x.get(k) or 0 for x in todos)
     kpi = {"clientes": len(todos), "deuda": suma("deuda_vencida"), "cuotas": suma("cuotas_impagas"),
            "dfe": suma("dfe_sin_abrir"), "ddjj": suma("ddjj")}
-    return render_template("inicio.html", filas=filas, q=q, f=filtro, cuenta=cuenta, kpi=kpi)
+    return render_template("inicio.html", filas=filas, q=q, f=filtro, cuenta=cuenta, kpi=kpi, solo_mios=_solo() is not None)
 
 
 SECCIONES = {"deuda": "Deuda ARCA", "planes": "Planes de pago", "vencimientos": "Vencimientos",
@@ -197,9 +197,25 @@ SECCIONES = {"deuda": "Deuda ARCA", "planes": "Planes de pago", "vencimientos": 
              "ccma": "Autónomos y Monotributo (CCMA)", "historica": "Deuda histórica (Cuentas Tributarias)"}
 
 
+def _solo():
+    """None = ve todos (administrador). Si no, el conjunto de CUITs que lleva (encargado o equipo). 18/11/2026."""
+    if session.get("rol") == "admin":
+        return None
+    if "_asignados" not in g:
+        g._asignados = usuarios.asignados(session.get("usuario", ""))
+    return g._asignados
+
+
+def _puede(cuit) -> bool:
+    s = _solo()
+    return s is None or cuit in s
+
+
 def _cliente_info(cuit):
     if not datos.CUIT_RE.match(cuit):
         abort(404)
+    if not _puede(cuit):
+        abort(403)
     return next((c for c in datos.lista_clientes() if c["cuit"] == cuit), {"cuit": cuit, "razon_social": ""})
 
 
@@ -245,7 +261,7 @@ VISTAS = {"dfe": "Domicilio fiscal electrónico", "deudas": "Deudas", "planes": 
 def cartera(vista):
     if vista not in VISTAS:
         abort(404)
-    todos = datos.cartera()
+    todos = datos.cartera(_solo())
     usuarios.registrar(session["usuario"], f"cartera {vista}", "", _ip())
     filas, extra = [], {}
     minima = analisis.REGLAS["deuda_minima"]
@@ -351,6 +367,7 @@ def dfe_informada():
     id_, cuit = request.form.get("id", ""), request.form.get("cuit", "")
     if not id_.isalnum() or not datos.CUIT_RE.match(cuit):
         abort(400)
+    _cliente_info(cuit)
     marcar = request.form.get("marcar") == "1"
     usuarios.marcar_informada(id_, cuit, session["usuario"], session.get("nombre", ""), marcar)
     usuarios.registrar(session["usuario"], "DFE informada" if marcar else "DFE desmarcada", cuit, _ip())
@@ -366,6 +383,7 @@ def revision_visto():
     clave, cuit = request.form.get("clave", ""), request.form.get("cuit", "")
     if not datos.CUIT_RE.match(cuit) or not re.fullmatch(r"(cm|sct):\d{11}:[\w.:-]{1,60}", clave) or f":{cuit}:" not in clave:
         abort(400)
+    _cliente_info(cuit)
     enc = (usuarios.datos_cliente(cuit) or {}).get("encargado")
     if session.get("rol") != "admin" and enc and enc != session["usuario"]:
         flash("Ese cliente tiene otro encargado", "error")
@@ -386,6 +404,7 @@ def dfe_mail():
     id_, cuit, a = request.form.get("id", ""), request.form.get("cuit", ""), request.form.get("a", "")
     if not id_.isalnum() or not datos.CUIT_RE.match(cuit) or a not in ("cliente", "admin"):
         abort(400)
+    _cliente_info(cuit)
     n = next((x for x in datos.ficha(cuit)["notificaciones"] if x["id"] == id_), None)
     if not n:
         flash("La comunicación ya no figura", "error")
@@ -423,6 +442,7 @@ CAMPOS_CLIENTE = {
     "regimen_iibb": "Régimen de Ingresos Brutos", "jurisdicciones_iibb": "Jurisdicciones de IIBB",
     "agente": "Agente de retención / percepción", "mes_cierre": "Mes de cierre", "empleador": "Empleador",
     "convenios": "Convenios colectivos", "encargado": "Encargado del estudio (recibe los avisos)",
+    "equipo": "También lo llevan (ven este cliente)",
     "contadores": "Contador/es a cargo", "emails": "Mails del cliente",
     "medios_vep": "Medios de pago del VEP (según sus bancos)",
     "whatsapp": "WhatsApp", "observaciones": "Observaciones",
@@ -448,21 +468,27 @@ def datos_del_cliente(cuit):
         for k, ops in OPCIONES_CLIENTE.items():
             if nuevos[k] not in ops:
                 nuevos[k] = ""
-        if nuevos["encargado"] not in {u[0] for u in usuarios.listar() if u[3]}:
+        activos = {u[0] for u in usuarios.listar() if u[3]}
+        if nuevos["encargado"] not in activos:
             nuevos["encargado"] = ""
+        nuevos["equipo"] = ", ".join(u for u in sorted(activos) if u in request.form.getlist("equipo") and u != nuevos["encargado"])
+        if session.get("rol") != "admin":                 # quién lleva el cliente lo decide un administrador
+            antes = usuarios.datos_cliente(cuit) or {}
+            nuevos["encargado"], nuevos["equipo"] = antes.get("encargado", ""), antes.get("equipo", "")
         nuevos["medios_vep"] = ", ".join(m for m in MEDIOS_VEP if m in request.form.getlist("medios_vep"))
         usuarios.guardar_datos_cliente(cuit, nuevos, session["usuario"])
         usuarios.registrar(session["usuario"], "datos del cliente", cuit, _ip())
         flash("Datos del cliente guardados", "ok")
         return redirect(url_for("cliente", cuit=cuit))
     return render_template("datos_cliente.html", c=info, d=usuarios.datos_cliente(cuit), campos=CAMPOS_CLIENTE,
-                           opciones=OPCIONES_CLIENTE, medios_vep=MEDIOS_VEP, encargados=[(u[0], u[1]) for u in usuarios.listar() if u[3]])
+                           opciones=OPCIONES_CLIENTE, medios_vep=MEDIOS_VEP, encargados=[(u[0], u[1]) for u in usuarios.listar() if u[3]],
+                           es_admin=session.get("rol") == "admin")
 
 
 @app.route("/alertas")
 @requiere_login
 def alertas():
-    return render_template("alertas.html", grupos=datos.alertas_del_dia())
+    return render_template("alertas.html", grupos=datos.alertas_del_dia(_solo()))
 
 
 @app.route("/mas")
@@ -475,8 +501,7 @@ def mas():
 @requiere_login
 def nueva_nota(cuit):
     _controlar_csrf()
-    if not datos.CUIT_RE.match(cuit):
-        abort(404)
+    _cliente_info(cuit)
     texto = request.form.get("texto", "").strip()
     if texto:
         usuarios.agregar_nota(cuit, session["usuario"], session["nombre"], texto)
@@ -496,7 +521,8 @@ def borrar_nota(id_):
 @requiere_login
 def todas_las_notas():
     nombres = {c["cuit"]: c.get("razon_social") or "" for c in datos.lista_clientes()}
-    return render_template("notas.html", notas=usuarios.notas(n=300), nombres=nombres)
+    return render_template("notas.html", notas=[n for n in usuarios.notas(n=300) if _puede(n.get("cuit") if isinstance(n, dict) else n[1])],
+                           nombres=nombres)
 
 
 @app.route("/sugerencias", methods=["GET", "POST"])
@@ -523,6 +549,9 @@ def bajar_informe(ruta):
     archivo = datos.ruta_informe_segura(ruta)
     if not archivo:
         abort(404)
+    m = re.search(r"(?<!\d)(\d{11})(?!\d)", os.path.basename(archivo))
+    if _solo() is not None and not (m and _puede(m[1])):
+        abort(403)
     usuarios.registrar(session["usuario"], "descarga informe", ruta, _ip())
     return send_file(archivo, as_attachment=True, download_name=os.path.basename(archivo))
 
@@ -531,21 +560,23 @@ def bajar_informe(ruta):
 @requiere_login
 def agenda():
     dias = min(max(int(request.args.get("dias", 15) or 15), 1), 60)
-    return render_template("agenda.html", filas=datos.agenda(dias), dias=dias)
+    return render_template("agenda.html", filas=datos.agenda(dias, _solo()), dias=dias)
 
 
 @app.route("/robots")
 @requiere_login
 def robots():
-    return render_template("robots.html", filas=datos.ultimas_corridas(), pend=pedidos.pendientes(),
-                           estado=pedidos.estado(), nombres=pedidos.ROBOTS)
+    ok_ = lambda x: _puede(str(x.get("cuit") or ""))
+    return render_template("robots.html", filas=[x for x in datos.ultimas_corridas() if ok_(x)],
+                           pend=[x for x in pedidos.pendientes() if ok_(x)],
+                           estado=[x for x in pedidos.estado() if ok_(x)], nombres=pedidos.ROBOTS)
 
 
 # ---------------------------------------------------------------- avisos de cuotas impagas (17/11/2026)
 @app.route("/avisos", methods=["GET", "POST"])
 @requiere_login
 def pantalla_avisos():
-    lista = pedidos.avisos()
+    lista = [a for a in pedidos.avisos() if _puede(str(a.get("cuit") or ""))]
     if request.method == "POST":
         _controlar_csrf()
         a = next((x for x in lista if x.get("id") == request.form.get("aviso", "")), None)
@@ -571,7 +602,7 @@ def pantalla_avisos():
     resueltos = [a for a in lista if a.get("estado") == "resuelto"][:50]
     pend = {p.get("aviso") for p in pedidos.pendientes() if p.get("aviso")}
     revisar = []                                  # deuda histórica (Convenio / Cuentas Tributarias) sin revisar
-    for c in datos.lista_clientes():
+    for c in datos.lista_clientes(_solo()):
         enc = (usuarios.datos_cliente(c["cuit"]) or {}).get("encargado") or ""
         if ver == "mios" and enc not in (session["usuario"], ""):
             continue
@@ -671,6 +702,9 @@ def cliente_nuevo():
             flash("Para dar de alta un cliente hace falta al menos la clave fiscal de ARCA", "error")
         else:
             env, err = _procesar_claves(cuit, razon, True)
+            if env and session.get("rol") != "admin" and not (usuarios.datos_cliente(cuit) or {}).get("encargado"):
+                usuarios.guardar_datos_cliente(cuit, {**(usuarios.datos_cliente(cuit) or {}), "encargado": session["usuario"]},
+                                               session["usuario"])
             if env:
                 flash(f"Cliente enviado al robot ({', '.join(env)}). Lo da de alta y comprueba que la clave funcione "
                       "en unos minutos. La clave ya no se muestra.", "ok")

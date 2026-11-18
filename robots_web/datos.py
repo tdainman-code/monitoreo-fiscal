@@ -44,7 +44,13 @@ def cuit_fmt(c):
     return f"{c[:2]}-{c[2:10]}-{c[10]}" if c and len(c) == 11 else c
 
 
-def lista_clientes() -> list[dict]:
+def lista_clientes(solo: set | None = None) -> list[dict]:
+    """Todos los clientes; con `solo` (CUITs que puede ver un empleado), únicamente esos."""
+    pub = _lista_clientes()
+    return pub if solo is None else [c for c in pub if c["cuit"] in solo]
+
+
+def _lista_clientes() -> list[dict]:
     pub = _leer(os.path.join(PUBLICO, "clientes.json")) or []
     vistos = {c["cuit"] for c in pub}
     for d in sorted(glob.glob(os.path.join(DATOS, "*"))):
@@ -224,10 +230,10 @@ def ruta_informe_segura(ruta_rel: str) -> str | None:
     return ruta
 
 
-def agenda(dias: int = 15) -> list[dict]:
+def agenda(dias: int = 15, solo: set | None = None) -> list[dict]:
     hoy = date.today()
     lim = hoy + timedelta(days=dias)
-    nombres = {c["cuit"]: c.get("razon_social") or "" for c in lista_clientes()}
+    nombres = {c["cuit"]: c.get("razon_social") or "" for c in lista_clientes(solo)}
     out = []
     for cuit, nom in nombres.items():
         s = situacion(cuit)
@@ -412,10 +418,10 @@ def ficha(cuit: str) -> dict:
     return s
 
 
-def alertas_del_dia() -> list[dict]:
+def alertas_del_dia(solo: set | None = None) -> list[dict]:
     """Lo urgente (ALTA) de todos los clientes, para la pantalla 'Alertas del día'."""
     out = []
-    for c in lista_clientes():
+    for c in lista_clientes(solo):
         f = ficha(c["cuit"])
         al = [a for a in f["alertas"] if a.get("prioridad") == "ALTA"]
         al += [a for a in ((f["arba_dfe"] or {}).get("alertas") or []) if a.get("prioridad") == "ALTA"]
@@ -432,10 +438,10 @@ def alertas_del_dia() -> list[dict]:
 
 
 # ---------------------------------------------------------------- vistas de toda la cartera (Radar fiscal, 17/11/2026)
-def cartera() -> list[dict]:
+def cartera(solo: set | None = None) -> list[dict]:
     """Ficha completa de cada cliente (para las pantallas que listan a todos)."""
     out = []
-    for c in lista_clientes():
+    for c in lista_clientes(solo):
         try:
             f = ficha(c["cuit"])
         except Exception:                                    # un cliente con datos rotos no tira abajo la pantalla
