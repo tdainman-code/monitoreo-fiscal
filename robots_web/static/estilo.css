@@ -185,3 +185,6 @@ a.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.10)}
 }
 @media (max-width:700px){.boton-ficha .numero{white-space:nowrap;font-size:18px;overflow:hidden;text-overflow:ellipsis}
  .boton-ficha .numero small{display:block;font-size:13px;margin-top:2px}}
+details.descartar{margin-top:6px;font-size:13px}details.descartar summary{cursor:pointer;color:var(--gris)}
+details.descartar form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
+details.descartar input[type=text]{flex:1 1 220px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px}

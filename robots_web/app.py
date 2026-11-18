@@ -485,10 +485,53 @@ def datos_del_cliente(cuit):
                            es_admin=session.get("rol") == "admin")
 
 
-@app.route("/alertas")
+@app.route("/alertas", methods=["GET", "POST"])
 @requiere_login
 def alertas():
-    return render_template("alertas.html", grupos=datos.alertas_del_dia(_solo()))
+    """Alertas del día. Cada alerta se puede descartar por un motivo; si a los 30 días sigue igual, vuelve (18/11/2026)."""
+    if request.method == "POST":
+        _controlar_csrf()
+        cuit = request.form.get("cuit", "")
+        _cliente_info(cuit)
+        if request.form.get("accion") == "restaurar":
+            clave = request.form.get("clave", "")
+            d = usuarios.descartes_vigentes().get(clave)
+            if d and d["cuit"] == cuit:
+                usuarios.restaurar_descarte(clave)
+                usuarios.registrar(session["usuario"], "alerta restaurada", cuit, _ip())
+                flash("La alerta volvió a la lista", "ok")
+        else:
+            motivo = request.form.get("motivo", "")
+            tipo, texto = request.form.get("tipo", ""), request.form.get("texto", "")
+            actuales = next((g["alertas"] for g in datos.alertas_del_dia({cuit}) if g["cuit"] == cuit), [])
+            if motivo not in usuarios.MOTIVOS_DESCARTE:
+                flash("Elegí el motivo para descartar la alerta", "error")
+            elif not any(a["tipo"] == tipo and a["texto"] == texto for a in actuales):
+                flash("Esa alerta ya cambió o no está más", "error")
+            elif motivo == "Otro" and not request.form.get("nota", "").strip():
+                flash("Con el motivo 'Otro' escribí una nota", "error")
+            else:
+                usuarios.descartar(cuit, tipo, texto, motivo, request.form.get("nota", "").strip(), session["usuario"],
+                                   session.get("nombre", ""))
+                usuarios.registrar(session["usuario"], f"alerta descartada ({motivo})", f"{cuit} {tipo}"[:120], _ip())
+                flash(f"Alerta descartada: {motivo}. Si en {usuarios.DIAS_DESCARTE} días sigue igual, vuelve a aparecer.", "ok")
+        return redirect(url_for("alertas", ver=request.args.get("ver", "")))
+    desc = usuarios.descartes_vigentes()
+    grupos, descartadas = [], []
+    for g in datos.alertas_del_dia(_solo()):
+        quedan = []
+        for a in g["alertas"]:
+            d = desc.get(usuarios.clave_alerta(g["cuit"], a["tipo"], a["texto"]))
+            if d:
+                descartadas.append({**a, **d, "cuit": g["cuit"], "nombre_cliente": g["nombre"],
+                                    "vuelve": date.fromisoformat(d["fecha"][:10]) + timedelta(days=usuarios.DIAS_DESCARTE),
+                                    "clave": usuarios.clave_alerta(g["cuit"], a["tipo"], a["texto"])})
+            else:
+                quedan.append(a)
+        if quedan:
+            grupos.append({**g, "alertas": quedan})
+    return render_template("alertas.html", grupos=grupos, descartadas=descartadas, motivos=usuarios.MOTIVOS_DESCARTE,
+                           dias=usuarios.DIAS_DESCARTE, ver=request.args.get("ver", ""))
 
 
 @app.route("/mas")

@@ -480,6 +480,29 @@ ok(cl.get(f"/informe/2026-11-15/situacion_fiscal_{C}.xlsx").status_code == 200, 
 ok(cl.get("/informe/../../etc/passwd").status_code == 404, "no se sale de la carpeta de informes")
 ok("Plan" in cl.get("/agenda").text, "agenda")
 ok(cl.get("/alertas").status_code == 200 and "Relación débito/crédito crítica" in cl.get("/alertas").text, "alertas del día con D/C")
+# descartar alertas por motivo; a los 30 días, si sigue igual, vuelve (18/11/2026)
+_al = cl.get("/alertas").text
+_m = re.search(r'name="cuit" value="(\d{11})">\s*<input type="hidden" name="tipo" value="([^"]*)"><input type="hidden" name="texto" value="([^"]*)">', _al)
+import html as _html  # noqa: E402
+_ccu, _tipo, _texto = _m[1], _html.unescape(_m[2]), _html.unescape(_m[3])
+_n_antes = _al.count('class="alta"')
+_r = cl.post("/alertas", data={"csrf": token(_al), "cuit": _ccu, "tipo": _tipo, "texto": _texto, "motivo": "Otro", "nota": ""},
+             follow_redirects=True)
+ok("escribí una nota" in _r.text, "descartar con 'Otro' pide nota")
+_r = cl.post("/alertas", data={"csrf": token(_al), "cuit": _ccu, "tipo": _tipo, "texto": _texto, "motivo": "Avisado al cliente",
+                               "nota": "le escribí por WhatsApp"}, follow_redirects=True)
+ok("Alerta descartada: Avisado al cliente" in _r.text and _r.text.count('class="alta"') == _n_antes - 1, "alerta descartada sale de pendientes")
+_d = cl.get("/alertas?ver=descartadas").text
+ok("le escribí por WhatsApp" in _d and "Avisado al cliente" in _d and "Volver a mostrar" in _d, "lista de descartadas con motivo, nota y quién")
+ok(cl.post("/alertas", data={"csrf": token(_al), "cuit": _ccu, "tipo": "x", "texto": "y", "motivo": "Alerta sin relevancia"},
+           follow_redirects=True).text.count("ya cambió") == 1, "no se puede descartar una alerta que no existe")
+_con = usuarios.conectar()
+with _con:
+    _con.execute("UPDATE descartes SET fecha='2026-01-01T00:00:00'")
+_con.close()
+ok(cl.get("/alertas").text.count('class="alta"') == _n_antes, "a los 30 días, si sigue igual, la alerta vuelve")
+ok(cb.post("/alertas", data={"csrf": token(cb.get("/sugerencias").text), "cuit": C, "tipo": _tipo, "texto": _texto,
+                             "motivo": "Alerta sin relevancia"}).status_code == 403, "no se descartan alertas de clientes ajenos")
 ok(cl.get("/actividad").status_code == 403, "colaborador no ve actividad")
 cl2 = app.test_client()
 login(cl2, "gabriel", "claveadmin123")

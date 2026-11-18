@@ -1,9 +1,31 @@
 {% extends "base.html" %}{% block titulo %}Alertas del día{% endblock %}
 {% block cuerpo %}
 <h1>Alertas del día</h1>
-<p class="sutil">Lo urgente de todos los clientes (prioridad ALTA), primero los clientes en rojo.</p>
+<p class="sutil">Lo urgente de tus clientes (prioridad ALTA), primero los clientes en rojo. Podés descartar una alerta indicando el motivo:
+si a los {{ dias }} días sigue igual, vuelve a aparecer; si cambia antes (otro importe, otro período), aparece enseguida.</p>
+<div class="filtros">
+  <a class="chip {{ 'activo' if ver != 'descartadas' }}" href="{{ url_for('alertas') }}">Pendientes</a>
+  <a class="chip {{ 'activo' if ver == 'descartadas' }}" href="{{ url_for('alertas', ver='descartadas') }}">Descartadas ({{ descartadas|length }})</a>
+</div>
+{% if ver == 'descartadas' %}
+<div class="panel"><table class="tabla"><thead><tr><th>Cliente</th><th>Alerta</th><th>Motivo</th><th>Quién / cuándo</th><th></th></tr></thead><tbody>
+{% for d in descartadas %}<tr><td><a href="{{ url_for('cliente', cuit=d.cuit) }}">{{ d.nombre_cliente or cuit_fmt(d.cuit) }}</a></td>
+  <td data-l="Alerta"><b>{{ d.tipo }}</b> — {{ d.texto }}</td><td data-l="Motivo">{{ d.motivo }}{% if d.nota %}<div class="sutil">{{ d.nota }}</div>{% endif %}</td>
+  <td data-l="Quién">{{ d.nombre or d.usuario }}<div class="sutil">{{ d.fecha[:10]|fecha }} · vuelve el {{ d.vuelve|fecha }} si sigue igual</div></td>
+  <td><form method="post" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="restaurar">
+    <input type="hidden" name="cuit" value="{{ d.cuit }}"><input type="hidden" name="clave" value="{{ d.clave }}"><button class="chico">Volver a mostrar</button></form></td></tr>
+{% else %}<tr><td colspan="5" class="sutil">No hay alertas descartadas.</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}
 {% for g in grupos %}
 <h2><span class="punto {{ g.semaforo }}"></span> <a href="{{ url_for('cliente', cuit=g.cuit) }}">{{ g.nombre or cuit_fmt(g.cuit) }}</a> <span class="sutil">· {{ g.alertas|length }}</span></h2>
-<ul class="alertas">{% for a in g.alertas %}<li class="alta"><b>{{ a.tipo }}</b> — {{ a.texto }}</li>{% endfor %}</ul>
-{% else %}<p class="sutil">No hay alertas urgentes.</p>{% endfor %}
+<ul class="alertas">{% for a in g.alertas %}<li class="alta"><b>{{ a.tipo }}</b> — {{ a.texto }}
+  <details class="descartar"><summary>Descartar</summary>
+    <form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="cuit" value="{{ g.cuit }}">
+      <input type="hidden" name="tipo" value="{{ a.tipo }}"><input type="hidden" name="texto" value="{{ a.texto }}">
+      {% for m in motivos %}<label class="en-linea"><input type="radio" name="motivo" value="{{ m }}" required> {{ m }}</label> {% endfor %}
+      <input type="text" name="nota" maxlength="300" placeholder="Nota (opcional; obligatoria si es 'Otro')">
+      <button>Descartar por {{ dias }} días</button></form></details></li>{% endfor %}</ul>
+{% else %}<p class="sutil">No hay alertas urgentes pendientes.</p>{% endfor %}
+{% endif %}
 {% endblock %}
