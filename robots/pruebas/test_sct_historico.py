@@ -95,6 +95,8 @@ with sync_playwright() as p:
         and d[("30", "20260200")]["estado_pago"] == "OBLIGACIÓN NOTIFICADA", "color de la deuda y estado de pago")
     chk(res["deuda_f931_otros"] == round(5520.06 + 6362.93 + 1000.0, 2), f"F.931 fuera de 301/351 ({res['deuda_f931_otros']})")
     chk(res["alertas"] and "2025, 2026" in res["alertas"][0]["texto"], "alerta con los años")
+    chk(res["deuda_terceros"] == round(5520.06 + 6362.93 + 1000.0, 2) and res["deuda_arca"] == 3288469.89,
+        "verde = para terceros (OS, ART, seguro de vida); rojo = propia de ARCA")
     try:
         ANIO["v"] = 2026
         pg.goto(B + "externo")

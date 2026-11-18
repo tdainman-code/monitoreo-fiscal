@@ -12,7 +12,8 @@ Recorrido:
      totales (Deuda, Saldo Libre Disponibilidad, Saldo técnico, Otros Créditos, Multas no Firmes) y una tabla por
      impuesto ("28 - SEGURO DE VIDA COLECTIVO"): Est. | Período | Concepto | Ant./Cuota | DEUDA | S.L.D. | SALDO TECNICO |
      OTROS CREDITOS | MULTAS NO FIRMES | Temp. DDJJ | Estado DDJJ | Temp. Pago | Estado Pago, con fila Subtotal.
-     La DEUDA viene en rojo (p. ej. OBLIGACIÓN NOTIFICADA / INTIMADA) o en verde: se guarda el color para revisarlo.
+     La DEUDA viene en ROJO si es propia de ARCA (IVA, 301, 351...) y en VERDE si ARCA la recauda para TERCEROS
+     (obras sociales 302/352, ART 312, seguro de vida 28) — explicado por Gaby el 17/11/2026.
   -> AÑO ANTERIOR y se repite, año por año.
 Solo consulta.
 """
@@ -209,6 +210,8 @@ def resumir(res: dict) -> dict:
     res["deudas"] = filas
     res["por_impuesto"] = por_imp
     res["deuda_total"] = round(sum(f["deuda"] for f in filas), 2)
+    res["deuda_terceros"] = round(sum(f["deuda"] for f in filas if f["color"] == "verde"), 2)
+    res["deuda_arca"] = round(res["deuda_total"] - res["deuda_terceros"], 2)
     res["deuda_f931_otros"] = round(sum(f["deuda"] for f in filas if f["f931"] and f["impuesto"] not in ("301", "351")), 2)
     al = []
     if filas:
@@ -216,7 +219,8 @@ def resumir(res: dict) -> dict:
         anios = sorted({f["anio"] for f in filas})
         al.append({"prioridad": "ALTA", "tipo": "Deuda en Cuentas Tributarias (estado de cumplimiento)",
                    "texto": f"{txt(res['deuda_total'])} en {len(por_imp)} impuesto(s), años {', '.join(anios)}"
-                            + (f"; F.931 fuera de 301/351: {txt(res['deuda_f931_otros'])}" if res["deuda_f931_otros"] else "")})
+                            + f" (propia de ARCA {txt(res['deuda_arca'])}; para terceros —obras sociales, ART, seguro de vida— "
+                              f"{txt(res['deuda_terceros'])})"})
     res["alertas"] = al
     return res
 
