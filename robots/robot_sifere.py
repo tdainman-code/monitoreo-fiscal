@@ -316,7 +316,11 @@ def analizar_deuda(anticipos: list[dict], hoy=None) -> dict:
     return {"anticipos": filas, "deuda": round(deuda, 2), "impagos": impagos}
 
 
-def leer_deuda(page, cuit: str, http_comarb: list[str], anios: int = 5) -> str:
+def leer_deuda(page, cuit: str, http_comarb: list[str], anios: int = 15) -> str:
+    """Resumen de DDJJs y Pagos por jurisdicción, HISTÓRICO (pedido de Gaby 17/11/2026: "buscar la deuda de convenio
+    histórica para saber si está compensada con algo"). Desde el año más viejo que ofrece COMARB (tope: `anios`).
+    Si un anticipo tiene saldo a favor del fisco y no tiene el pago, lo debe. La diferencia es capital SIN actualizar
+    (no es la deuda de hoy). Se avisa al encargado, que la marca "vista" en la web."""
     from datetime import date
     jurs = _jurisdicciones_cliente(cuit)
     if not jurs:
@@ -332,6 +336,10 @@ def leer_deuda(page, cuit: str, http_comarb: list[str], anios: int = 5) -> str:
             _navegar(page, lambda: menu.first.evaluate("a => a.click()"), http_comarb)   # menú oculto
             _controlar_cuit(page, cuit)
         page.select_option("select[name='juris']", j)
+        anios_disp = [int(x) for x in page.locator("select[name='anioDesdeStr'] option").all_inner_texts() if x.strip().isdigit()]
+        if anios_disp and min(anios_disp) > int(desde[:4]):
+            desde = f"{min(anios_disp)}-01"                  # no hay datos más viejos que el primer año que ofrece
+        res["desde"] = desde
         page.select_option("select[name='mesDesdeStr']", desde[5:])
         page.select_option("select[name='anioDesdeStr']", desde[:4])
         page.select_option("select[name='mesStr']", hasta[5:])
@@ -340,13 +348,16 @@ def leer_deuda(page, cuit: str, http_comarb: list[str], anios: int = 5) -> str:
         titulo = re.search(r"Jurisdicci[oó]n\s+(\d{3})\s*-\s*Per[ií]odo", _texto(page))
         if not titulo or titulo.group(1) != j:
             raise arca.ErrorRobot(f"SIFERE deuda: se pidió la jurisdicción {j} y la pantalla muestra otra")
-        res["jurisdicciones"][j] = {"nombre": JURISDICCIONES[j], **analizar_deuda(_anticipos_tabla(page), hoy)}
+        an = analizar_deuda(_anticipos_tabla(page), hoy)
+        an["saldo_contribuyente"] = round(sum(a["saldo_contribuyente"] for a in an["anticipos"]), 2)
+        res["jurisdicciones"][j] = {"nombre": JURISDICCIONES[j], **an}
         arca.pausa(1.0, 2.0)
     res["deuda_total"] = round(sum(v["deuda"] for v in res["jurisdicciones"].values()), 2)
     res["alertas"] = [{"prioridad": "ALTA", "tipo": "Convenio Multilateral",
                        "texto": f"IIBB Convenio {v['nombre']} ({j}): {v['impagos']} anticipos impagos por "
                                 f"${v['deuda']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                                + f" (último {max(a['anticipo'] for a in v['anticipos'] if a['impago'])})"}
+                                + f" sin actualizar (último {max(a['anticipo'] for a in v['anticipos'] if a['impago'])})"
+                                + " — el encargado tiene que revisarlo y marcarlo visto"}
                       for j, v in res["jurisdicciones"].items() if v["deuda"]]
     carpeta = os.path.join(DATOS, cuit, "sifere_deuda")
     os.makedirs(carpeta, exist_ok=True)

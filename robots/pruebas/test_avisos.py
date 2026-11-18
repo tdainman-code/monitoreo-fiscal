@@ -84,4 +84,14 @@ m = next(x for x in mails if x["motivo"].startswith("DFE cliente"))
 chk(r.startswith("OK") and m["para"] == ["admin@bh.com"] and "Cuentas Tributarias" in m["cuerpo"], "DFE: reenvío al cliente")
 r = av.mail_dfe({"cuit": C, "a": "admin", "por": "gaby", "notif": {"asunto": "x"}})
 chk(r.startswith("sin destinatario"), "DFE: alerta al admin sin admins con mail -> lo avisa")
+# deuda histórica: un mail al encargado por cada una nueva, una sola vez
+os.makedirs(f"{R}/datos/{C}/sifere_deuda", exist_ok=True)
+json.dump({"jurisdicciones": {"901": {"nombre": "CABA", "deuda": 9000.0, "saldo_contribuyente": 500.0, "anticipos": [
+    {"anticipo": "2019-03", "impago": 9000.0, "estado": "IMPAGO"}]}}}, open(f"{R}/datos/{C}/sifere_deuda/2026-11-30.json", "w"))
+n1 = av.avisar_revisiones(av.contactos(), [C], HOY)
+n2 = av.avisar_revisiones(av.contactos(), [C], HOY)
+mails = [json.load(open(os.path.join(av.SALIDA, f))) for f in os.listdir(av.SALIDA)]
+mr = [x for x in mails if x["motivo"].startswith("revisión cm:")]
+chk(n1 == 1 and n2 == 0 and len(mr) == 1 and mr[0]["para"] == ["tomas@estudio.com"] and "Visto, me ocupo" in mr[0]["cuerpo"]
+    and "$ 500,00" in mr[0]["cuerpo"], "deuda histórica de Convenio: un mail al encargado, una sola vez")
 print("TODO OK" if ok else "FALLAS"); sys.exit(0 if ok else 1)

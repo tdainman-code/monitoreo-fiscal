@@ -30,6 +30,7 @@ ROBOTS_PERMITIDOS = {
     "libro_iva": "Libro IVA (débito / crédito)",
     "fiscalizaciones": "Fiscalizaciones ARCA",
     "ccma": "Autónomos y Monotributo (pagos, CCMA)",
+    "sct_historico": "Deuda histórica (Cuentas Tributarias, estado de cumplimiento)",
     "agip": "AGIP (DFE, deuda, fiscalización)",
     "arba_dfe": "ARBA (domicilio fiscal electrónico)",
     # botones de la pantalla Avisos (cuotas impagas): no entran a ARCA salvo para el VEP

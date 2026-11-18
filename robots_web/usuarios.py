@@ -40,6 +40,7 @@ def conectar():
         texto TEXT, borrada INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS sugerencias (id INTEGER PRIMARY KEY, fecha TEXT, usuario TEXT, nombre TEXT,
         tipo TEXT, texto TEXT, estado TEXT NOT NULL DEFAULT 'Nueva', respuesta TEXT);
+    CREATE TABLE IF NOT EXISTS vistos (clave TEXT PRIMARY KEY, cuit TEXT, fecha TEXT, usuario TEXT, nombre TEXT, nota TEXT);
     CREATE TABLE IF NOT EXISTS informadas (id TEXT PRIMARY KEY, cuit TEXT, fecha TEXT, usuario TEXT, nombre TEXT);
     CREATE TABLE IF NOT EXISTS datos_cliente (cuit TEXT PRIMARY KEY, datos TEXT, actualizado TEXT, usuario TEXT);
     """)
@@ -215,6 +216,25 @@ def marcar_informada(id_, cuit, usuario, nombre, informada=True):
         else:
             con.execute("DELETE FROM informadas WHERE id=?", (id_,))
     con.close()
+
+
+def marcar_visto(clave, cuit, usuario, nombre, nota="", visto=True):
+    """Deuda histórica (Convenio, Cuentas Tributarias) que el encargado ya revisó: "visto, me ocupo" (17/11/2026)."""
+    con = conectar()
+    with con:
+        if visto:
+            con.execute("INSERT OR REPLACE INTO vistos VALUES (?,?,?,?,?,?)", (clave, cuit, ahora(), usuario, nombre, nota[:500]))
+        else:
+            con.execute("DELETE FROM vistos WHERE clave=?", (clave,))
+    con.close()
+
+
+def vistos(cuit=None) -> dict:
+    con = conectar()
+    q = "SELECT clave, fecha, nombre, nota, usuario FROM vistos" + (" WHERE cuit=?" if cuit else "")
+    r = {f[0]: {"fecha": f[1], "nombre": f[2], "nota": f[3], "usuario": f[4]} for f in con.execute(q, (cuit,) if cuit else ())}
+    con.close()
+    return r
 
 
 def informadas() -> dict:

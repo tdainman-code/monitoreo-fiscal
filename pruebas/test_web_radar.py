@@ -93,7 +93,7 @@ os.environ.update(ROBOTS_RAIZ=R, ROBOTS_WEB_DATOS=os.path.join(R, "web"), ROBOTS
 
 from werkzeug.security import generate_password_hash  # noqa: E402
 
-from robots_web import analisis, usuarios  # noqa: E402
+from robots_web import analisis, datos, usuarios  # noqa: E402
 
 con = usuarios.conectar()
 with con:
@@ -181,6 +181,33 @@ _f = cl.get(f"/cliente/{C}").text
 ok("Autónomos / Monotributo" in _f and "1 período(s) impago(s)" in _f, "ficha: tarjeta de autónomos / monotributo")
 ok("Autónomos / Monotributo impago" in cl.get("/alertas").text, "alertas del día: monotributo impago")
 os.remove(f"{D}/{C}/ccma/2026-11-17.json")
+# deuda histórica: Convenio + Cuentas Tributarias, con "visto, me ocupo" del encargado
+escribir(f"{D}/{C}/sifere_deuda/2026-11-17.json", {"fecha": "2026-11-17", "desde": "2014-01", "hasta": "2026-10", "deuda_total": 9000.0,
+         "jurisdicciones": {"901": {"nombre": "Ciudad Autónoma de Buenos Aires", "deuda": 9000.0, "impagos": 2, "saldo_contribuyente": 74849.8,
+             "anticipos": [{"anticipo": "2019-03", "saldo_fisco": 5000.0, "saldo_contribuyente": 0, "pagado_ddjj": 0, "pagado_otro": 0, "impago": 5000.0, "estado": "IMPAGO"},
+                           {"anticipo": "2019-04", "saldo_fisco": 4000.0, "saldo_contribuyente": 0, "pagado_ddjj": 0, "pagado_otro": 0, "impago": 4000.0, "estado": "IMPAGO"}]}}})
+escribir(f"{D}/{C}/sct_historico/2026-11-17.json", {"fecha": "2026-11-17", "deuda_total": 6362.93, "deuda_f931_otros": 6362.93,
+         "por_impuesto": {"302 - APORTES OBRAS SOCIALES": 6362.93},
+         "anios": [{"anio": "2026", "totales": {"deuda": 22105640.35, "sld": 0.0, "saldo_tecnico": 2918725.52, "otros_creditos": 597411.24, "multas_no_firmes": 0.0}}],
+         "deudas": [{"impuesto": "302", "nombre": "APORTES OBRAS SOCIALES", "periodo": "20260100", "concepto": "Intereses resarcitorios",
+                     "deuda": 6362.93, "color": "verde", "estado_pago": "", "f931": True, "anio": "2026"}]})
+_s = datos.situacion(C)
+ok(len(_s["revisar"]) == 2 and _s["semaforo"] == "rojo", "deuda histórica (Convenio y SCT) queda para revisar por el encargado")
+_r = cl.get(f"/cliente/{C}/iibb").text
+ok("Visto, me ocupo" in _r and "74.849,80" in _r, "Convenio: botón 'Visto, me ocupo' y saldo a favor que puede compensar")
+_h = cl.get(f"/cliente/{C}/historica").text
+ok("302 APORTES OBRAS SOCIALES" in _h and "F.931" in _h and "22.105.640,35" in _h, "deuda histórica de Cuentas Tributarias por año e impuesto")
+ok("Deuda histórica para revisar (2)" in cl.get("/avisos?ver=todos").text, "avisos: lista de deudas históricas para revisar")
+_cl = [x["clave"] for x in _s["revisar"]]
+cl.post("/revision/visto", data={"clave": _cl[0], "cuit": C, "marcar": "1", "nota": "compensada con saldo a favor", "csrf": token(_r)})
+_s = datos.situacion(C)
+ok(len(_s["revisar"]) == 1 and any(x["visto"] and x["visto"]["nota"].startswith("compensada") for x in _s["revisiones"]),
+   "marcada vista con nota: sale de pendientes")
+ok("compensada con saldo a favor" in cl.get(f"/cliente/{C}/iibb").text, "la ficha muestra quién la vio y la nota")
+ok(cl.post("/revision/visto", data={"clave": "cm:99999999999:x", "cuit": C, "marcar": "1", "csrf": token(_r)}).status_code == 400,
+   "visto: clave de otro cliente rechazada")
+for _x in ("sifere_deuda", "sct_historico"):
+    os.remove(f"{D}/{C}/{_x}/2026-11-17.json")
 _mf = app.test_client().get("/manifest.webmanifest")
 ok(_mf.status_code == 200 and "icono-512.png" in _mf.text and _mf.mimetype == "application/manifest+json"
    and app.test_client().get("/static/icono-192.png").status_code == 200, "celular: se instala como app (manifest con íconos)")

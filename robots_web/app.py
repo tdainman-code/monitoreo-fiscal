@@ -3,6 +3,7 @@ Solo LEE lo que dejan los robots. No tiene acceso a las claves fiscales.
 """
 from __future__ import annotations
 
+import re
 import json
 import os
 import secrets
@@ -193,7 +194,7 @@ SECCIONES = {"deuda": "Deuda ARCA", "planes": "Planes de pago", "vencimientos": 
              "relacion": "Relación débito crédito", "compras": "Compras y APOC", "informes": "Informes Excel",
              "notas": "Notas del equipo", "iva": "Débito / crédito y proyección de IVA",
              "resultado": "Resultado mensual", "fiscalizaciones": "Fiscalizaciones y verificaciones", "agip": "AGIP (Ciudad)",
-             "ccma": "Autónomos y Monotributo (CCMA)"}
+             "ccma": "Autónomos y Monotributo (CCMA)", "historica": "Deuda histórica (Cuentas Tributarias)"}
 
 
 def _cliente_info(cuit):
@@ -355,6 +356,26 @@ def dfe_informada():
     usuarios.registrar(session["usuario"], "DFE informada" if marcar else "DFE desmarcada", cuit, _ip())
     destino = request.form.get("volver", "")
     return redirect(destino if destino.startswith("/") and not destino.startswith("//") else url_for("cartera", vista="dfe"))
+
+
+@app.route("/revision/visto", methods=["POST"])
+@requiere_login
+def revision_visto():
+    """Deuda histórica (Convenio / Cuentas Tributarias): el encargado la marca "visto, me ocupo"."""
+    _controlar_csrf()
+    clave, cuit = request.form.get("clave", ""), request.form.get("cuit", "")
+    if not datos.CUIT_RE.match(cuit) or not re.fullmatch(r"(cm|sct):\d{11}:[\w.:-]{1,60}", clave) or f":{cuit}:" not in clave:
+        abort(400)
+    enc = (usuarios.datos_cliente(cuit) or {}).get("encargado")
+    if session.get("rol") != "admin" and enc and enc != session["usuario"]:
+        flash("Ese cliente tiene otro encargado", "error")
+    else:
+        marcar = request.form.get("marcar") == "1"
+        usuarios.marcar_visto(clave, cuit, session["usuario"], session.get("nombre", ""), request.form.get("nota", ""), marcar)
+        usuarios.registrar(session["usuario"], "Deuda histórica vista" if marcar else "Deuda histórica desmarcada", clave, _ip())
+        flash("Marcada como vista" if marcar else "Vuelve a quedar para revisar", "ok")
+    destino = request.form.get("volver", "")
+    return redirect(destino if destino.startswith("/") and not destino.startswith("//") else url_for("cliente", cuit=cuit))
 
 
 @app.route("/dfe/mail", methods=["POST"])
@@ -549,7 +570,14 @@ def pantalla_avisos():
     abiertos = [a for a in lista if a.get("estado") != "resuelto"]
     resueltos = [a for a in lista if a.get("estado") == "resuelto"][:50]
     pend = {p.get("aviso") for p in pedidos.pendientes() if p.get("aviso")}
-    return render_template("avisos.html", abiertos=abiertos, resueltos=resueltos, ver=ver, pend=pend)
+    revisar = []                                  # deuda histórica (Convenio / Cuentas Tributarias) sin revisar
+    for c in datos.lista_clientes():
+        enc = (usuarios.datos_cliente(c["cuit"]) or {}).get("encargado") or ""
+        if ver == "mios" and enc not in (session["usuario"], ""):
+            continue
+        for x in datos.situacion(c["cuit"])["revisar"]:
+            revisar.append({**x, "cuit": c["cuit"], "nombre": c.get("razon_social") or "", "encargado": enc})
+    return render_template("avisos.html", abiertos=abiertos, resueltos=resueltos, ver=ver, pend=pend, revisar=revisar)
 
 
 @app.route("/actividad")

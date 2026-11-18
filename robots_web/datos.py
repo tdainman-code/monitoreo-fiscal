@@ -76,6 +76,40 @@ def _abiertas(filas) -> list:
     return out
 
 
+def _pesos_txt(x) -> str:
+    return f"$ {x or 0:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def revisiones(cuit: str, cm: dict | None, scth: dict | None) -> list[dict]:
+    """Deuda histórica que el ENCARGADO tiene que revisar y marcar "visto, me ocupo" (Gaby, 17/11/2026):
+    Convenio Multilateral (anticipo con saldo a favor del fisco y sin el pago; capital sin actualizar) y la deuda
+    del estado de cumplimiento de Cuentas Tributarias. La clave cambia si aparece deuda nueva: vuelve a pedir revisión."""
+    try:
+        from . import usuarios
+        vis = usuarios.vistos(cuit)
+    except Exception:
+        vis = {}
+    out = []
+    for j, v in ((cm or {}).get("jurisdicciones") or {}).items():
+        imp = [a for a in v.get("anticipos") or [] if a.get("impago") and "reciente" not in a.get("estado", "")]
+        if not imp:
+            continue
+        clave = f"cm:{cuit}:{j}:{imp[-1]['anticipo']}:{len(imp)}"
+        out.append({"clave": clave, "tema": "Convenio Multilateral", "id_sec": "iibb",
+                    "texto": f"{j} {v.get('nombre', '')}: {len(imp)} anticipo(s) con saldo a favor del fisco sin el pago "
+                             f"({imp[0]['anticipo']} a {imp[-1]['anticipo']})",
+                    "importe": v.get("deuda") or 0.0, "a_favor": v.get("saldo_contribuyente") or 0.0,
+                    "visto": vis.get(clave)})
+    if scth and scth.get("deudas"):
+        n = len(scth["deudas"])
+        clave = f"sct:{cuit}:{round(scth.get('deuda_total') or 0)}:{n}"
+        out.append({"clave": clave, "tema": "Cuentas Tributarias", "id_sec": "historica",
+                    "texto": f"Estado de cumplimiento: {n} período(s)/concepto(s) con deuda en "
+                             f"{len(scth.get('por_impuesto') or {})} impuesto(s)",
+                    "importe": scth.get("deuda_total") or 0.0, "a_favor": None, "visto": vis.get(clave)})
+    return out
+
+
 def situacion(cuit: str) -> dict:
     """Todo lo último de un cliente + semáforo."""
     base = os.path.join(DATOS, cuit)
@@ -106,6 +140,10 @@ def situacion(cuit: str) -> dict:
     fisc = _leer(_ultimo(os.path.join(base, "fiscalizaciones", "*.json")))
     r["agip"], r["fisc"] = agip, fisc
     ccma = _leer(_ultimo(os.path.join(base, "ccma", "*.json")))   # autónomos / monotributo (17/11/2026)
+    scth = _leer(_ultimo(os.path.join(base, "sct_historico", "*.json")))   # deuda histórica SCT (17/11/2026)
+    r["cm"], r["scth"] = cm, scth
+    r["revisiones"] = revisiones(cuit, cm, scth)
+    r["revisar"] = [x for x in r["revisiones"] if not x["visto"]]
     r["ccma"] = ccma
     r["ccma_impagos"] = len((ccma or {}).get("impagos") or [])
     r["ccma_deuda"] = (ccma or {}).get("deuda_impaga") or 0.0
@@ -124,11 +162,14 @@ def situacion(cuit: str) -> dict:
                             + len((fisc or {}).get("fiscalizacion_electronica") or []) + len(agip_f))
     r["ratio"] = analisis.ratio_dc(analisis.iva_mensual(cuit))
     r["alertas"] += ((agip or {}).get("alertas") or []) + ((fisc or {}).get("alertas") or []) + ((ccma or {}).get("alertas") or [])
+    r["alertas"] += [{"prioridad": "ALTA", "tipo": f"Deuda histórica para revisar ({x['tema']})",
+                      "texto": x["texto"] + f" — {_pesos_txt(x['importe'])} sin actualizar. El encargado tiene que marcarla vista."}
+                     for x in r["revisar"]]
     ratio_mal = r["ratio"]["nivel"] if r["ratio"] and r["ratio"]["meses"] >= 6 else ""
     minima = analisis.REGLAS["deuda_minima"]
     if not sit and not dfe and not agip and not fisc and not ccma:
         r["semaforo"], r["motivo"] = "gris", "Sin datos todavía"
-    elif (r["cuotas_impagas"] or r["ddjj"] or r["dfe_altas"] or r["caducos"] or r["deuda_cm"] or r["arba_altas"]
+    elif (r["cuotas_impagas"] or r["ddjj"] or r["dfe_altas"] or r["caducos"] or r["revisar"] or r["arba_altas"]
           or r["agip_altas"] or r["fiscalizaciones"] or r["ccma_impagos"] or ratio_mal == "Crítico"):
         r["semaforo"] = "rojo"
         r["motivo"] = ", ".join(x for x in [
@@ -136,18 +177,19 @@ def situacion(cuit: str) -> dict:
             f"{r['ddjj']} DDJJ pendiente(s)" if r["ddjj"] else "",
             f"{r['dfe_altas']} notificación(es) importante(s) sin abrir" if r["dfe_altas"] else "",
             f"{r['caducos']} plan(es) caduco(s)" if r["caducos"] else "",
-            "deuda de Convenio" if r["deuda_cm"] else "",
+            f"{len(r['revisar'])} deuda(s) histórica(s) para que revise el encargado" if r["revisar"] else "",
             f"{r['arba_altas']} aviso(s) de ARBA" if r["arba_altas"] else "",
             f"{r['agip_altas']} aviso(s) de AGIP" if r["agip_altas"] else "",
             f"{r['fiscalizaciones']} fiscalización(es)/control(es) abiertos" if r["fiscalizaciones"] else "",
             f"{r['ccma_impagos']} período(s) de autónomos/monotributo impago(s)" if r["ccma_impagos"] else "",
             f"relación D/C crítica ({r['ratio']['ratio']:.2f})".replace(".", ",") if ratio_mal == "Crítico" else ""] if x)
-    elif ((r["deuda_vencida"] or 0) >= minima or r["agip_deuda"] >= minima or r["cuotas_15"] or r["errores"]
+    elif ((r["deuda_vencida"] or 0) >= minima or r["agip_deuda"] >= minima or r["deuda_cm"] or r["cuotas_15"] or r["errores"]
           or ratio_mal == "Advertencia"):
         r["semaforo"] = "amarillo"
         r["motivo"] = ", ".join(x for x in [
             "deuda vencida" if (r["deuda_vencida"] or 0) >= minima else "",
             "deuda en AGIP" if r["agip_deuda"] >= minima else "",
+            "deuda de Convenio (vista por el encargado)" if r["deuda_cm"] and not r["revisar"] else "",
             f"relación D/C baja ({r['ratio']['ratio']:.2f})".replace(".", ",") if ratio_mal == "Advertencia" else "",
             f"{r['cuotas_15']} cuota(s) vencen en 15 días" if r["cuotas_15"] else "",
             "la última corrida tuvo errores" if r["errores"] else ""] if x)
@@ -320,7 +362,9 @@ def ficha(cuit: str) -> dict:
         jur = (cm or {}).get("jurisdicciones") or {}
         b.append({"id": "iibb", "titulo": "Ingresos Brutos", "valor": (cm or {}).get("deuda_total"), "pesos": True,
                   "sub": (f"Convenio: {sum(1 for v in jur.values() if v['deuda'])} jurisdicción(es) con deuda"
-                          if cm else "ARBA"), "color": color(bool((cm or {}).get("deuda_total")), hay=bool(cm))})
+                          if cm else "ARBA"),
+                  "color": "rojo" if any(x["tema"] == "Convenio Multilateral" for x in s["revisar"])
+                           else "amarillo" if (cm or {}).get("deuda_total") else color(False, hay=bool(cm))})
     if meses_liva or obs:
         n_obs = len((obs or {}).get("comprobantes") or [])
         b.append({"id": "compras", "titulo": "Compras y APOC", "valor": n_obs if obs else None,
@@ -346,6 +390,12 @@ def ficha(cuit: str) -> dict:
     if s["fisc"] or (s["agip"] or {}).get("fiscalizacion") is not None:
         b.append({"id": "fiscalizaciones", "titulo": "Fiscalizaciones", "valor": s["fiscalizaciones"],
                   "sub": "ARCA (OI, SIACE) y AGIP", "color": "rojo" if s["fiscalizaciones"] else "verde"})
+    if s["scth"] or s["revisiones"]:
+        h_ = s["scth"] or {}
+        b.append({"id": "historica", "titulo": "Deuda histórica", "valor": h_.get("deuda_total") if h_ else None, "pesos": bool(h_),
+                  "sub": (f"{len(s['revisar'])} para revisar (encargado)" if s["revisar"] else "revisada por el encargado"
+                          if s["revisiones"] else "sin deuda") + " · estado de cumplimiento",
+                  "color": "rojo" if s["revisar"] else "amarillo" if s["revisiones"] else "verde"})
     if s["ccma"]:
         cm_ = s["ccma"]
         b.append({"id": "ccma", "titulo": "Autónomos / Monotributo", "valor": s["ccma_deuda"] or (0 if not cm_.get("sin_ccma") else None),
@@ -369,7 +419,7 @@ def alertas_del_dia() -> list[dict]:
         f = ficha(c["cuit"])
         al = [a for a in f["alertas"] if a.get("prioridad") == "ALTA"]
         al += [a for a in ((f["arba_dfe"] or {}).get("alertas") or []) if a.get("prioridad") == "ALTA"]
-        al += [a for a in ((f["cm"] or {}).get("alertas") or []) if a.get("prioridad") == "ALTA"]
+        # Convenio: ya va como "Deuda histórica para revisar" mientras el encargado no la marque vista
         if f.get("ratio") and f["ratio"]["nivel"] == "Crítico" and f["ratio"]["meses"] >= 6:
             al.append({"prioridad": "ALTA", "tipo": "Relación débito/crédito crítica",
                        "texto": f"D/C {f['ratio']['ratio']:.2f} en {f['ratio']['meses']} meses (menos de 0,8)".replace(".", ",", 1)})

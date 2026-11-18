@@ -69,6 +69,23 @@
   {% else %}<p class="sutil">Elegí un organismo para ver sus notificaciones.</p>{% endif %}
 
 {% elif sec == 'iibb' %}
+  {% for x in s.revisiones if x.id_sec == sec %}
+  <div class="aviso {{ 'ok' if x.visto else 'error' }}">
+    <b>{{ x.tema }}:</b> {{ x.texto }} — {{ x.importe|pesos }} <span class="sutil">(capital sin actualizar: no es la deuda de hoy)</span>
+    {% if x.a_favor %}<br><span class="sutil">Saldos a favor del contribuyente en esa jurisdicción: {{ x.a_favor|pesos }} (¿compensa?)</span>{% endif %}
+    {% if x.visto %}<br>✔ Vista por <b>{{ x.visto.nombre or x.visto.usuario }}</b> el {{ x.visto.fecha[:10]|fecha }}{% if x.visto.nota %}: {{ x.visto.nota }}{% endif %}
+    <form method="post" action="{{ url_for('revision_visto') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="clave" value="{{ x.clave }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="0">
+      <input type="hidden" name="volver" value="{{ request.path }}"><button class="boton chico">Desmarcar</button></form>
+    {% else %}
+    <form method="post" action="{{ url_for('revision_visto') }}"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="clave" value="{{ x.clave }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="1">
+      <input type="hidden" name="volver" value="{{ request.path }}">
+      <input type="text" name="nota" maxlength="300" placeholder="Nota (opcional): p. ej. compensada con saldo a favor, en plan, se paga el…">
+      <button class="boton">✔ Visto, me ocupo</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
   {% if s.cm %}
   <h2>Convenio Multilateral (SIFERE) — deuda {{ s.cm.deuda_total|pesos }}</h2>
   <p class="sutil">Capital original sin actualizar, anticipos {{ s.cm.desde }} a {{ s.cm.hasta }}, consulta del {{ s.cm.fecha|fecha }}. Solo para el estudio.</p>
@@ -225,6 +242,47 @@
   {% else %}<tr><td colspan="7" class="sutil">Sin movimientos.</td></tr>{% endfor %}
   </tbody></table>
   {% else %}<p class="sutil">Todavía no se consultó la cuenta de autónomos / monotributo (se lee en la corrida "Todo" o pidiendo "Autónomos y Monotributo").</p>{% endif %}
+
+{% elif sec == 'historica' %}
+  {% for x in s.revisiones if x.id_sec == sec %}
+  <div class="aviso {{ 'ok' if x.visto else 'error' }}">
+    <b>{{ x.tema }}:</b> {{ x.texto }} — {{ x.importe|pesos }} <span class="sutil">(capital sin actualizar: no es la deuda de hoy)</span>
+    {% if x.a_favor %}<br><span class="sutil">Saldos a favor del contribuyente en esa jurisdicción: {{ x.a_favor|pesos }} (¿compensa?)</span>{% endif %}
+    {% if x.visto %}<br>✔ Vista por <b>{{ x.visto.nombre or x.visto.usuario }}</b> el {{ x.visto.fecha[:10]|fecha }}{% if x.visto.nota %}: {{ x.visto.nota }}{% endif %}
+    <form method="post" action="{{ url_for('revision_visto') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="clave" value="{{ x.clave }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="0">
+      <input type="hidden" name="volver" value="{{ request.path }}"><button class="boton chico">Desmarcar</button></form>
+    {% else %}
+    <form method="post" action="{{ url_for('revision_visto') }}"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="clave" value="{{ x.clave }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="1">
+      <input type="hidden" name="volver" value="{{ request.path }}">
+      <input type="text" name="nota" maxlength="300" placeholder="Nota (opcional): p. ej. compensada con saldo a favor, en plan, se paga el…">
+      <button class="boton">✔ Visto, me ocupo</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% set h = s.scth %}
+  {% if h %}
+  <div class="tarjetas">
+    <div class="tarjeta"><span class="sutil">Deuda (todos los años leídos)</span><b class="{{ 'txt-rojo' if h.deuda_total }}">{{ h.deuda_total|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">F.931 fuera de 301 / 351</span><b class="{{ 'txt-rojo' if h.deuda_f931_otros }}">{{ h.deuda_f931_otros|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Años revisados</span><b>{{ h.anios|length }}</b></div>
+  </div>
+  <p class="sutil">Cuentas Tributarias → Estado de cumplimiento, año por año, consultado el {{ h.fecha|fecha }}. Importes como los muestra ARCA (sin actualizar).</p>
+  <table class="tabla"><thead><tr><th>Año</th><th class="num">Deuda</th><th class="num">Saldo libre disp.</th><th class="num">Saldo técnico</th><th class="num">Otros créditos</th><th class="num">Multas no firmes</th></tr></thead><tbody>
+  {% for a in h.anios %}{% set t = a.totales %}<tr><td>{{ a.anio }}</td><td class="num {{ 'txt-rojo' if t.deuda }}" data-l="Deuda">{{ t.deuda|pesos if t.deuda is not none else '—' }}</td>
+    <td class="num" data-l="Saldo libre disp.">{{ t.sld|pesos if t.sld is not none else '—' }}</td><td class="num" data-l="Saldo técnico">{{ t.saldo_tecnico|pesos if t.saldo_tecnico is not none else '—' }}</td>
+    <td class="num" data-l="Otros créditos">{{ t.otros_creditos|pesos if t.otros_creditos is not none else '—' }}</td><td class="num" data-l="Multas no firmes">{{ t.multas_no_firmes|pesos if t.multas_no_firmes is not none else '—' }}</td></tr>{% endfor %}
+  </tbody></table>
+  <h2>Deuda por impuesto, período y concepto</h2>
+  <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Concepto</th><th class="num">Deuda</th><th>Estado de pago</th></tr></thead><tbody>
+  {% for d in h.deudas %}<tr class="{{ 'fila-roja' if d.color == 'rojo' }}"><td>{{ d.impuesto }} {{ d.nombre }}{% if d.f931 and d.impuesto not in ('301', '351') %} <span class="chip">F.931</span>{% endif %}</td>
+    <td data-l="Período">{{ d.periodo[4:6] }}/{{ d.periodo[:4] }}</td><td data-l="Concepto">{{ d.concepto }}</td>
+    <td class="num {{ 'txt-rojo' if d.color == 'rojo' }}" data-l="Deuda" style="{{ 'color:#15803d' if d.color == 'verde' }}">{{ d.deuda|pesos }}</td><td data-l="Estado de pago">{{ d.estado_pago }}</td></tr>
+  {% else %}<tr><td colspan="5" class="sutil">Sin deuda en los años leídos.</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="sutil">En rojo / verde: el color con que ARCA muestra la deuda.</p>
+  {% else %}<p class="sutil">Todavía no se leyó el estado de cumplimiento (se lee en la corrida "Todo" o pidiendo "Deuda histórica").</p>{% endif %}
 
 {% elif sec == 'agip' %}
   {% set ag = s.agip or {} %}

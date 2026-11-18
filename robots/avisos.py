@@ -253,8 +253,59 @@ def evaluar(hoy: dt.date | None = None) -> dict:
                 auto += 1
     lista = sorted(avisos.values(), key=lambda a: (a["estado"] == "resuelto", -int(a.get("dias") or 0)))
     _guardar(ruta, lista[:2000])
+    rev = avisar_revisiones(cont, cuits, hoy)
     env = enviar_cola()
-    return {"nuevos": nuevos, "automaticos": auto, "resueltos": resueltos, "mails": env}
+    return {"nuevos": nuevos, "automaticos": auto, "resueltos": resueltos, "revisiones": rev, "mails": env}
+
+
+def _ultimo_json(cuit: str, carpeta: str) -> dict | None:
+    import glob
+    rutas = sorted(glob.glob(os.path.join(DATOS, cuit, carpeta, "*.json")))
+    return _leer(rutas[-1]) if rutas else None
+
+
+def revisiones(cuit: str) -> list[dict]:
+    """Deuda histórica que el encargado tiene que revisar (mismas claves que la web: robots_web/datos.revisiones)."""
+    out = []
+    cm = _ultimo_json(cuit, "sifere_deuda") or {}
+    for j, v in (cm.get("jurisdicciones") or {}).items():
+        imp = [a for a in v.get("anticipos") or [] if a.get("impago") and "reciente" not in a.get("estado", "")]
+        if imp:
+            out.append({"clave": f"cm:{cuit}:{j}:{imp[-1]['anticipo']}:{len(imp)}", "tema": "Convenio Multilateral",
+                        "texto": f"{j} {v.get('nombre', '')}: {len(imp)} anticipo(s) con saldo a favor del fisco y sin el pago "
+                                 f"({imp[0]['anticipo']} a {imp[-1]['anticipo']}), {_pesos(v.get('deuda'))} sin actualizar"
+                                 + (f"; saldos a favor del contribuyente: {_pesos(v.get('saldo_contribuyente'))}"
+                                    if v.get("saldo_contribuyente") else "")})
+    h = _ultimo_json(cuit, "sct_historico") or {}
+    if h.get("deudas"):
+        out.append({"clave": f"sct:{cuit}:{round(h.get('deuda_total') or 0)}:{len(h['deudas'])}", "tema": "Cuentas Tributarias",
+                    "texto": f"Estado de cumplimiento: {len(h['deudas'])} período(s)/concepto(s) con deuda por "
+                             f"{_pesos(h.get('deuda_total'))} en " + ", ".join(list(h.get("por_impuesto") or {})[:6])})
+    return out
+
+
+def avisar_revisiones(cont: dict, cuits: list[str], hoy: dt.date) -> int:
+    """Un mail al encargado por cada deuda histórica NUEVA (una sola vez por clave). La marca de "visto, me ocupo"
+    la pone el encargado en la web."""
+    ruta = os.path.join(PUBLICO, "revisiones.json")
+    hechas = _leer(ruta, {}) or {}
+    n = 0
+    for cuit in cuits:
+        info = cont.get(cuit) or {}
+        for x in revisiones(cuit):
+            if x["clave"] in hechas:
+                continue
+            nombre = info.get("razon_social") or _cuit_fmt(cuit)
+            cuerpo = (f"Hola {info.get('encargado_nombre') or ''}:\n\nEl robot encontró deuda histórica de {nombre} "
+                      f"({_cuit_fmt(cuit)}) que hay que revisar:\n\n{x['tema']}: {x['texto']}\n\n"
+                      "Es capital sin actualizar (no es la deuda de hoy). Fijate si está compensada, en un plan o si hay que "
+                      "pagarla, y marcala \"Visto, me ocupo\" en la ficha del cliente.\n")
+            hechas[x["clave"]] = {"fecha": hoy.isoformat(), "cuit": cuit,
+                                  "mail": encolar_mail([info.get("encargado_email", "")], f"Deuda para revisar: {nombre} — {x['tema']}",
+                                                       cuerpo, motivo=f"revisión {x['clave']}")}
+            n += 1
+    _guardar(ruta, hechas)
+    return n
 
 
 def vep_programado() -> bool:

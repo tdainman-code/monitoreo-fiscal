@@ -21,7 +21,7 @@ import os
 import glob
 from datetime import date
 
-from . import arca, robot_agip, robot_ccma, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere
+from . import arca, robot_agip, robot_ccma, robot_sct_historico, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere
 from . import robot_situacion_fiscal as rsf
 
 DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
@@ -39,7 +39,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
     rsf.USUARIO_ACTUAL["cuit"], rsf.USUARIO_ACTUAL["cliente"] = usuario, cuit
     sit = {"cuit": cuit, "fecha": hoy.isoformat(), "alertas": [], "archivos": {}, "reingresos": 0}
     avance_mf: dict = {}
-    est = {"mc": {}, "f931": {}, "sifere": {}, "dfe": {}, "arba": {}, "presentadas": {}, "liva": {}, "obs": {}, "arba_dfe": {}, "agip": {}, "fisc": {}, "ccma": {}}
+    est = {"mc": {}, "f931": {}, "sifere": {}, "dfe": {}, "arba": {}, "presentadas": {}, "liva": {}, "obs": {}, "arba_dfe": {}, "agip": {}, "fisc": {}, "ccma": {}, "scth": {}}
 
     def p_sct(ctx, portal):
         sit["sct"] = rsf.leer_cuentas_tributarias(ctx, portal, cuit, destino, hoy, delegacion)
@@ -51,6 +51,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
 
     pasos = [("cuentas_tributarias", p_sct), ("mis_facilidades", p_mf),
              ("ccma", robot_ccma.paso(cuit, usuario, est["ccma"])),
+             ("sct_historico", robot_sct_historico.paso(cuit, est["scth"])),
              ("ddjj_presentadas", robot_ddjj_presentadas.paso(cuit, est["presentadas"])),
              ("dfe", robot_dfe.paso(cuit, usuario, est["dfe"])),
              ("sifere", robot_sifere.paso(cuit, periodos, est["sifere"], forzar)),
@@ -136,7 +137,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
                "arba_dfe": est["arba_dfe"] if arba else "sin CIT cargada",
                "agip": est["agip"].get("servicios", est["agip"]) if agip else "sin Clave Ciudad cargada",
                "fiscalizaciones": est["fisc"].get("servicios", {}),
-               "ccma": est["ccma"].get("resultado", ""), "dfe": {k: est["dfe"].get(k) for k in ("total", "sin_abrir", "altas_sin_abrir")}}
+               "ccma": est["ccma"].get("resultado", ""), "sct_historico": est["scth"].get("resultado", ""), "dfe": {k: est["dfe"].get(k) for k in ("total", "sin_abrir", "altas_sin_abrir")}}
     with open(os.path.join(DATOS, cuit, f"corrida_todo_{hoy.isoformat()}_{modo}.json"), "w", encoding="utf-8") as f:
         json.dump(resumen, f, ensure_ascii=False, indent=1, default=str)
 
@@ -150,5 +151,5 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
         raise arca.ErrorRobot(f"Ninguna fuente se pudo leer: {r['_errores']}")
     resumen["archivos"] = {"todo": {"alertas": sit["alertas"] + est["dfe"].get("alertas", []) + est["agip"].get("alertas", [])
                                     + est["fisc"].get("alertas", [])
-                                    + est["ccma"].get("alertas", [])}}
+                                    + est["ccma"].get("alertas", []) + est["scth"].get("alertas", [])}}
     return resumen

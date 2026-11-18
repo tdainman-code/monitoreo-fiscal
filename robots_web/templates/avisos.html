@@ -6,6 +6,17 @@
   <a class="chip {{ 'activo' if ver == 'mios' }}" href="{{ url_for('pantalla_avisos', ver='mios') }}">Mis clientes</a>
   <a class="chip {{ 'activo' if ver == 'todos' }}" href="{{ url_for('pantalla_avisos', ver='todos') }}">Todos</a>
 </div>
+{% if revisar %}
+<h2>Deuda histórica para revisar ({{ revisar|length }})</h2>
+<p class="sutil">Convenio Multilateral (anticipos con saldo a favor del fisco y sin el pago) y Cuentas Tributarias (estado de cumplimiento). Importes sin actualizar. El encargado la revisa (¿compensada? ¿en plan? ¿se paga?) y la marca vista en la ficha del cliente.</p>
+<div class="panel"><table class="tabla"><thead><tr><th>Cliente</th><th>Qué</th><th class="num">Importe</th><th></th></tr></thead><tbody>
+{% for x in revisar %}<tr class="sem-rojo"><td><a href="{{ url_for('cliente', cuit=x.cuit) }}"><b>{{ x.nombre or cuit_fmt(x.cuit) }}</b></a>
+  <div class="sutil">{{ cuit_fmt(x.cuit) }}{% if not x.encargado %} · <b class="txt-rojo">sin encargado</b>{% endif %}</div></td>
+  <td data-l="Qué"><b>{{ x.tema }}</b> — {{ x.texto }}</td><td class="num" data-l="Importe">{{ x.importe|pesos }}</td>
+  <td><a class="boton" href="{{ url_for('cliente_seccion', cuit=x.cuit, seccion=x.id_sec) }}">Revisar</a></td></tr>{% endfor %}
+</tbody></table></div>
+<h2>Cuotas de planes impagas</h2>
+{% endif %}
 <div class="panel">
 <table class="tabla"><thead><tr><th>Cliente</th><th>Plan / cuota</th><th>Venció</th><th class="num">Días</th><th class="num">Importe</th><th>Estado</th><th></th></tr></thead><tbody>
 {% for a in abiertos %}
