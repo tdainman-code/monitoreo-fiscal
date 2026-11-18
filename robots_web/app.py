@@ -617,6 +617,66 @@ def actividad():
     return render_template("actividad.html", filas=usuarios.actividad(), usuarios=usuarios.listar())
 
 
+@app.route("/asignaciones", methods=["GET", "POST"])
+@requiere_admin
+def asignaciones():
+    """Asignar los clientes de cada empleado con una planilla (18/11/2026)."""
+    from . import asignaciones as asg
+    activos = [u for u in usuarios.listar() if u[3]]
+    if request.method == "POST":
+        _controlar_csrf()
+        f = request.files.get("planilla")
+        if not f or not f.filename.lower().endswith(".xlsx"):
+            flash("Subí la planilla en formato Excel (.xlsx)", "error")
+            return redirect(url_for("asignaciones"))
+        contenido = f.read(5_000_001)
+        if len(contenido) > 5_000_000:
+            flash("La planilla es demasiado grande", "error")
+            return redirect(url_for("asignaciones"))
+        try:
+            nuevos, errores = asg.leer(contenido, {u[0] for u in activos})
+        except ImportError:
+            flash("Falta instalar openpyxl en la web (se instala sola con la próxima actualización)", "error")
+            return redirect(url_for("asignaciones"))
+        conocidos = {c["cuit"] for c in datos.lista_clientes()}
+        cambiados = 0
+        for cuit, a in nuevos.items():
+            if cuit not in conocidos:
+                errores.append(f"{cuit}: no es un cliente del sistema (no se cargó)")
+                continue
+            d = usuarios.datos_cliente(cuit) or {}
+            if (d.get("encargado") or "", d.get("equipo") or "") != (a["encargado"], a["equipo"]):
+                usuarios.guardar_datos_cliente(cuit, {**d, **a}, session["usuario"])
+                cambiados += 1
+        usuarios.registrar(session["usuario"], "asignación de clientes por planilla", f"{cambiados} cambiados", _ip())
+        flash(f"Planilla importada: {cambiados} cliente(s) cambiados, {len(nuevos) - cambiados} sin cambios.", "ok")
+        for e in errores[:30]:
+            flash(e, "error")
+        if len(errores) > 30:
+            flash(f"… y {len(errores) - 30} observaciones más", "error")
+        return redirect(url_for("asignaciones"))
+    if request.args.get("bajar"):
+        try:
+            cont = asg.generar(datos.lista_clientes(), {c["cuit"]: usuarios.datos_cliente(c["cuit"]) or {}
+                                                         for c in datos.lista_clientes()},
+                               [(u[0], u[1], u[2]) for u in activos])
+        except ImportError:
+            flash("Falta instalar openpyxl en la web (se instala sola con la próxima actualización)", "error")
+            return redirect(url_for("asignaciones"))
+        usuarios.registrar(session["usuario"], "bajó la planilla de asignación de clientes", "", _ip())
+        from io import BytesIO
+        return send_file(BytesIO(cont), as_attachment=True, download_name="asignacion_clientes.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resumen = {}
+    for c in datos.lista_clientes():
+        d = usuarios.datos_cliente(c["cuit"]) or {}
+        for u in [d.get("encargado")] + [x.strip() for x in str(d.get("equipo") or "").split(",")]:
+            if u:
+                resumen[u] = resumen.get(u, 0) + 1
+    sin = sum(1 for c in datos.lista_clientes() if not (usuarios.datos_cliente(c["cuit"]) or {}).get("encargado"))
+    return render_template("asignaciones.html", activos=activos, resumen=resumen, sin=sin, total=len(datos.lista_clientes()))
+
+
 @app.route("/usuarios", methods=["GET", "POST"])
 @requiere_admin
 def pantalla_usuarios():

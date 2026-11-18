@@ -240,6 +240,31 @@ ok(usuarios.datos_cliente(C2)["encargado"] == "beto" and usuarios.datos_cliente(
 _ia = ca.get("/").text
 ok("3 cliente(s)" in _ia and "que llevás vos" not in _ia, "el administrador ve todos los clientes")
 usuarios.guardar_datos_cliente(C2, {**usuarios.datos_cliente(C2), "encargado": "", "equipo": "ana"}, "gabriel")
+# planilla de asignación: bajar, completar y subir (solo administradores)
+import io as _io  # noqa: E402
+from openpyxl import load_workbook as _lw  # noqa: E402
+ok(cb.get("/asignaciones").status_code == 403, "asignar clientes: solo administradores")
+usuarios.guardar_datos_cliente(C, {**usuarios.datos_cliente(C), "emails": "x@y.com"}, "gabriel")
+_x = ca.get("/asignaciones?bajar=1")
+_wb = _lw(_io.BytesIO(_x.data))
+_ws = _wb["Clientes"]
+_cuits = {str(r[0].value).replace("-", ""): r for r in _ws.iter_rows(min_row=2)}
+ok(_x.status_code == 200 and {C, C2, C3} <= set(_cuits) and "Usuarios" in _wb.sheetnames
+   and _ws.data_validations.dataValidation, "planilla con todos los clientes, usuarios y desplegable")
+_cuits[C][2].value, _cuits[C][3].value = "beto", "ana, fantasma"
+_cuits[C3][2].value = "nadie"
+_buf = _io.BytesIO(); _wb.save(_buf); _buf.seek(0)
+_r = ca.get("/asignaciones")
+_r = ca.post("/asignaciones", data={"csrf": token(_r.text), "planilla": (_buf, "asignacion.xlsx")},
+             content_type="multipart/form-data", follow_redirects=True)
+ok(usuarios.datos_cliente(C)["encargado"] == "beto" and usuarios.datos_cliente(C)["equipo"] == "ana"
+   and usuarios.datos_cliente(C3).get("encargado", "") == "" and "nadie" in _r.text and "fantasma" in _r.text,
+   "importa encargado y equipo; avisa usuarios inexistentes y no los asigna")
+ok(usuarios.datos_cliente(C).get("emails") == "x@y.com", "el resto de los datos del cliente queda igual")
+ok(f"/cliente/{C}" in cb.get("/").text, "Beto ahora ve el cliente asignado por planilla")
+ok(ca.post("/asignaciones", data={"csrf": token(_r.text), "planilla": (_io.BytesIO(b"no"), "x.txt")},
+           content_type="multipart/form-data", follow_redirects=True).status_code == 200, "archivo que no es Excel: rechazado")
+usuarios.guardar_datos_cliente(C, {**usuarios.datos_cliente(C), "encargado": "", "equipo": "ana"}, "gabriel")
 _mf = app.test_client().get("/manifest.webmanifest")
 ok(_mf.status_code == 200 and "icono-512.png" in _mf.text and _mf.mimetype == "application/manifest+json"
    and app.test_client().get("/static/icono-192.png").status_code == 200, "celular: se instala como app (manifest con íconos)")

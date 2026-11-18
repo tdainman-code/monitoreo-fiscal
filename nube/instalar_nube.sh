@@ -104,7 +104,7 @@ mkdir -p /opt/robots-web
 rm -rf /opt/robots-web/robots_web; cp -r "$PAQ/robots_web" /opt/robots-web/
 find /opt/robots-web -name '__pycache__' -prune -exec rm -rf {} +
 [ -x /opt/robots-web/venv/bin/python ] || python3 -m venv /opt/robots-web/venv
-/opt/robots-web/venv/bin/pip install -q --upgrade flask gunicorn
+/opt/robots-web/venv/bin/pip install -q --upgrade flask gunicorn openpyxl
 chown -R root:root /opt/robots-web; chmod -R go-w /opt/robots-web
 cat > /etc/systemd/system/robots-web.service <<UNIT
 [Unit]

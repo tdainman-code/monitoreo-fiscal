@@ -55,6 +55,7 @@ echo "== Copia de lo anterior: $H/robots_antes_$F.tgz y $H/robots_web_antes_$F.t
 rm -rf "$H/robots/robots" && cp -r "$TMP/robots" "$H/robots/" && chown -R $U:$U "$H/robots/robots"
 find "$H/robots/robots" -name __pycache__ -prune -exec rm -rf {} +
 if [ -d /opt/robots-web ]; then
+  [ -x /opt/robots-web/venv/bin/pip ] && { /opt/robots-web/venv/bin/python -c "import openpyxl" 2>/dev/null || /opt/robots-web/venv/bin/pip install -q openpyxl; }
   rm -rf /opt/robots-web/robots_web && cp -r "$TMP/robots_web" /opt/robots-web/
   find /opt/robots-web/robots_web -name __pycache__ -prune -exec rm -rf {} +
   chown -R root:root /opt/robots-web/robots_web; chmod -R go-w,a+rX /opt/robots-web/robots_web
