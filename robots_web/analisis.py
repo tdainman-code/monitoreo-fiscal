@@ -289,10 +289,6 @@ def analizar_resultado(meses: list[dict]) -> dict | None:
     if tot["resultado"] < 0:
         c.append("El resultado acumulado es NEGATIVO: los costos superan a las ventas declaradas. Conviene revisar si faltan "
                  "ventas o si hay costos que no corresponden.")
-    if tot["hay_ajustes"]:
-        c.append(f"Con los ajustes de la conciliación (duplicados en el Libro IVA, notas de crédito no computadas y "
-                 f"facturas no tomadas) el saldo sería {_pesos(tot['resultado_ajustado'])} (índice "
-                 f"{pct(tot['indice_ajustado'])}) y el saldo técnico de IVA cambiaría en {_pesos(-tot['aj_iva_credito'])}.")
     c.append(f"{len(negativos)} de {len(meses)} meses dieron negativo: {', '.join(periodo_txt(m['periodo']) for m in negativos)}."
              if negativos else "Ningún mes dio negativo.")
     if mejor is not peor:

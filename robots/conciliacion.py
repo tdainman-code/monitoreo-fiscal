@@ -465,6 +465,32 @@ def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
     hoja("Facturas C fuera del Libro", "Facturas C de compra (sin crédito fiscal) que están en Mis Comprobantes y no "
          "en el Libro IVA: se suman como gasto en la relación débito/crédito. Las facturas B no se toman nunca.", r["bc_fuera_libro_detalle"],
          ["Período MC", "Fecha", "Comprobante", "Pto. venta", "Número", "CUIT emisor", "Emisor", "Total"])
+    # Impacto en los saldos (Gaby, 17-18/11/2026): va en ESTA planilla, no en la relación débito/crédito
+    aj = ajustes_por_mes(r)
+    impacto = []
+    for per in sorted(aj):
+        d = aj[per]
+        lj = _leer_json(os.path.join(DATOS, cuit, "libro_iva", f"{per}.json")) if os.path.exists(
+            os.path.join(DATOS, cuit, "libro_iva", f"{per}.json")) else {}
+        deb = float(((lj.get("ventas") or {}).get("Total IVA")) or 0)
+        cred = float(((lj.get("compras") or {}).get("Total IVA")) or 0)
+        g = lambda k: round(d.get(k) or 0.0, 2)
+        aj_iva = round(g("duplicados_iva") + g("nc_iva") + g("no_tomadas_iva"), 2)
+        impacto.append({"Período": per, "Duplicados en Libro (neto)": g("duplicados_neto"), "NC no computadas (neto)": g("nc_neto"),
+                        "Facturas A no tomadas (neto)": g("no_tomadas_neto"),
+                        "Compras netas a corregir": round(g("duplicados_neto") + g("nc_neto") + g("no_tomadas_neto"), 2),
+                        "Duplicados (IVA)": g("duplicados_iva"), "NC no computadas (IVA)": g("nc_iva"),
+                        "No tomadas (IVA)": g("no_tomadas_iva"), "Ajuste al crédito fiscal": aj_iva,
+                        "Saldo técnico Libro IVA": round(deb - cred, 2) if lj else None,
+                        "Saldo técnico corregido": round(deb - cred - aj_iva, 2) if lj else None})
+    r["impacto"] = impacto
+    wi = hoja("Impacto en saldos", "Cómo cambian las compras y el saldo técnico de IVA si se corrige la carga del Libro IVA "
+              "(duplicados restan, notas de crédito no computadas restan, facturas A no tomadas suman si correspondía "
+              "tomarlas). El informe principal (relación débito/crédito) sale del Portal IVA sin estos ajustes.", impacto,
+              ["Período", "Duplicados en Libro (neto)", "NC no computadas (neto)", "Facturas A no tomadas (neto)",
+               "Compras netas a corregir", "Duplicados (IVA)", "NC no computadas (IVA)", "No tomadas (IVA)",
+               "Ajuste al crédito fiscal", "Saldo técnico Libro IVA", "Saldo técnico corregido"],
+              lambda f: ROJO if f["Ajuste al crédito fiscal"] < 0 else None)
     v = conciliar_ventas(cuit)
     r["ventas"] = v
     if not v.get("sin_libro_iva"):
@@ -494,6 +520,7 @@ def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
               lambda f: ROJO_FUERTE if (f.get("NC no computadas") or f.get("Duplicados en Libro"))
               else ROJO if f.get("No tomados") else None)
     wb.move_sheet(ws, offset=-(len(wb.sheetnames) - 1))
+    wb.move_sheet(wi, offset=-(wb.sheetnames.index(wi.title) - 1))      # segunda hoja, después del Resumen
     wb.active = 0
     os.makedirs(os.path.dirname(ruta), exist_ok=True)
     wb.save(ruta)

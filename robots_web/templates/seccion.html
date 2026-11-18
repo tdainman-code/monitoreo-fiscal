@@ -157,7 +157,6 @@
     <div class="tarjeta"><span class="sutil">Saldo (ventas − erogaciones)</span><b class="{{ 'txt-rojo' if a.total.resultado < 0 }}">{{ a.total.resultado|pesos }}</b></div>
     <div class="tarjeta"><span class="sutil">Índice erogaciones / ventas</span><b class="{{ 'txt-rojo' if a.total.indice and a.total.indice > 1 }}">{{ pct(a.total.indice) }}</b></div>
     <div class="tarjeta"><span class="sutil">Margen de utilidad bruto</span><b class="{{ 'txt-rojo' if a.total.margen is not none and a.total.margen < 0 }}">{{ pct(a.total.margen) }}</b></div>
-    {% if a.total.hay_ajustes %}<div class="tarjeta"><span class="sutil">Saldo con ajustes de la conciliación</span><b class="{{ 'txt-rojo' if a.total.resultado_ajustado < 0 }}">{{ a.total.resultado_ajustado|pesos }}</b></div>{% endif %}
   </div>
   <h2>Conclusiones</h2>
   <ul class="conclusiones">{% for x in a.conclusiones %}<li>{{ x }}</li>{% endfor %}</ul>
@@ -182,23 +181,6 @@
       title="{{ 'Falta: ' ~ m.faltantes|join(', ') if not m.completo else '' }}">{% if v is none %}{{ 'sin dato' if k == 'iibb' and 'IIBB' in m.faltantes else '—' }}{% elif fmt == 'pct' %}{{ pct(v) }}{% else %}{{ v|pesos }}{% endif %}</td>{% endfor %}
     <td class="num"><b>{% if k == 'indice' or k == 'indice_acumulado' %}{{ pct(a.total.indice) }}{% elif k == 'margen' %}{{ pct(a.total.margen) }}{% elif k == 'saldo_acumulado' %}{{ a.total.resultado|pesos }}{% else %}{{ a.total[k]|pesos }}{% endif %}</b></td></tr>
   {% endfor %}
-  {% if a.total.hay_ajustes %}
-  <tr class="fila-seccion"><td colspan="{{ a.meses|length + 2 }}"><b>Ajustes por conciliación (Mis Comprobantes vs Libro IVA) — informativo, el informe principal es el de arriba</b></td></tr>
-  {% for titulo, k, fmt in [
-      ('Duplicados en el Libro IVA (a restar)', 'aj_duplicados', 'pesos'),
-      ('Notas de crédito no computadas (a restar)', 'aj_nc', 'pesos'),
-      ('Facturas A no tomadas (si correspondía tomarlas)', 'aj_no_tomadas', 'pesos'),
-      ('Total erogaciones con ajustes', 'erogaciones_ajustadas', 'pesos'),
-      ('SALDO MENSUAL con ajustes', 'resultado_ajustado', 'pesos'),
-      ('Índice con ajustes', 'indice_ajustado', 'pct'),
-      ('IVA: saldo técnico según Libro IVA', 'saldo_tecnico', 'pesos'),
-      ('Ajuste al crédito fiscal (duplicados, NC, no tomadas)', 'aj_iva_credito', 'pesos'),
-      ('IVA: saldo técnico con ajustes', 'saldo_tecnico_ajustado', 'pesos')] %}
-  <tr class="{{ 'fila-total' if k in ('resultado_ajustado', 'saldo_tecnico_ajustado') }}"><td>{{ titulo }}</td>
-    {% for m in a.meses %}{% set v = m[k] %}<td class="num {{ 'txt-rojo' if (k == 'resultado_ajustado' and v is not none and v < 0) or (k == 'indice_ajustado' and v and v > 1) }}">{% if v is none or (v == 0 and k.startswith('aj_')) %}—{% elif fmt == 'pct' %}{{ pct(v) }}{% else %}{{ v|pesos }}{% endif %}</td>{% endfor %}
-    <td class="num"><b>{% if fmt == 'pct' %}{{ pct(a.total.indice_ajustado) }}{% else %}{{ a.total[k]|pesos }}{% endif %}</b></td></tr>
-  {% endfor %}
-  {% endif %}
   </tbody></table></div>
   <p class="sutil">Mismas fórmulas que la planilla "Relación DC": ventas y compras del Libro IVA (Portal IVA, DJ presentadas), más las facturas C de compra que están en Mis Comprobantes y no se cargaron en el Libro IVA (no dan crédito, pero son gasto; las facturas B no se toman nunca); remuneraciones y cargas sociales del F.931; IIBB determinado de SIFERE y ARBA. Las celdas en amarillo son meses con alguna fuente faltante (pasá el mouse para ver cuál).</p>
   {% else %}<p class="sutil">Todavía no hay meses del Libro IVA ni del F.931 bajados.</p>{% endif %}

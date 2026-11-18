@@ -224,8 +224,7 @@ _m = analisis.resultado_mensual(C2)[0]
 ok(abs(_m["erogaciones_ajustadas"] - (_m["erogaciones"] - 60_000)) < 1 and abs(_m["aj_iva_credito"] + 12_600) < 1
    and abs(_m["saldo_tecnico_ajustado"] - (_m["saldo_tecnico"] + 12_600)) < 1, "ajustes de conciliación en los saldos")
 r2 = cl.get(f"/cliente/{C2}/relacion")
-ok("SALDO MENSUAL con ajustes" in r2.text and "Duplicados en el Libro IVA" in r2.text and "IVA: saldo técnico con ajustes" in r2.text,
-   "relación D/C muestra los ajustes de la conciliación aparte")
+ok("con ajustes" not in r2.text, "relación D/C sin la conciliación (va en la planilla de conciliación aparte)")
 os.remove(f"{D}/{C2}/conciliacion/ajustes_conciliacion.json")
 ok("Débito / crédito y proyección" in r.text and "Relación débito crédito" in r.text and "Fiscalizaciones" in r.text
    and "AGIP (Ciudad)" in r.text and "Pedir corrida" in r.text, "ficha con botones nuevos y pedir corrida")

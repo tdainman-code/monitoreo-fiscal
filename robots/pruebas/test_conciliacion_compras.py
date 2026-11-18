@@ -101,7 +101,11 @@ from robots import informe_cliente  # noqa: E402
 rel = os.path.join(TMP, "rel.xlsx")
 informe_cliente.relacion_dc(CUIT, "Prueba", ["2025-11", "2025-12", "2026-01", "2026-02"], rel)
 textos = [c.value for row in load_workbook(rel).active.iter_rows() for c in row if isinstance(c.value, str)]
-chk("Relación D/C con bloque de ajustes", any("AJUSTES POR CONCILIACIÓN" in t for t in textos)
-    and any("SALDO MENSUAL con ajustes" in t for t in textos))
+chk("Relación D/C SIN la conciliación (va en su planilla aparte)", not any("AJUSTES POR CONCILIACIÓN" in t for t in textos))
+wb_c = load_workbook(ruta)
+chk(f"conciliación: hoja 'Impacto en saldos' después del Resumen ({wb_c.sheetnames[:3]})", wb_c.sheetnames[:2] == ["Resumen", "Impacto en saldos"])
+imp = {f["Período"]: f for f in conciliacion.generar(CUIT, "Prueba", ruta)["impacto"]}
+chk("impacto: duplicado y NC restan crédito fiscal",
+    abs(imp["2025-12"]["Ajuste al crédito fiscal"] + 3752.86) < 0.01 and abs(imp["2025-11"]["NC no computadas (IVA)"] + 8056125) < 1)
 print("OK" if ok else "FALLÓ")
 sys.exit(0 if ok else 1)
