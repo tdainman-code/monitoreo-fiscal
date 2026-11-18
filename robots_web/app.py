@@ -717,7 +717,7 @@ def pantalla_usuarios():
         err = ""
         if accion == "crear":
             err = usuarios.crear(u, request.form.get("nombre", ""), request.form.get("clave", ""),
-                                 "admin" if request.form.get("rol") == "admin" else "empleado")
+                                 "admin" if request.form.get("rol") == "admin" else "colaborador")
             if not err:
                 usuarios.registrar(session["usuario"], "alta de usuario", u, _ip())
                 flash(f"Usuario '{u}' creado. Pasale la contraseña en persona.", "ok")

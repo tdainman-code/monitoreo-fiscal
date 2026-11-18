@@ -2,7 +2,7 @@
 
 Se baja desde la web (Más -> Planilla de clientes) ya completa con todos los clientes, quién los lleva y sus datos;
 se completa en Excel y se sube. Sirve para:
-  - asignar encargado y equipo (cada empleado ve solo los clientes que lleva);
+  - asignar encargado y equipo (cada colaborador ve solo los clientes que lleva);
   - cargar o corregir los datos del cliente (condición frente al IVA, mails, teléfonos, medios de pago del VEP, etc.);
   - cargar CLAVES (ARCA, CIT de ARBA, AGIP) y dar de alta clientes nuevos (hace falta la clave de ARCA).
 Reglas al subirla:
@@ -88,7 +88,7 @@ def generar(clientes: list[dict], datos_de: dict, usuarios: list[tuple], campos:
     wu = wb.create_sheet("Usuarios")
     wu.append(["Usuario (va en Encargado / Equipo)", "Nombre", "Rol"])
     for u in usuarios:
-        wu.append([u[0], u[1] or "", "administrador (ve todos)" if u[2] == "admin" else "empleado"])
+        wu.append([u[0], u[1] or "", "administrador (ve todos)" if u[2] == "admin" else "colaborador"])
     wu.column_dimensions["A"].width = 34
     wu.column_dimensions["B"].width = 30
     wi = wb.create_sheet("Instrucciones")

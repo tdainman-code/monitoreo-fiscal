@@ -2,7 +2,7 @@
 {% block cuerpo %}
 <h1>Planilla de clientes</h1>
 <p class="sutil">Con una planilla de Excel: quién lleva cada cliente (encargado y equipo), todos los datos del cliente (condición frente al IVA, mails, teléfonos, medios de pago del VEP…), claves fiscales y altas de clientes nuevos.
-Cada empleado ve solo los clientes donde es el <b>encargado</b> o está en el <b>equipo</b>; los administradores ven todos.</p>
+Cada colaborador ve solo los clientes donde es el <b>encargado</b> o está en el <b>equipo</b>; los administradores ven todos.</p>
 <div class="tarjetas">
   <div class="tarjeta"><span class="sutil">Clientes</span><b>{{ total }}</b></div>
   <div class="tarjeta"><span class="sutil">Sin encargado</span><b class="{{ 'txt-rojo' if sin }}">{{ sin }}</b></div>
@@ -21,7 +21,7 @@ Cada empleado ve solo los clientes donde es el <b>encargado</b> o está en el <b
 </form>
 <h2>Clientes por usuario</h2>
 <table class="tabla"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th class="num">Clientes que lleva</th></tr></thead><tbody>
-{% for u in activos %}<tr><td>{{ u[0] }}</td><td data-l="Nombre">{{ u[1] }}</td><td data-l="Rol">{{ 'administrador (ve todos)' if u[2] == 'admin' else 'empleado' }}</td>
+{% for u in activos %}<tr><td>{{ u[0] }}</td><td data-l="Nombre">{{ u[1] }}</td><td data-l="Rol">{{ 'administrador (ve todos)' if u[2] == 'admin' else 'colaborador' }}</td>
   <td class="num" data-l="Clientes">{{ resumen.get(u[0], 0) }}</td></tr>{% endfor %}
 </tbody></table>
 {% endblock %}

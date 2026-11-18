@@ -97,7 +97,7 @@ from robots_web import analisis, datos, usuarios  # noqa: E402
 
 con = usuarios.conectar()
 with con:
-    for u, n, p, rol in (("gabriel", "Gabriel", "claveadmin123", "admin"), ("ana", "Ana", "claveana12345", "empleado"),
+    for u, n, p, rol in (("gabriel", "Gabriel", "claveadmin123", "admin"), ("ana", "Ana", "claveana12345", "colaborador"),
                          ("beto", "Beto", "clavebeto12345", "empleado")):
         con.execute("INSERT INTO usuarios (usuario,nombre,hash,rol,activo,creado) VALUES (?,?,?,?,1,'x')",
                     (u, n, generate_password_hash(p), rol))
@@ -211,11 +211,12 @@ ok(cl.post("/revision/visto", data={"clave": "cm:99999999999:x", "cuit": C, "mar
    "visto: clave de otro cliente rechazada")
 for _x in ("sifere_deuda", "sct_historico"):
     os.remove(f"{D}/{C}/{_x}/2026-11-17.json")
-# cada empleado ve solo sus clientes; los administradores ven todo (18/11/2026)
+# cada colaborador ve solo sus clientes; los administradores ven todo (18/11/2026)
 cb = app.test_client()
 login(cb, "beto", "clavebeto12345")
+ok({u[0]: u[2] for u in usuarios.listar()}["beto"] == "colaborador", "el rol viejo 'empleado' pasa a 'colaborador'")
 _i = cb.get("/").text
-ok("0 cliente(s) que llevás vos" in _i and "no tenés clientes asignados" in _i, "empleado sin clientes asignados no ve ninguno")
+ok("0 cliente(s) que llevás vos" in _i and "no tenés clientes asignados" in _i, "colaborador sin clientes asignados no ve ninguno")
 ca = app.test_client()
 login(ca, "gabriel", "claveadmin123")
 _r = ca.get(f"/cliente/{C2}/datos")
@@ -236,7 +237,7 @@ ok(all(f"/cliente/{C}" not in cb.get(f"/cartera/{v}").text for v in ("deudas", "
 _r = cb.get(f"/cliente/{C2}/datos")
 cb.post(f"/cliente/{C2}/datos", data={"csrf": token(_r.text), "encargado": "", "equipo": ["beto"], "emails": "z@z.com"})
 ok(usuarios.datos_cliente(C2)["encargado"] == "beto" and usuarios.datos_cliente(C2)["equipo"] == "ana",
-   "un empleado no puede cambiar quién lleva el cliente")
+   "un colaborador no puede cambiar quién lleva el cliente")
 _ia = ca.get("/").text
 ok("3 cliente(s)" in _ia and "que llevás vos" not in _ia, "el administrador ve todos los clientes")
 usuarios.guardar_datos_cliente(C2, {**usuarios.datos_cliente(C2), "encargado": "", "equipo": "ana"}, "gabriel")
@@ -422,7 +423,7 @@ ok(any(p.get("robot") == "aviso_vep" and p.get("aviso") == f"{C2}:W631300:2" for
 ok(cl.post("/avisos", data={"csrf": "malo", "aviso": "x", "accion": "aviso_enviar"}).status_code == 400, "avisos con CSRF")
 r = cl.get(f"/cliente/{C2}/datos")
 ok('name="encargado"' not in r.text and "Lo asigna un administrador" in r.text and 'name="medios_vep"' in r.text,
-   "datos del cliente (empleado): ve el encargado pero no lo cambia; medios de pago del VEP")
+   "datos del cliente (colaborador): ve el encargado pero no lo cambia; medios de pago del VEP")
 cl.post(f"/cliente/{C2}/datos", data={"csrf": token(r.text), "medios_vep": ["Interbanking", "Pagar (Red Link)", "trucho"],
                                       "emails": "a@b.com"})
 ct = json.load(open(os.path.join(BANDEJA, "pedidos", "_contactos.txt")))
@@ -479,14 +480,14 @@ ok(cl.get(f"/informe/2026-11-15/situacion_fiscal_{C}.xlsx").status_code == 200, 
 ok(cl.get("/informe/../../etc/passwd").status_code == 404, "no se sale de la carpeta de informes")
 ok("Plan" in cl.get("/agenda").text, "agenda")
 ok(cl.get("/alertas").status_code == 200 and "Relación débito/crédito crítica" in cl.get("/alertas").text, "alertas del día con D/C")
-ok(cl.get("/actividad").status_code == 403, "empleado no ve actividad")
+ok(cl.get("/actividad").status_code == 403, "colaborador no ve actividad")
 cl2 = app.test_client()
 login(cl2, "gabriel", "claveadmin123")
 ok("pidió corrida agip" in cl2.get("/actividad").text, "el admin ve quién pidió corridas")
 escribir(f"{R}/publico/actualizaciones.json", [{"fecha": "2026-11-17T13:00:00", "estado": "rechazada: fallaron las pruebas",
                                                "commit": "abc1234", "mensaje": "cambio de prueba", "detalle": "✘ algo"}])
 ok("cambio de prueba" in cl2.get("/sistema").text and "Sistema" in cl2.get("/mas").text, "el admin ve la pantalla Sistema")
-ok(cl.get("/sistema").status_code == 403, "un empleado no ve Sistema")
+ok(cl.get("/sistema").status_code == 403, "un colaborador no ve Sistema")
 ok(cl.get(f"/cliente/{C3}").status_code == 200 and cl.get(f"/cliente/{C3}/iva").status_code == 200, "cliente sin datos no rompe")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)

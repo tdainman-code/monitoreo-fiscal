@@ -45,7 +45,7 @@ def cuit_fmt(c):
 
 
 def lista_clientes(solo: set | None = None) -> list[dict]:
-    """Todos los clientes; con `solo` (CUITs que puede ver un empleado), únicamente esos."""
+    """Todos los clientes; con `solo` (CUITs que puede ver un colaborador), únicamente esos."""
     pub = _lista_clientes()
     return pub if solo is None else [c for c in pub if c["cuit"] in solo]
 

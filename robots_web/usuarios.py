@@ -33,7 +33,7 @@ def conectar():
         os.chmod(DB, 0o600)
     con.executescript("""
     CREATE TABLE IF NOT EXISTS usuarios (usuario TEXT PRIMARY KEY, nombre TEXT, hash TEXT NOT NULL,
-        rol TEXT NOT NULL DEFAULT 'empleado', activo INTEGER NOT NULL DEFAULT 1, fallos INTEGER NOT NULL DEFAULT 0,
+        rol TEXT NOT NULL DEFAULT 'colaborador', activo INTEGER NOT NULL DEFAULT 1, fallos INTEGER NOT NULL DEFAULT 0,
         bloqueado_hasta TEXT, creado TEXT, ultimo_ingreso TEXT);
     CREATE TABLE IF NOT EXISTS actividad (fecha TEXT, usuario TEXT, accion TEXT, detalle TEXT, ip TEXT);
     CREATE TABLE IF NOT EXISTS notas (id INTEGER PRIMARY KEY, cuit TEXT, fecha TEXT, usuario TEXT, nombre TEXT,
@@ -48,6 +48,8 @@ def conectar():
         con.execute("ALTER TABLE usuarios ADD COLUMN email TEXT")
     except sqlite3.OperationalError:
         pass
+    with con:                              # el rol "empleado" pasó a llamarse "colaborador" (18/11/2026)
+        con.execute("UPDATE usuarios SET rol='colaborador' WHERE rol='empleado'")
     return con
 
 
@@ -101,14 +103,16 @@ def cambiar_clave(usuario: str, nueva: str) -> str:
 USUARIO_RE = re.compile(r"^[a-z0-9._-]{2,30}$")
 
 
-def crear(usuario: str, nombre: str, clave: str, rol: str = "empleado") -> str:
+def crear(usuario: str, nombre: str, clave: str, rol: str = "colaborador") -> str:
     """Alta desde la pantalla. Devuelve un mensaje de error, o '' si salió bien."""
     usuario = usuario.strip().lower()
     if not USUARIO_RE.match(usuario):
         return "El usuario va en minúsculas, sin espacios ni tildes (2 a 30 caracteres: letras, números, punto, guion)"
     if len(clave) < MIN_LARGO:
         return f"La contraseña tiene que tener al menos {MIN_LARGO} caracteres"
-    if rol not in ("empleado", "admin"):
+    if rol == "empleado":                                   # nombre viejo del rol
+        rol = "colaborador"
+    if rol not in ("colaborador", "admin"):
         return "Rol inválido"
     con = conectar()
     try:
@@ -246,7 +250,7 @@ def informadas() -> dict:
 
 def asignados(usuario: str) -> set:
     """CUITs que lleva un usuario: es el encargado o está en el equipo del cliente (pedido del 18/11/2026:
-    cada empleado ve solo sus clientes; los administradores ven todo)."""
+    cada colaborador ve solo sus clientes; los administradores ven todo)."""
     import json as _json
     con = conectar()
     filas = con.execute("SELECT cuit, datos FROM datos_cliente").fetchall()
@@ -368,7 +372,7 @@ def _main(a):
     usuario = a[1].strip().lower()
     if a[0] == "crear":
         nombre = a[2] if len(a) > 2 and not a[2].startswith("--") else usuario
-        rol = "admin" if "--admin" in a else "empleado"
+        rol = "admin" if "--admin" in a else "colaborador"
         clave = _pedir_clave()
         with con:
             con.execute("INSERT OR REPLACE INTO usuarios (usuario, nombre, hash, rol, activo, creado) VALUES (?,?,?,?,1,?)",
