@@ -227,20 +227,30 @@ def _abrir_vista_previa(ctx, page, fila: str, periodo: str):
     return vp
 
 
-def _volver(page, vp, base: str) -> None:
+def _volver(page, vp, base: str, cuit: str | None = None) -> None:
+    """Vuelve a la lista de Libros IVA. Arreglo 19/11/2026 (caso 30-71103454-0, solo bajaba 11/2025): cuando el
+    usuario es apoderado, al volver de la vista previa el Portal IVA puede caer en 'Elegí una persona para
+    ingresar' (#/changeRelation) con el representado de vuelta en el propio usuario; hay que elegir otra vez la
+    empresa y controlar el CUIT antes de seguir con el próximo mes."""
     if vp is not page:
         try:
             vp.close()
         except Exception:
             pass
-        return
-    try:
-        page.go_back(wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
-    except Exception:
-        pass
-    if "siapweb" not in page.url:
-        page.goto(base, wait_until="domcontentloaded")
+    else:
+        try:
+            page.go_back(wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
+        except Exception:
+            pass
+        if "siapweb" not in page.url:
+            page.goto(base, wait_until="domcontentloaded")
+    if cuit:
+        if "changeRelation" in page.url:
+            page.goto(base + "#/", wait_until="domcontentloaded")
+            arca.pausa(1.0, 2.0)
+        elegir_representado(page, cuit)
+        _controlar_cuit(page, cuit, "Portal IVA")
     _ir_a_lista(page)
 
 
@@ -297,32 +307,53 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
                 if (previo.get("secuencia_portal"), previo.get("fecha_presentacion")) == (f["secuencia"], f.get("fecha")):
                     estado[per] = "ya bajado"
                     continue
-            f = _lista(page).get(per) or f            # la lista se regenera al volver: marcar las filas de nuevo
-            vp = _abrir_vista_previa(ctx, page, f["fila"], per)
-            _controlar_cuit(vp, cuit, "Libro IVA")
-            ruta_zip = os.path.join(carpeta, f"{per}.zip")
-            with vp.expect_download(timeout=180_000) as dl:
-                vp.locator("#btnDescargarVistaPrevia").click()
-            tmp = ruta_zip + ".descarga"
-            dl.value.save_as(tmp)
-            with open(tmp, "rb") as fh:
-                if fh.read(2) != b"PK":
-                    raise arca.ErrorRobot(f"Libro IVA {per}: la descarga no es un zip")
-            os.replace(tmp, ruta_zip)
-            r = leer_zip(ruta_zip)
-            if r["periodo"] and r["periodo"] != per:
-                os.remove(ruta_zip)
-                raise arca.ErrorRobot(f"Libro IVA: se pidió {per} y el archivo es de {r['periodo']}; se descartó")
-            r.update({"cuit": cuit, "secuencia_portal": f["secuencia"], "secuencia_txt": f.get("secuencia_txt"),
-                      "fecha_presentacion": f.get("fecha")})
-            with open(ruta_json, "w", encoding="utf-8") as fh:
-                json.dump(r, fh, ensure_ascii=False, indent=1)
-            estado[per] = "OK" if r["control"]["ok"] else "OK con diferencias contra la DJ"
-            _volver(page, vp, base)
-            arca.pausa(1.5, 3.0)
+            try:
+                estado[per] = _bajar_periodo(ctx, page, base, cuit, per, f, carpeta)
+            except (arca.SesionPerdida, arca.SinRepresentado, arca.ClaveInvalida, arca.RequiereIntervencion):
+                raise                                  # CUIT equivocado, sesión caída, etc.: como siempre
+            except Exception as e:                     # un mes que falla no frena los demás (19/11/2026)
+                estado[per] = f"ERROR {type(e).__name__}: {str(e).splitlines()[0][:150]}"
+                for extra in [x for x in ctx.pages if x is not page]:
+                    try:
+                        extra.close()
+                    except Exception:
+                        pass
+                page.goto(base, wait_until="domcontentloaded")
+                elegir_representado(page, cuit)
+                _controlar_cuit(page, cuit, "Portal IVA")
+                _ir_a_lista(page)
         page.close()
         return dict(estado)
     return fn
+
+
+def _bajar_periodo(ctx, page, base: str, cuit: str, per: str, f: dict, carpeta: str) -> str:
+    """Baja el Libro IVA de un mes (vista previa -> XML) y vuelve a la lista. Devuelve el estado del mes."""
+    ruta_json = os.path.join(carpeta, f"{per}.json")
+    f = _lista(page).get(per) or f            # la lista se regenera al volver: marcar las filas de nuevo
+    vp = _abrir_vista_previa(ctx, page, f["fila"], per)
+    _controlar_cuit(vp, cuit, "Libro IVA")
+    ruta_zip = os.path.join(carpeta, f"{per}.zip")
+    with vp.expect_download(timeout=180_000) as dl:
+        vp.locator("#btnDescargarVistaPrevia").click()
+    tmp = ruta_zip + ".descarga"
+    dl.value.save_as(tmp)
+    with open(tmp, "rb") as fh:
+        if fh.read(2) != b"PK":
+            raise arca.ErrorRobot(f"Libro IVA {per}: la descarga no es un zip")
+    os.replace(tmp, ruta_zip)
+    r = leer_zip(ruta_zip)
+    if r["periodo"] and r["periodo"] != per:
+        os.remove(ruta_zip)
+        raise arca.ErrorRobot(f"Libro IVA: se pidió {per} y el archivo es de {r['periodo']}; se descartó")
+    r.update({"cuit": cuit, "secuencia_portal": f["secuencia"], "secuencia_txt": f.get("secuencia_txt"),
+              "fecha_presentacion": f.get("fecha")})
+    with open(ruta_json, "w", encoding="utf-8") as fh:
+        json.dump(r, fh, ensure_ascii=False, indent=1)
+    res = "OK" if r["control"]["ok"] else "OK con diferencias contra la DJ"
+    _volver(page, vp, base, cuit)
+    arca.pausa(1.5, 3.0)
+    return res
 
 
 def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, periodos=None, forzar=False, **_):

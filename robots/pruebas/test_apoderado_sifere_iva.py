@@ -93,6 +93,15 @@ with sync_playwright() as p:
         li.elegir_representado(pi, "30999999993", espera_s=5); chk(False, "ajena")
     except arca.SinRepresentado:
         chk(True, "Portal IVA: empresa que no puede representar -> se detiene")
+    # 19/11/2026 (30-71103454-0 solo bajaba 11/2025): al volver de la vista previa el Portal IVA vuelve a
+    # "Elegí una persona" representando al propio usuario; hay que elegir de nuevo la empresa.
+    pi.evaluate("sessionStorage.removeItem('rep'); location.hash = '#/changeRelation'")
+    _lista_orig, li._ir_a_lista = li._ir_a_lista, (lambda page: None)
+    vp = ctx.new_page()
+    li._volver(pi, vp, BI, "30717468631")
+    li._ir_a_lista = _lista_orig
+    chk("[CUIT 30-71746863-1]" in pi.inner_text("#cab") and vp.is_closed(),
+        "Portal IVA: al volver de un mes vuelve a elegir la empresa antes del mes siguiente")
     pn = ctx.new_page(); pn.goto(BN + "#/seleccionRepresentado")
     ob.elegir_representado(pn, "30717468631", espera_s=10)
     li._controlar_cuit(pn, "30717468631", "Nuestra Parte", espera_s=5)
