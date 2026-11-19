@@ -219,5 +219,35 @@ ok(r.status_code == 200 and "F.399" in r.text and "45.210,50" in r.text and "05/
    "deuda histórica muestra los saldos a recuperar con el F.399")
 ok("Saldos a recuperar (F.399)" in cg.get("/alertas").text, "alerta del día para el encargado")
 
+# ------------------------------------------------ asignar clientes uno mismo (19/11/2026)
+C3 = "27169781295"
+escribir(f"{R}/publico/clientes.json", [{"cuit": C, "razon_social": "RAPTOR.MAX SRL"}, {"cuit": C2, "razon_social": "VALGUARNERA HECTOR"},
+                                        {"cuit": C3, "razon_social": "ACUÑA ANA MARIA"}])
+with usuarios.conectar() as con:
+    con.execute("INSERT INTO usuarios (usuario,nombre,hash,rol,activo,creado) VALUES ('mariela','Mariela',?,'colaborador',1,'x')",
+                (generate_password_hash("clavemariela123"),))
+cd = app.test_client()
+tok_d = login(cd, "beto", "clavebeto12345")
+r = cd.get("/asignar")
+ok(r.status_code == 200 and "VALGUARNERA" in r.text and "ACUÑA" in r.text and "RAPTOR" not in r.text,
+   "asignar: un colaborador ve los clientes SIN encargado (aunque no los lleve)")
+ok("Asignar clientes" in cd.get("/mas").text, "botón en Más")
+cd.post("/asignar", data={"csrf": tok_d, "cuit": [C2, C3], "encargado": "mariela", "modo": "encargado"})
+ok(usuarios.datos_cliente(C2).get("encargado") == "mariela" and usuarios.datos_cliente(C3).get("encargado") == "mariela",
+   "Beto deja a Mariela como encargada de dos clientes")
+cd.post("/asignar", data={"csrf": tok_d, "cuit": [C2], "encargado": "beto", "modo": "encargado"})
+ok(usuarios.datos_cliente(C2).get("encargado") == "mariela", "no puede pisar un encargado ya puesto (eso es del admin)")
+cd.post("/asignar", data={"csrf": tok_d, "cuit": [C2], "encargado": "beto", "modo": "equipo"})
+ok("beto" in usuarios.datos_cliente(C2).get("equipo", "") and cd.get(f"/cliente/{C2}").status_code == 200,
+   "se suma al equipo y desde ahí ve el cliente")
+ok(cd.post("/asignar", data={"csrf": "malo", "cuit": [C3], "encargado": "beto", "modo": "encargado"}).status_code == 400,
+   "asignar con CSRF")
+cd.post("/asignar", data={"csrf": tok_d, "cuit": [C3], "encargado": "fantasma", "modo": "encargado"})
+ok(usuarios.datos_cliente(C3).get("encargado") == "mariela", "no acepta usuarios inexistentes")
+cg2 = app.test_client()
+tok_g = login(cg2, "gabriel", "claveadmin123")
+cg2.post("/asignar", data={"csrf": tok_g, "cuit": [C3], "encargado": "ana", "modo": "encargado"})
+ok(usuarios.datos_cliente(C3).get("encargado") == "ana", "el admin sí cambia un encargado")
+
 print(f"\n{sum(res)}/{len(res)} OK")
 sys.exit(0 if all(res) else 1)

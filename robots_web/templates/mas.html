@@ -2,6 +2,7 @@
 {% block cuerpo %}
 <h1>Más</h1>
 <section class="botonera">
+  <a class="boton-ficha gris" href="{{ url_for('asignar_clientes') }}"><span class="titulo">🙋 Asignar clientes</span><span class="sub">marcate encargado (o a un compañero) de los clientes sin asignar</span></a>
   <a class="boton-ficha gris" href="{{ url_for('agenda') }}"><span class="titulo">📅 Agenda</span><span class="sub">vencimientos y cuotas de todos los clientes</span></a>
   <a class="boton-ficha gris" href="{{ url_for('todas_las_notas') }}"><span class="titulo">📝 Notas</span><span class="sub">últimas notas del equipo</span></a>
   <a class="boton-ficha gris" href="{{ url_for('sugerencias') }}"><span class="titulo">💡 Sugerencias</span><span class="sub">ideas y problemas del sistema</span></a>

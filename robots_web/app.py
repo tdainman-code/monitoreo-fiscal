@@ -488,6 +488,69 @@ def datos_del_cliente(cuit):
                            es_admin=session.get("rol") == "admin")
 
 
+@app.route("/asignar", methods=["GET", "POST"])
+@requiere_login
+def asignar_clientes():
+    """Pedido de Gaby (19/11/2026): que cada uno marque sus clientes (y los de un compañero, p. ej. Daniela carga los
+    de Mariela) sin depender del admin. Un colaborador solo puede poner encargado a un cliente que NO lo tiene,
+    o sumar gente al equipo; cambiar un encargado ya puesto sigue siendo del admin."""
+    activos = [(u[0], u[1] or u[0]) for u in usuarios.listar() if u[3]]
+    ids = {u for u, _ in activos}
+    es_admin = session.get("rol") == "admin"
+    if request.method == "POST":
+        _controlar_csrf()
+        cuits = [c for c in request.form.getlist("cuit") if datos.CUIT_RE.match(c)]
+        quien = request.form.get("encargado", "")
+        modo = request.form.get("modo", "encargado")
+        if quien not in ids or modo not in ("encargado", "equipo") or not cuits:
+            flash("Elegí al menos un cliente y una persona", "error")
+            return redirect(url_for("asignar_clientes", q=request.args.get("q", ""), ver=request.args.get("ver", "")))
+        validos = {c["cuit"] for c in datos.lista_clientes()}
+        hechos = saltados = 0
+        for cuit in cuits:
+            if cuit not in validos:
+                continue
+            d = dict(usuarios.datos_cliente(cuit) or {})
+            if modo == "encargado":
+                if d.get("encargado") and d["encargado"] != quien and not es_admin:
+                    saltados += 1                       # ya tiene encargado: lo cambia el admin
+                    continue
+                d["encargado"] = quien
+                eq = [x.strip() for x in str(d.get("equipo") or "").split(",") if x.strip() and x.strip() != quien]
+                d["equipo"] = ", ".join(eq)
+            else:
+                eq = [x.strip() for x in str(d.get("equipo") or "").split(",") if x.strip()]
+                if quien != d.get("encargado") and quien not in eq:
+                    eq.append(quien)
+                d["equipo"] = ", ".join(sorted(eq))
+            usuarios.guardar_datos_cliente(cuit, d, session["usuario"])
+            usuarios.registrar(session["usuario"], f"asignar {modo}: {quien}", cuit, _ip())
+            hechos += 1
+        nombre = dict(activos).get(quien, quien)
+        flash(f"{hechos} cliente(s): {nombre} quedó como {'encargado/a' if modo == 'encargado' else 'parte del equipo'}"
+              + (f". {saltados} ya tenían otro encargado (eso lo cambia un administrador)." if saltados else "."), "ok")
+        return redirect(url_for("asignar_clientes", q=request.args.get("q", ""), ver=request.args.get("ver", "")))
+    ver = request.args.get("ver", "sin")
+    q = request.args.get("q", "").strip().lower()
+    filas = []
+    for c in datos.lista_clientes():
+        d = usuarios.datos_cliente(c["cuit"]) or {}
+        enc = d.get("encargado") or ""
+        if ver == "sin" and enc:
+            continue
+        if ver == "mios" and enc != session["usuario"] and session["usuario"] not in str(d.get("equipo") or ""):
+            continue
+        if q and q not in (c.get("razon_social") or "").lower() and q.replace("-", "") not in c["cuit"]:
+            continue
+        filas.append({"cuit": c["cuit"], "nombre": c.get("razon_social") or "", "encargado": dict(activos).get(enc, enc),
+                      "equipo": ", ".join(dict(activos).get(x.strip(), x.strip())
+                                          for x in str(d.get("equipo") or "").split(",") if x.strip())})
+    filas.sort(key=lambda f: f["nombre"] or f["cuit"])
+    sin = sum(1 for c in datos.lista_clientes() if not (usuarios.datos_cliente(c["cuit"]) or {}).get("encargado"))
+    return render_template("asignar.html", filas=filas[:500], total=len(filas), ver=ver, q=request.args.get("q", ""),
+                           activos=activos, es_admin=es_admin, sin=sin)
+
+
 @app.route("/alertas", methods=["GET", "POST"])
 @requiere_login
 def alertas():
