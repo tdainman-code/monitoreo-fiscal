@@ -4,8 +4,9 @@ Reglas (días CORRIDOS desde el 1° vencimiento de la cuota; el pago tarda en ve
   - Día 4 sin cancelar  -> aviso al ENCARGADO del cliente (contador a cargo del estudio), por mail y en la web
                            (pantalla "Avisos"). El encargado decide con un botón: "Enviar aviso al cliente" o
                            "Enviar aviso + VEP".
-  - Día 15 sin cancelar -> el aviso (y el VEP) van DIRECTO al cliente, automáticamente (autorizado por Gaby el
-                           17/11/2026), con copia al encargado.
+  - Día 15 sin cancelar -> RECORDATORIO al encargado (mail y web). Desde el 19/11/2026 (acordado entre Gaby y Tomás)
+                           NADA va al cliente sin la aprobación del encargado: ni el aviso ni el VEP. Antes, el día 15
+                           se mandaba solo.
   - Si la cuota aparece cancelada en una corrida posterior, el aviso queda "resuelto" y no se manda nada más.
 
 Datos:
@@ -186,8 +187,9 @@ def _texto_encargado(a: dict, etapa: str) -> str:
     if etapa == "encargado":
         return base + ("Pasaron 4 días del vencimiento y la cuota sigue sin cancelar.\n"
                        "Entrá a la web (Avisos) para enviarle el aviso al cliente, con o sin VEP.\n"
-                       "Si a los 15 días sigue impaga, el aviso y el VEP le llegan al cliente automáticamente.")
-    return base + "Pasaron 15 días y sigue impaga: se le envió el aviso al cliente automáticamente (copia para vos)."
+                       "Al cliente no le llega nada si no lo aprobás vos.")
+    return base + ("Pasaron 15 días y sigue impaga. Al cliente no se le mandó nada: entrá a la web (Avisos) y aprobá "
+                   "el envío del aviso, con o sin VEP.")
 
 
 # ---------------------------------------------------------------- evaluación
@@ -245,11 +247,13 @@ def evaluar(hoy: dt.date | None = None) -> dict:
                     _texto_encargado(a, "encargado"), motivo=f"aviso {aid} (día {DIAS_ENCARGADO})")
                 a["historial"].append({"fecha": hoy.isoformat(), "que": "aviso al encargado",
                                        "a": info.get("encargado_email") or "(el encargado no tiene mail cargado)"})
-            if dias >= DIAS_CLIENTE and a["estado"] in ("para el encargado",):
-                if vep_programado() and info.get("medios_vep"):
-                    _pedir_vep_automatico(a)
-                else:
-                    enviar_al_cliente(a, info, con_vep=True, por="automático (15 días)")
+            if dias >= DIAS_CLIENTE and a["estado"] == "para el encargado" and not a.get("recordatorio_encargado"):
+                # sin envío automático al cliente: el encargado aprueba con el botón (19/11/2026)
+                a["recordatorio_encargado"] = encolar_mail(
+                    [info.get("encargado_email", "")], f"SIGUE IMPAGA ({dias} días): {a['razon_social'] or _cuit_fmt(cuit)} — plan {a['plan']}",
+                    _texto_encargado(a, "recordatorio"), motivo=f"aviso {aid} (día {DIAS_CLIENTE}, recordatorio)")
+                a["historial"].append({"fecha": hoy.isoformat(), "que": f"recordatorio al encargado ({DIAS_CLIENTE} días)",
+                                       "a": info.get("encargado_email") or "(el encargado no tiene mail cargado)"})
                 auto += 1
     lista = sorted(avisos.values(), key=lambda a: (a["estado"] == "resuelto", -int(a.get("dias") or 0)))
     _guardar(ruta, lista[:2000])

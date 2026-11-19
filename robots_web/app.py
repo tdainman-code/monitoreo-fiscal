@@ -12,7 +12,7 @@ from functools import wraps
 
 from flask import (Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for)
 
-from . import analisis, claves, datos, pedidos, usuarios
+from . import analisis, asientos, claves, datos, pedidos, usuarios
 
 app = Flask(__name__)
 
@@ -381,7 +381,7 @@ def revision_visto():
     """Deuda histórica (Convenio / Cuentas Tributarias): el encargado la marca "visto, me ocupo"."""
     _controlar_csrf()
     clave, cuit = request.form.get("clave", ""), request.form.get("cuit", "")
-    if not datos.CUIT_RE.match(cuit) or not re.fullmatch(r"(cm|sct):\d{11}:[\w.:-]{1,60}", clave) or f":{cuit}:" not in clave:
+    if not datos.CUIT_RE.match(cuit) or not re.fullmatch(r"(cm|sct|sld):\d{11}:[\w.:-]{1,60}", clave) or f":{cuit}:" not in clave:
         abort(400)
     _cliente_info(cuit)
     enc = (usuarios.datos_cliente(cuit) or {}).get("encargado")
@@ -406,7 +406,10 @@ def dfe_mail():
         abort(400)
     _cliente_info(cuit)
     n = next((x for x in datos.ficha(cuit)["notificaciones"] if x["id"] == id_), None)
-    if not n:
+    enc = (usuarios.datos_cliente(cuit) or {}).get("encargado")
+    if a == "cliente" and session.get("rol") != "admin" and enc and enc != session["usuario"]:
+        flash("Solo el encargado del cliente aprueba el envío al cliente", "error")   # acuerdo Gaby/Tomás 19/11/2026
+    elif not n:
         flash("La comunicación ya no figura", "error")
     else:
         try:
@@ -538,6 +541,76 @@ def alertas():
 @requiere_login
 def mas():
     return render_template("mas.html")
+
+
+# ---------------------------------------------------------------- asientos contables (pedido de Gaby 18-19/11/2026)
+@app.route("/asientos")
+@requiere_login
+def asientos_inicio():
+    return redirect(url_for("pantalla_asientos", tipo="sueldos", **({"cuit": request.args["cuit"]} if request.args.get("cuit") else {})))
+
+
+def _cliente_asientos():
+    clientes = datos.lista_clientes(_solo())
+    cuit = request.values.get("cuit", "")
+    if cuit and (not datos.CUIT_RE.match(cuit) or not _puede(cuit)):
+        abort(403)
+    return clientes, cuit, next((c for c in clientes if c["cuit"] == cuit), {"cuit": cuit, "razon_social": ""})
+
+
+@app.route("/asientos/<tipo>", methods=["GET", "POST"])
+@requiere_login
+def pantalla_asientos(tipo):
+    if tipo not in asientos.TIPOS:
+        abort(404)
+    clientes, cuit, info = _cliente_asientos()
+    puede = bool(cuit) and asientos.puede_revisar(cuit, session["usuario"], session.get("rol", ""))
+    if request.method == "POST":
+        _controlar_csrf()
+        if not cuit:
+            abort(400)
+        if not puede:
+            abort(403)
+        if tipo == "cuentas":
+            vals = {k[7:]: v for k, v in request.form.items() if k.startswith("cuenta_")}
+            n = asientos.guardar_cuentas(cuit, vals, session["usuario"])
+            usuarios.registrar(session["usuario"], "asientos: cuentas", cuit, _ip())
+            flash(f"Equivalencias guardadas ({n} cuentas asignadas).", "ok")
+        else:
+            clave = request.form.get("clave", "")
+            if not re.fullmatch(r"(sueldos|iibb|pagos):[\w\-: .,/()áéíóúñÁÉÍÓÚÑ]{1,120}", clave):
+                abort(400)
+            asientos.marcar_revisado(clave, cuit, request.form.get("marcar") == "1", request.form.get("nota", ""),
+                                     session["usuario"], session.get("nombre", ""))
+            usuarios.registrar(session["usuario"], "asientos: revisión", f"{cuit} {clave}", _ip())
+        return redirect(url_for("pantalla_asientos", tipo=tipo, cuit=cuit, ver=request.args.get("ver", "")))
+    lista, conceptos, ver = [], [], request.args.get("ver", "")
+    if cuit:
+        usuarios.registrar(session["usuario"], f"asientos {tipo}", cuit, _ip())
+        if tipo == "cuentas":
+            conceptos = asientos.conceptos_usados(cuit)
+        else:
+            lista = asientos.armar(cuit, tipo)
+            if ver == "pendientes":
+                lista = [a for a in lista if a["estado"] == "desbalanceado"]
+            lista = list(reversed(lista))[:60]
+    return render_template("asientos.html", tipo=tipo, tipos=asientos.TIPOS, clientes=clientes, cuit=cuit, c=info,
+                           lista=lista, conceptos=conceptos, puede=puede, ver=ver)
+
+
+@app.route("/asientos/<tipo>/excel")
+@requiere_login
+def asientos_excel(tipo):
+    if tipo not in asientos.ARMADORES:
+        abort(404)
+    _, cuit, info = _cliente_asientos()
+    if not cuit:
+        abort(400)
+    lista = asientos.armar(cuit, tipo)
+    usuarios.registrar(session["usuario"], f"asientos {tipo} excel", cuit, _ip())
+    return send_file(asientos.excel(cuit, info.get("razon_social", ""), tipo, lista), as_attachment=True,
+                     download_name=f"asientos_{tipo}_{cuit}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @app.route("/cliente/<cuit>/nota", methods=["POST"])

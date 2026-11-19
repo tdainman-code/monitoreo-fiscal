@@ -33,7 +33,7 @@ sudo -u $U "$H/venv/bin/python" -m py_compile "$TMP"/robots/*.py || { echo "ERRO
 WEBPY=/opt/robots-web/venv/bin/python; [ -x "$WEBPY" ] || WEBPY="$H/venv/bin/python"
 "$WEBPY" -m py_compile "$TMP"/robots_web/*.py || { echo "ERROR de sintaxis en la web: no se cambió nada"; exit 1; }
 for t in robots/pruebas/test_conciliacion_compras.py robots/pruebas/test_ccma.py robots/pruebas/test_sct_historico.py \
-         pruebas/test_web_radar.py; do
+         pruebas/test_web_radar.py pruebas/test_asientos.py; do
   [ -f "$TMP/$t" ] || continue
   if (cd "$TMP" && sudo -u $U env PYTHONPATH="$TMP" HOME=$H timeout 900 "$H/venv/bin/python" "$t" > "$TMP/prueba.log" 2>&1); then
     echo "   OK  $t"

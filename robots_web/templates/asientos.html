@@ -1,0 +1,71 @@
+{% extends "base.html" %}{% block titulo %}Asientos contables{% endblock %}
+{% block cuerpo %}
+<nav class="menu-cartera">
+{% for k, t in tipos.items() %}
+  <a class="{{ 'activo' if tipo == k }}" href="{{ url_for('pantalla_asientos', tipo=k, cuit=cuit or None) }}">{{ t }}</a>
+{% endfor %}
+</nav>
+<h1>Asientos contables · {{ tipos[tipo] }}</h1>
+
+<form method="get" class="filtros">
+  <select name="cuit" onchange="this.form.submit()">
+    <option value="">— Elegí un cliente —</option>
+    {% for cl in clientes %}<option value="{{ cl.cuit }}" {{ 'selected' if cl.cuit == cuit }}>{{ cl.razon_social or cl.cuit }} ({{ cl.cuit }})</option>{% endfor %}
+  </select>
+  {% if cuit and tipo != 'cuentas' %}
+    <a class="chip {{ 'activo' if ver != 'pendientes' }}" href="{{ url_for('pantalla_asientos', tipo=tipo, cuit=cuit) }}">Todos</a>
+    <a class="chip {{ 'activo' if ver == 'pendientes' }}" href="{{ url_for('pantalla_asientos', tipo=tipo, cuit=cuit, ver='pendientes') }}">Para revisar</a>
+    <a class="boton chico" href="{{ url_for('asientos_excel', tipo=tipo, cuit=cuit) }}">Descargar Excel</a>
+  {% endif %}
+  <noscript><button>Ver</button></noscript>
+</form>
+
+{% if not cuit %}
+  <p class="sutil">Elegí un cliente para ver sus asientos. Los arma la web con lo que ya bajaron los robots
+  (F.931, SIFERE y ARBA). Los que no cierran quedan <b>desbalanceados</b> hasta que los revise el encargado del cliente o un administrador.</p>
+{% elif tipo == 'cuentas' %}
+  <p class="sutil">Cuenta del plan de cuentas de SOS Contador para cada concepto de {{ c.razon_social or cuit }}.
+  Si un concepto queda vacío se usa el nombre por defecto y el asiento sale marcado "sin cuenta asignada".
+  Las cuentas de IIBB, retenciones, percepciones y SIRCREB van por jurisdicción; si el cliente no las tiene divididas, cargá la misma cuenta en todas.</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="cuit" value="{{ cuit }}">
+    <div class="panel"><table class="tabla"><thead><tr><th>Concepto</th><th>Nombre por defecto</th><th>Cuenta del cliente</th><th>Se usa en</th></tr></thead><tbody>
+    {% for x in conceptos %}<tr>
+      <td data-l="Concepto"><code>{{ x.concepto }}</code></td><td data-l="Por defecto">{{ x.defecto }}</td>
+      <td data-l="Cuenta">{% if puede %}<input type="text" name="cuenta_{{ x.concepto }}" value="{{ x.cuenta }}" maxlength="120" placeholder="ej. 2.1.3.05 IIBB CABA a pagar">{% else %}{{ x.cuenta or '—' }}{% endif %}</td>
+      <td data-l="Se usa en">{{ x.usado_en|join(', ') or '—' }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% if puede %}<button class="boton">Guardar equivalencias</button>{% else %}<p class="sutil">Solo el encargado del cliente o un administrador cargan las cuentas.</p>{% endif %}
+  </form>
+{% else %}
+  {% set n_des = lista|selectattr('estado', 'equalto', 'desbalanceado')|list|length %}
+  <section class="kpis totales">
+    <div class="kpi plano"><span class="k-tit">Asientos</span><b>{{ lista|length }}</b><span class="k-sub">{{ c.razon_social or cuit }}</span></div>
+    <div class="kpi plano"><span class="k-tit">Desbalanceados</span><b class="{{ 'txt-rojo' if n_des }}">{{ n_des }}</b><span class="k-sub">esperan revisión</span></div>
+  </section>
+  {% if tipo == 'pagos' %}<p class="sutil">Por ahora: pagos de IIBB de Convenio Multilateral (SIFERE → Pagos, con banco y fecha). Los pagos de ARCA, ARBA y AGIP se suman en las próximas versiones.</p>{% endif %}
+  {% for a in lista %}
+  <div class="panel {{ 'sem-rojo' if a.estado == 'desbalanceado' }}">
+    <p><b>{{ a.fecha|fecha }}</b> · {{ a.leyenda }} ·
+      <span class="{{ 'txt-rojo' if a.estado == 'desbalanceado' else 'txt-ambar' if a.estado == 'sin cuenta asignada' }}"><b>{{ a.estado|upper }}</b></span>
+      {% if a.revision %}<span class="sutil">por {{ a.revision.nombre }} el {{ a.revision.fecha[:10] }}{% if a.revision.nota %}: {{ a.revision.nota }}{% endif %}</span>{% endif %}</p>
+    <table class="tabla"><thead><tr><th>Cuenta</th><th>Debe</th><th>Haber</th><th>Detalle</th></tr></thead><tbody>
+    {% for l in a.lineas %}<tr><td data-l="Cuenta">{{ l.cuenta }}{% if not l.asignada %} <span class="sutil">(sin cuenta)</span>{% endif %}</td>
+      <td data-l="Debe">{{ l.debe|pesos if l.debe }}</td><td data-l="Haber">{{ l.haber|pesos if l.haber }}</td><td data-l="Detalle" class="sutil">{{ l.detalle }}</td></tr>{% endfor %}
+    <tr><td><b>Totales</b></td><td><b>{{ a.debe|pesos }}</b></td><td><b>{{ a.haber|pesos }}</b></td>
+      <td>{% if not a.balanceado %}<b class="txt-rojo">Diferencia {{ a.diferencia|pesos }}</b>{% endif %}</td></tr>
+    </tbody></table>
+    {% for nt in a.notas %}<p class="sutil">⚠ {{ nt }}</p>{% endfor %}
+    {% if puede %}
+    <form method="post" class="filtros">
+      <input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="cuit" value="{{ cuit }}"><input type="hidden" name="clave" value="{{ a.clave }}">
+      {% if a.revision %}<input type="hidden" name="marcar" value="0"><button class="boton chico">Quitar revisado</button>
+      {% else %}<input type="hidden" name="marcar" value="1"><input type="text" name="nota" maxlength="300" placeholder="nota (opcional)"><button class="boton chico">Marcar revisado</button>{% endif %}
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="sutil">No hay asientos de este tipo para el cliente (todavía no hay datos bajados por los robots).</p>
+  {% endfor %}
+{% endif %}
+{% endblock %}

@@ -113,6 +113,13 @@ def revisiones(cuit: str, cm: dict | None, scth: dict | None) -> list[dict]:
                     "texto": f"Estado de cumplimiento: {n} período(s)/concepto(s) con deuda en "
                              f"{len(scth.get('por_impuesto') or {})} impuesto(s)",
                     "importe": scth.get("deuda_total") or 0.0, "a_favor": None, "visto": vis.get(clave)})
+    if scth and scth.get("saldos_recuperar"):          # pagos mal hechos: reimputar con el F.399 (Gaby 19/11/2026)
+        sr = scth["saldos_recuperar"]
+        clave = f"sld:{cuit}:{round(scth.get('saldos_recuperar_total') or 0)}:{len(sr)}"
+        out.append({"clave": clave, "tema": "Saldos a recuperar (F.399)", "id_sec": "historica",
+                    "texto": f"{len(sr)} saldo(s) de libre disponibilidad fuera del IVA ("
+                             + ", ".join(sorted({x['impuesto'] for x in sr})) + "): reimputar con el F.399 a períodos adeudados",
+                    "importe": None, "a_favor": scth.get("saldos_recuperar_total") or 0.0, "visto": vis.get(clave)})
     return out
 
 
@@ -170,6 +177,9 @@ def situacion(cuit: str) -> dict:
     r["alertas"] += ((agip or {}).get("alertas") or []) + ((fisc or {}).get("alertas") or []) + ((ccma or {}).get("alertas") or [])
     r["alertas"] += [{"prioridad": "ALTA", "tipo": f"Deuda histórica para revisar ({x['tema']})",
                       "texto": x["texto"] + f" — {_pesos_txt(x['importe'])} sin actualizar. El encargado tiene que marcarla vista."}
+                     if x["importe"] is not None else
+                     {"prioridad": "ALTA", "tipo": x["tema"],
+                      "texto": x["texto"] + f" — {_pesos_txt(x['a_favor'])} a recuperar. El encargado tiene que marcarla vista."}
                      for x in r["revisar"]]
     ratio_mal = r["ratio"]["nivel"] if r["ratio"] and r["ratio"]["meses"] >= 6 else ""
     minima = analisis.REGLAS["deuda_minima"]

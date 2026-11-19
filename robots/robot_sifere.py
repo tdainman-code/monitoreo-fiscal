@@ -208,6 +208,143 @@ def _detalle(page) -> dict:
     raise arca.ErrorRobot("SIFERE: no apareció la tabla 'Valores por Jurisdicción'")
 
 
+# ---------------------------------------------------------------- asientos contables (pedido de Gaby 18/11/2026)
+# Liquidación mensual de cada jurisdicción (columna izquierda del detalle CM03, sfrDdjj.do?method=detalle&jurisdiccion=901):
+#   Impuesto determinado 862.479,10 / Saldo a Favor DDJJ anteriores (...) 3.080.479,93 / Total Retenciones soportadas
+#   390.195,00 / Total de Recaudaciones Bancarias soportadas 0,00 / Total Percepciones a deducir 699.039,22 /
+#   Total Percepciones Aduaneras a deducir 0,00 / Total de deducciones / Subtotal a favor del contribuyente /
+#   Subtotal a favor de la D.G.R. / Total Otros Debitos / Intereses / Monto a Ingresar
+_LIQ = (("determinado", r"Impuesto determinado"),
+        ("saldo_favor_anterior", r"Saldo a Favor DDJJ anteriores[^\n\d]*?(?:\([^)]*\))?"),
+        ("retenciones", r"Total Retenciones soportadas"),
+        ("recaudaciones_bancarias", r"Total de Recaudaciones Bancarias soportadas"),
+        ("percepciones", r"Total Percepciones a deducir"),
+        ("percepciones_aduaneras", r"Total Percepciones Aduaneras a deducir"),
+        ("total_deducciones", r"Total de deducciones"),
+        ("favor_contribuyente", r"Subtotal a favor del contribuyente"),
+        ("favor_dgr", r"Subtotal a favor de la D\.G\.R\."),
+        ("otros_debitos", r"Total Otros Debitos"),
+        ("intereses", r"Intereses"),
+        ("monto_a_ingresar", r"Monto a Ingresar"))
+_NUM_LIQ = r"[ \t:$]*(-?[\d.]+,\d{2})"
+
+
+def leer_liquidacion(texto: str) -> dict:
+    """Texto de la pantalla de detalle de una jurisdicción -> importes de la liquidación mensual.
+    Falta el determinado = no es la pantalla esperada (ErrorRobot)."""
+    t = texto.replace("\xa0", " ")
+    out = {}
+    for clave, et in _LIQ:
+        m = re.search(r"(?m)^\s*" + et + _NUM_LIQ, t) or re.search(et + _NUM_LIQ, t)
+        out[clave] = importe(m[1]) if m else None
+    if out["determinado"] is None:
+        raise arca.ErrorRobot("SIFERE: no apareció la Liquidación Mensual de la jurisdicción")
+    m = re.search(r"Coef\.?\s*Juris\s*([\d.,]+)", t)
+    out["coeficiente"] = importe(m[1]) if m else None
+    return {k: v for k, v in out.items()}
+
+
+def _liquidaciones(page, d: dict, cuit: str, http_comarb: list[str]) -> None:
+    """Abre el detalle de cada jurisdicción de la DDJJ (ícono de la fila) y guarda la liquidación en
+    d['jurisdicciones'][j]['liquidacion']. Un error en una jurisdicción no frena las demás ni lo ya leído."""
+    url_lista = page.url
+    for j in list((d.get("jurisdicciones") or {}).keys()):
+        try:
+            if j != list(d["jurisdicciones"].keys())[0] and page.url != url_lista:
+                _navegar(page, lambda: page.goto(url_lista), http_comarb)
+            celda = page.locator("td", has_text=re.compile(rf"^\s*{j}\s*$"))
+            fila = page.locator("tr").filter(has=celda).filter(has=page.locator("a"))
+            if not fila.count():
+                raise arca.ErrorRobot(f"no está el enlace de la jurisdicción {j}")
+            _navegar(page, lambda: fila.first.locator("a").first.click(), http_comarb)
+            _controlar_cuit(page, cuit)
+            texto = _texto(page)
+            tit = re.search(r"Jurisdicci[oó]n\s+(\d{3})", texto)
+            if tit and tit.group(1) != j:
+                raise arca.ErrorRobot(f"se pidió la jurisdicción {j} y la pantalla muestra {tit.group(1)}")
+            d["jurisdicciones"][j]["liquidacion"] = leer_liquidacion(texto)
+        except Exception as e:
+            d["jurisdicciones"][j]["liquidacion_error"] = f"{type(e).__name__}: {str(e).splitlines()[0][:150]}"
+        arca.pausa(0.8, 1.6)
+    if page.url != url_lista:
+        try:
+            _navegar(page, lambda: page.goto(url_lista), http_comarb)
+        except Exception:
+            pass
+
+
+# Pagos (menú SIFERE -> Pagos, sfrPago.do?method=buscarPagos), relevado con Gaby el 18/11/2026 (RAPTOR.MAX SRL):
+#   filtros Período Desde / Hasta y Jurisdicción; tabla "Anticipo | Formulario | Forma Pago | Banco / Sucursal |
+#   Fecha Pago | Impuesto | Int/Recargo/Multa | Total". Se consulta de a una jurisdicción.
+def leer_tabla_pagos(tabla: list[list[str]]) -> list[dict]:
+    if not tabla:
+        return []
+    enc = [c.lower() for c in tabla[0]]
+    col = lambda *ns: next((i for i, c in enumerate(enc) if any(n in c for n in ns)), None)
+    i_a, i_f, i_fp, i_b = col("anticipo"), col("formulario"), col("forma"), col("banco")
+    i_fe, i_imp, i_int, i_tot = col("fecha"), col("impuesto"), col("int", "recargo"), col("total")
+    if None in (i_a, i_b, i_fe, i_tot):
+        return []
+    out = []
+    for c in tabla[1:]:
+        if len(c) <= max(i_a, i_b, i_fe, i_tot):
+            continue
+        m = re.search(r"(\d{2})/(\d{4})\s*-\s*(\d+)", c[i_a])
+        f = re.search(r"(\d{2})/(\d{2})/(\d{4})", c[i_fe])
+        if not m or not f:
+            continue                                          # fila de total u otra
+        banco = re.sub(r"^\s*\d+\s*-\s*", "", c[i_b].split("/")[0]).strip()
+        out.append({"anticipo": f"{m[2]}-{m[1]}", "rectificativa": int(m[3]),
+                    "formulario": c[i_f] if i_f is not None else "", "forma_pago": c[i_fp] if i_fp is not None else "",
+                    "banco": banco, "banco_sucursal": c[i_b].strip(), "fecha": f"{f[3]}-{f[2]}-{f[1]}",
+                    "impuesto": importe(c[i_imp]) or 0.0 if i_imp is not None else 0.0,
+                    "intereses": importe(c[i_int]) or 0.0 if i_int is not None else 0.0,
+                    "total": importe(c[i_tot]) or 0.0})
+    return out
+
+
+def leer_pagos(page, cuit: str, jurs: list[str], http_comarb: list[str], meses: int = 13) -> str:
+    """Pagos de los últimos `meses` por jurisdicción -> DATOS/<cuit>/sifere_pagos/<fecha>.json (para los asientos)."""
+    from datetime import date
+    if not jurs:
+        return "sin jurisdicciones"
+    per = arca.periodos_ultimos(meses)
+    desde, hasta = per[0], per[-1]
+    menu = page.locator("a", has_text=re.compile(r"^\s*Pagos\s*$"))
+    res = {"cuit": cuit, "fecha": date.today().isoformat(), "desde": desde, "hasta": hasta, "jurisdicciones": {}}
+    if not menu.count():
+        return "sin el menú Pagos"
+    for j in jurs:
+        _navegar(page, lambda: menu.first.evaluate("a => a.click()"), http_comarb)       # menú oculto
+        _controlar_cuit(page, cuit)
+        sel_j = page.locator("select").filter(has=page.locator("option", has_text=re.compile(rf"^\s*{j}\s*-")))
+        if not sel_j.count():
+            raise arca.ErrorRobot("SIFERE pagos: no está el selector de jurisdicción")
+        sel_j.first.select_option(value=j) if sel_j.first.locator(f"option[value='{j}']").count() else \
+            sel_j.first.select_option(label=next(o for o in sel_j.first.locator("option").all_inner_texts()
+                                                 if o.strip().startswith(j)))
+        for nombre, valor in (("mesDesdeStr", desde[5:]), ("anioDesdeStr", desde[:4]),
+                              ("mesHastaStr", hasta[5:]), ("anioHastaStr", hasta[:4])):
+            if page.locator(f"select[name='{nombre}']").count():
+                page.select_option(f"select[name='{nombre}']", valor)
+        _navegar(page, lambda: page.locator("input[value='Buscar'], button:has-text('Buscar')").first.click(), http_comarb)
+        tit = re.search(r"Jurisdicci[oó]n\s+(\d{3})", _texto(page))
+        if tit and tit.group(1) != j:
+            raise arca.ErrorRobot(f"SIFERE pagos: se pidió la jurisdicción {j} y la pantalla muestra {tit.group(1)}")
+        pagos = []
+        for tabla in page.evaluate(JS_FILAS):
+            if tabla and any("Banco" in c for c in tabla[0]) and any("Fecha" in c for c in tabla[0]):
+                pagos = leer_tabla_pagos(tabla)
+                break
+        res["jurisdicciones"][j] = {"nombre": JURISDICCIONES.get(j, j), "pagos": pagos}
+        arca.pausa(1.0, 2.0)
+    carpeta = os.path.join(DATOS, cuit, "sifere_pagos")
+    os.makedirs(carpeta, exist_ok=True)
+    with open(os.path.join(carpeta, f"{res['fecha']}.json"), "w", encoding="utf-8") as f:
+        json.dump(res, f, ensure_ascii=False, indent=1)
+    return f"{sum(len(v['pagos']) for v in res['jurisdicciones'].values())} pagos en {len(jurs)} jurisdicciones"
+
+
 def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
     carpeta = os.path.join(DATOS, cuit, "sifere")
 
@@ -240,11 +377,17 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
                 estado[per] = "no presentada"
                 continue
             rect, _ = lista[per]
+            previo = {}
             if os.path.exists(ruta) and not forzar:
                 with open(ruta, encoding="utf-8") as f:
-                    if json.load(f).get("rectificativa") == rect:
-                        estado[per] = "ya bajado"
-                        continue
+                    previo = json.load(f)
+                # se vuelve a leer una vez si le falta la liquidación por jurisdicción (asientos, 19/11/2026)
+                # (hasta 3 intentos si la pantalla de detalle falla, para no repetirlo en cada corrida)
+                if previo.get("rectificativa") == rect and (all(
+                        "liquidacion" in (v or {}) for v in (previo.get("jurisdicciones") or {}).values())
+                        or previo.get("liquidacion_intentos", 0) >= 3):
+                    estado[per] = "ya bajado"
+                    continue
             # buscar de nuevo la fila (después de volver la tabla se regenera)
             texto_ant = f"{per[5:]}/{per[:4]} - {rect}"
             fila = page.locator("tr", has_text=texto_ant).filter(has=page.locator("a"))
@@ -255,6 +398,10 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
             _controlar_cuit(page, cuit)
             d = _detalle(page)
             d.update({"cuit": cuit, "periodo": per, "rectificativa": rect})
+            _liquidaciones(page, d, cuit, http_comarb)
+            if any("liquidacion_error" in (v or {}) for v in d["jurisdicciones"].values()):
+                prev_int = previo.get("liquidacion_intentos", 0) if os.path.exists(ruta) and previo.get("rectificativa") == rect else 0
+                d["liquidacion_intentos"] = prev_int + 1
             with open(ruta, "w", encoding="utf-8") as f:
                 json.dump(d, f, ensure_ascii=False, indent=1)
             estado[per] = "OK"
@@ -263,6 +410,10 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
             estado["_deuda"] = leer_deuda(page, cuit, http_comarb)
         except Exception as e:                     # la deuda no frena lo ya leído
             estado["_deuda"] = f"ERROR {type(e).__name__}: {str(e).splitlines()[0][:150]}"
+        try:                                       # pagos con banco y fecha, para los asientos (19/11/2026)
+            estado["_pagos"] = leer_pagos(page, cuit, _jurisdicciones_cliente(cuit), http_comarb)
+        except Exception as e:
+            estado["_pagos"] = f"ERROR {type(e).__name__}: {str(e).splitlines()[0][:150]}"
         page.close()
         return dict(estado)
     return fn

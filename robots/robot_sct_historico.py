@@ -122,6 +122,38 @@ def analizar(tablas: list[dict]) -> list[dict]:
     return out
 
 
+IVA = "30"
+
+
+def analizar_sld(tablas: list[dict]) -> list[dict]:
+    """Filas con S.L.D. > 0 (saldo de libre disponibilidad) de los conceptos que NO son IVA. Pedido de Gaby 19/11/2026:
+    cuando el cliente paga mal (dos veces, período equivocado) el saldo queda en la columna S.L.D. del concepto,
+    sobre todo en cargas sociales (301, 302, 312, 351, 352, 28...). Se recupera reimputándolo con el F.399 a otros
+    períodos que se deban. El IVA queda afuera: se compensa con el procedimiento estándar de la página."""
+    out = []
+    for t in tablas:
+        cab = [c.upper() for c in t.get("cab") or []]
+        i_s = next((i for i, c in enumerate(cab) if c.replace(" ", "").startswith("S.L.D")), None)
+        if i_s is None:
+            continue
+        i_p = next((i for i, c in enumerate(cab) if c.startswith("PER")), 1)
+        i_c = next((i for i, c in enumerate(cab) if c.startswith("CONCEPTO")), 2)
+        m = re.match(r"(\d+)\s*-\s*(.+)", t.get("titulo") or "")
+        imp, nombre = (m[1], m[2].strip()) if m else ("", t.get("titulo") or "")
+        if imp == IVA:
+            continue
+        for f in t.get("filas") or []:
+            c = f["celdas"]
+            if len(c) <= i_s or not re.fullmatch(r"\d{8}", c[i_p] if len(c) > i_p else ""):
+                continue
+            sld = _num(c[i_s]) or 0.0
+            if sld <= 0:
+                continue
+            out.append({"impuesto": imp, "nombre": nombre, "periodo": c[i_p], "concepto": c[i_c] if len(c) > i_c else "",
+                        "sld": round(sld, 2), "f931": imp in F931})
+    return out
+
+
 def _en_frames(page, fn):
     """Primer resultado no vacío de fn(frame) en la página y sus marcos (la SCT usa iframes)."""
     for fr in [page.main_frame] + [f for f in page.frames if f is not page.main_frame]:
@@ -191,7 +223,7 @@ def leer_anios(page, cuit: str, anios: int = ANIOS) -> dict:
             otros = sorted(set(re.findall(r"\d{2}-\d{8}-\d", texto)) - {arca.cuit_fmt(cuit)})
             raise arca.CuitEquivocado(f"Estado de cumplimiento: muestra {', '.join(otros) or 'otro CUIT'}")
         tablas = fr.evaluate(JS_TABLAS)
-        res["anios"].append({"anio": tot["desde"][:4], "totales": tot, "deudas": analizar(tablas),
+        res["anios"].append({"anio": tot["desde"][:4], "totales": tot, "deudas": analizar(tablas), "saldos_sld": analizar_sld(tablas),
                              "impuestos": [t["titulo"] for t in tablas]})
         anterior = tot["desde"]
         boton = fr.get_by_text(re.compile(r"A[ÑN]O ANTERIOR", re.I))
@@ -222,6 +254,16 @@ def resumir(res: dict) -> dict:
                    "texto": f"{txt(res['deuda_total'])} en {len(por_imp)} impuesto(s), años {', '.join(anios)}"
                             + f" (propia de ARCA {txt(res['deuda_arca'])}; para terceros —obras sociales, ART, seguro de vida— "
                               f"{txt(res['deuda_terceros'])})"})
+    sld = [dict(f, anio=a["anio"]) for a in res["anios"] for f in a.get("saldos_sld") or []]
+    res["saldos_recuperar"] = sorted(sld, key=lambda f: (f["impuesto"], f["periodo"]))
+    res["saldos_recuperar_total"] = round(sum(f["sld"] for f in sld), 2)
+    if sld:
+        txt = lambda x: f"$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        det = "; ".join(f"{f['impuesto']} {f['periodo'][4:6]}/{f['periodo'][:4]} {txt(f['sld'])}" for f in res["saldos_recuperar"][:8])
+        al.append({"prioridad": "ALTA", "tipo": "Saldos a recuperar (S.L.D.) — F.399",
+                   "texto": f"{txt(res['saldos_recuperar_total'])} de saldos de libre disponibilidad en {len(sld)} período(s) "
+                            f"({det}{'…' if len(sld) > 8 else ''}). Pagos mal hechos o duplicados: reimputarlos con el F.399 "
+                            "a los períodos que se deben."})
     res["alertas"] = al
     return res
 

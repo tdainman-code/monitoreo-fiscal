@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block titulo %}Avisos{% endblock %}
 {% block cuerpo %}
 <div class="cabecera"><div><h1>Avisos de cuotas impagas</h1>
-<div class="sutil">A los <b>4 días</b> del vencimiento sin cancelar, el encargado decide si le avisa al cliente. A los <b>15 días</b>, el aviso y el VEP le llegan al cliente automáticamente, con copia al encargado.</div></div></div>
+<div class="sutil">A los <b>4 días</b> del vencimiento sin cancelar, el encargado decide si le avisa al cliente. A los <b>15 días</b> se le recuerda al encargado. <b>Al cliente no le llega nada (ni aviso ni VEP) sin la aprobación del encargado.</b></div></div></div>
 <div class="filtros">
   <a class="chip {{ 'activo' if ver == 'mios' }}" href="{{ url_for('pantalla_avisos', ver='mios') }}">Mis clientes</a>
   <a class="chip {{ 'activo' if ver == 'todos' }}" href="{{ url_for('pantalla_avisos', ver='todos') }}">Todos</a>

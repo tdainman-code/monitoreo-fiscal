@@ -18,8 +18,9 @@ ANIO = {"v": 2026}
 
 
 def tabla(titulo, filas, sub):
-    tr = "".join(f"<tr><td>0</td><td>{p}</td><td>{c}</td><td>0</td><td><a style='color:{col}'>{d}</a></td><td></td><td></td>"
-                 f"<td></td><td></td><td>En Término</td><td></td><td></td><td>{e}</td></tr>" for p, c, d, col, e in filas)
+    filas = [f if len(f) == 6 else (*f, "") for f in filas]          # 6° dato opcional: S.L.D. (19/11/2026)
+    tr = "".join(f"<tr><td>0</td><td>{p}</td><td>{c}</td><td>0</td><td><a style='color:{col}'>{d}</a></td><td>{sld}</td><td></td>"
+                 f"<td></td><td></td><td>En Término</td><td></td><td></td><td>{e}</td></tr>" for p, c, d, col, e, sld in filas)
     return (f"<h4>{titulo}</h4><div><span>EXPORTAR TABLA CSV</span></div><table><thead><tr><th>Est.</th><th>Período</th><th>Concepto</th>"
             "<th>Ant. / Cuota</th><th>DEUDA</th><th>S. L. D.</th><th>SALDO TECNICO</th><th>OTROS CREDITOS</th><th>MULTAS NO FIRMES</th>"
             "<th>Temp. DDJJ</th><th>Estado DDJJ</th><th>Temp. Pago</th><th>Estado Pago</th></tr></thead>"
@@ -35,12 +36,15 @@ def consulta():
               "<div>Otros Créditos $ 597.411,24</div><div>Multas no Firmes $ 0,00</div>"
         cuerpo = (tabla("28 - SEGURO DE VIDA COLECTIVO", [("20260900", "DDJJ", "0.00", "black", ""), ("20261000", "DDJJ", "5,520.06", "green", "")], "$ 5.520,06")
                   + tabla("30 - IVA", [("20260200", "DDJJ", "3,288,469.89", "red", "OBLIGACIÓN NOTIFICADA"),
+                                       ("20260400", "DDJJ", "0.00", "black", "", "9,999.00"),
                                        ("20260300", "Intereses punitorios", "", "black", "")], "$ 3.288.469,89")
-                  + tabla("302 - APORTES OBRAS SOCIALES", [("20260100", "Intereses resarcitorios", "6,362.93", "green", "")], "$ 6.362,93"))
+                  + tabla("302 - APORTES OBRAS SOCIALES", [("20260100", "Intereses resarcitorios", "6,362.93", "green", ""),
+                                                           ("20260500", "DDJJ", "0.00", "black", "", "45,210.50")], "$ 6.362,93"))
     elif a == 2025:
         tot = "<div>Deuda $ 1.000,00</div><div>Saldo Libre Disponibilidad $ 1.237.687,97</div><div>Saldo técnico $ 0,00</div>" \
               "<div>Otros Créditos $ 0,00</div><div>Multas no Firmes $ 0,00</div>"
-        cuerpo = tabla("312 - ASEG.RIESGO DE TRABAJO L 24557", [("20251100", "DDJJ", "1,000.00", "green", "")], "$ 1.000,00")
+        cuerpo = tabla("312 - ASEG.RIESGO DE TRABAJO L 24557", [("20251100", "DDJJ", "1,000.00", "green", ""),
+                                                                ("20250700", "DDJJ", "0.00", "black", "", "12,000.00")], "$ 1.000,00")
     else:
         tot = "<div>Deuda $ 0,00</div>"
         cuerpo = ""
@@ -97,6 +101,10 @@ with sync_playwright() as p:
     chk(res["alertas"] and "2025, 2026" in res["alertas"][0]["texto"], "alerta con los años")
     chk(res["deuda_terceros"] == round(5520.06 + 6362.93 + 1000.0, 2) and res["deuda_arca"] == 3288469.89,
         "verde = para terceros (OS, ART, seguro de vida); rojo = propia de ARCA")
+    sr = {(x["impuesto"], x["periodo"]): x["sld"] for x in res["saldos_recuperar"]}
+    chk(sr == {("302", "20260500"): 45210.5, ("312", "20250700"): 12000.0} and res["saldos_recuperar_total"] == 57210.5,
+        f"saldos a recuperar (S.L.D.) de cargas sociales, sin IVA ({sr})")
+    chk(any("F.399" in a["texto"] and "302 05/2026" in a["texto"] for a in res["alertas"]), "alerta para reimputar con el F.399")
     try:
         ANIO["v"] = 2026
         pg.goto(B + "externo")

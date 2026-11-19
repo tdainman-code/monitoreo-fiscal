@@ -24,7 +24,8 @@
     <a class="{{ 'activo' if ep == 'alertas' }}" href="{{ url_for('alertas') }}"><i>⚑</i><span>Alertas del día</span></a>
     <a class="{{ 'activo' if ep == 'pantalla_avisos' }}" href="{{ url_for('pantalla_avisos') }}"><i>✉</i><span>Avisos</span></a>
     <a class="{{ 'activo' if ep == 'cartera' }}" href="{{ url_for('cartera', vista='dfe') }}"><i>☰</i><span>Cartera</span></a>
-    <a class="{{ 'activo' if ep not in ('inicio', 'cliente', 'cliente_seccion', 'cliente_claves', 'datos_del_cliente', 'alertas', 'cartera', 'pantalla_avisos') }}" href="{{ url_for('mas') }}"><i>⚙</i><span>Más</span></a>
+    <a class="{{ 'activo' if ep in ('pantalla_asientos', 'asientos_inicio') }}" href="{{ url_for('asientos_inicio') }}"><i>⇄</i><span>Asientos contables</span></a>
+    <a class="{{ 'activo' if ep not in ('inicio', 'cliente', 'cliente_seccion', 'cliente_claves', 'datos_del_cliente', 'alertas', 'cartera', 'pantalla_avisos', 'pantalla_asientos', 'asientos_inicio') }}" href="{{ url_for('mas') }}"><i>⚙</i><span>Más</span></a>
   </nav>
   <div class="yo"><a href="{{ url_for('mi_clave') }}" title="Cambiar contraseña"><span class="avatar">{{ (session.nombre or '?')[:1] }}</span>{{ session.nombre }}</a><a class="salir" href="{{ url_for('salir') }}">Salir</a></div>
 </aside>

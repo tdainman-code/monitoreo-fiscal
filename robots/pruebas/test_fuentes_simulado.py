@@ -260,7 +260,8 @@ if __name__ == "__main__":
              and json.load(open(f"{D}/{EMPRESA}/f931/2026-09.json"))["Secuencia"] == 1),
         caso("SIFERE: última rectificativa por anticipo e impuesto determinado por jurisdicción",
              lambda: robot_sifere.correr(EMPRESA, None, ADMIN, "x", periodos=pers),
-             lambda r: r["periodos"] == {"2026-07": "OK", "2026-08": "OK", "2026-09": "OK", "2026-10": "no presentada"}
+             lambda r: {k: v for k, v in r["periodos"].items() if not k.startswith("_")}
+             == {"2026-07": "OK", "2026-08": "OK", "2026-09": "OK", "2026-10": "no presentada"}
              and json.load(open(f"{D}/{EMPRESA}/sifere/2026-08.json"))["jurisdicciones"]["902"]["determinado"] == 14583.0),
         caso("DFE: elige la empresa en 'mis representados' y lista SIN abrir",
              lambda: (robot_dfe.correr(EMPRESA, None, ADMIN, "x"),
