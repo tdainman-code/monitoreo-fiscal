@@ -218,7 +218,9 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
     seccion("SUELDOS Y CARGAS SOCIALES (F931)")
     g = lambda p, k: (f931.get(p) or {}).get(k) if f931.get(p) else None
     datos("Empleados en nómina", lambda p: g(p, "Empleados"), "0")
-    r_rem = datos(FILAS_F931[0][0], lambda p: g(p, FILAS_F931[0][1]))
+    # remuneración con los conceptos no remunerativos (19/11/2026, directores de TALLPIR); F931 viejos: Rem. 1
+    r_rem = datos("Remuneraciones (con no remunerativos)", lambda p: g(p, "Remuneración total (con no remunerativos)")
+                  if g(p, "Remuneración total (con no remunerativos)") is not None else g(p, FILAS_F931[0][1]))
     rcs = [datos(t, lambda p, k=k: g(p, k)) for t, k in FILAS_F931[1:]]
     r_cs = formula("Total cargas sociales", f"SUM({{c}}{rcs[0]}:{{c}}{rcs[-1]})")
     r_sue = formula("TOTAL SUELDOS + CARGAS", f"{{c}}{r_rem}+{{c}}{r_cs}")

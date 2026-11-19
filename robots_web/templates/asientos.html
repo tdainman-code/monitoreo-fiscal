@@ -43,6 +43,29 @@
     <div class="kpi plano"><span class="k-tit">Asientos</span><b>{{ lista|length }}</b><span class="k-sub">{{ c.razon_social or cuit }}</span></div>
     <div class="kpi plano"><span class="k-tit">Desbalanceados</span><b class="{{ 'txt-rojo' if n_des }}">{{ n_des }}</b><span class="k-sub">esperan revisión</span></div>
   </section>
+  {% if tipo == 'sueldos' and (pend or manual) %}
+  <h2>F.931 para completar</h2>
+  <p class="sutil">Meses en que la lista de Declaración en línea muestra personal pero el robot no pudo tomar la remuneración
+  (por ejemplo directores con sueldo no remunerativo, o un formulario distinto). Lo completa el encargado; se usa en la
+  relación débito/crédito y en el asiento de sueldos.</p>
+  <div class="panel"><table class="tabla"><thead><tr><th>Mes</th><th>Empleados</th><th>Motivo</th><th>Remuneración (con no remun.)</th><th>Cargas sociales (contribuciones)</th><th>Aportes</th><th></th></tr></thead><tbody>
+  {% for x in pend %}<tr class="sem-amarillo">
+    <td data-l="Mes"><b>{{ x.periodo[5:] }}/{{ x.periodo[:4] }}</b></td><td data-l="Empleados">{{ x.empleados }}</td><td data-l="Motivo" class="sutil">{{ x.motivo }}</td>
+    {% if puede %}<td colspan="4"><form method="post" class="filtros">
+      <input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="cuit" value="{{ cuit }}">
+      <input type="hidden" name="accion" value="f931_manual"><input type="hidden" name="periodo" value="{{ x.periodo }}">
+      <input type="text" name="remuneracion" placeholder="ej. 800.000,00" required size="12">
+      <input type="text" name="cargas" placeholder="0,00" size="10"><input type="text" name="aportes" placeholder="0,00" size="10">
+      <input type="text" name="nota" placeholder="nota (opcional)" maxlength="300"><button class="boton chico">Guardar</button></form></td>
+    {% else %}<td colspan="4" class="sutil">Lo completa el encargado del cliente o un administrador.</td>{% endif %}</tr>{% endfor %}
+  {% for per, m in manual|dictsort %}<tr>
+    <td data-l="Mes"><b>{{ per[5:] }}/{{ per[:4] }}</b></td><td></td><td class="sutil" data-l="Motivo">cargado a mano por {{ m.usuario }} el {{ m.fecha[:10] }}{% if m.nota %} — {{ m.nota }}{% endif %}</td>
+    <td data-l="Remuneración">{{ m.remuneracion|pesos }}</td><td data-l="Cargas">{{ m.cargas|pesos }}</td><td data-l="Aportes">{{ m.aportes|pesos }}</td>
+    <td>{% if puede %}<form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="cuit" value="{{ cuit }}">
+      <input type="hidden" name="accion" value="f931_manual"><input type="hidden" name="periodo" value="{{ per }}"><input type="hidden" name="borrar" value="1">
+      <button class="boton chico">Borrar</button></form>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% endif %}
   {% if tipo == 'pagos' %}<p class="sutil">Por ahora: pagos de IIBB de Convenio Multilateral (SIFERE → Pagos, con banco y fecha). Los pagos de ARCA, ARBA y AGIP se suman en las próximas versiones.</p>{% endif %}
   {% for a in lista %}
   <div class="panel {{ 'sem-rojo' if a.estado == 'desbalanceado' }}">

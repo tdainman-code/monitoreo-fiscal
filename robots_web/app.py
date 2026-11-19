@@ -634,7 +634,31 @@ def pantalla_asientos(tipo):
             abort(400)
         if not puede:
             abort(403)
-        if tipo == "cuentas":
+        if tipo == "sueldos" and request.form.get("accion") == "f931_manual":
+            per = request.form.get("periodo", "")
+            if not re.fullmatch(r"\d{4}-\d{2}", per):
+                abort(400)
+            def _imp(k):
+                v = (request.form.get(k) or "").strip().replace("$", "").replace(" ", "")
+                if not v:
+                    return None
+                v = v.replace(".", "").replace(",", ".") if "," in v else v
+                try:
+                    return round(max(0.0, float(v)), 2)
+                except ValueError:
+                    return None
+            rem = _imp("remuneracion")
+            if request.form.get("borrar") == "1":
+                rem = None
+            elif rem is None:
+                flash("Cargá la remuneración (número, ej. 800.000,00)", "error")
+                return redirect(url_for("pantalla_asientos", tipo=tipo, cuit=cuit))
+            asientos.guardar_f931_manual(cuit, per, rem, _imp("cargas"), _imp("aportes"), request.form.get("nota", ""),
+                                         session["usuario"])
+            usuarios.registrar(session["usuario"], "F.931 completado a mano" if rem is not None else "F.931 manual borrado",
+                               f"{cuit} {per}", _ip())
+            flash(f"F.931 {per[5:]}/{per[:4]}: " + ("guardado" if rem is not None else "carga manual borrada"), "ok")
+        elif tipo == "cuentas":
             vals = {k[7:]: v for k, v in request.form.items() if k.startswith("cuenta_")}
             n = asientos.guardar_cuentas(cuit, vals, session["usuario"])
             usuarios.registrar(session["usuario"], "asientos: cuentas", cuit, _ip())
@@ -657,8 +681,10 @@ def pantalla_asientos(tipo):
             if ver == "pendientes":
                 lista = [a for a in lista if a["estado"] == "desbalanceado"]
             lista = list(reversed(lista))[:60]
+    pend = asientos.f931_pendientes(cuit) if cuit and tipo == "sueldos" else []
+    manual = asientos.f931_manual(cuit) if cuit and tipo == "sueldos" else {}
     return render_template("asientos.html", tipo=tipo, tipos=asientos.TIPOS, clientes=clientes, cuit=cuit, c=info,
-                           lista=lista, conceptos=conceptos, puede=puede, ver=ver)
+                           lista=lista, conceptos=conceptos, puede=puede, ver=ver, pend=pend, manual=manual)
 
 
 @app.route("/asientos/<tipo>/excel")

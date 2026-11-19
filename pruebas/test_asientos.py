@@ -78,6 +78,38 @@ ok(len(pg) == 2 and pg[0]["banco"] == "Banco de Galicia Y Buenos Aires S.a." and
    and pg[0]["anticipo"] == "2024-06" and pg[1]["intereses"] == 120.0 and pg[1]["total"] == 18433.37,
    "tabla de pagos de SIFERE (banco, fecha, intereses; sin la fila de total)")
 
+# ------------------------------------------------ F931 sin ART/SCVO y con sueldo no remunerativo (TALLPIR, 19/11/2026)
+from robots.lector_f931 import leer_f931  # noqa: E402
+_t = """C.U.I.T. 30-69962585-6  Rect. (1/9): 0  10/2026 Servicios Eventuales
+Empleados en nómina: 2
+Suma de Rem. 1: 0,00
+a1 - Total de aportes S.S. 0,00
+a1 - Total de aportes O.S. 0,00
+Conceptos no remunerativos: 800.000,00
+"""
+_f = leer_f931(_t)
+ok(_f["Periodo"] == "2026-10" and _f["Remuneración total (con no remunerativos)"] == 800_000.0 and _f["TOTAL CARGAS SOCIALES"] == 0.0
+   and "ART (L.R.T. total)" in _f["Campos sin dato"], "F931 sin contrato LRT/SCVO y sueldo no remunerativo: se lee igual")
+_viejo = """C.U.I.T. 30-51969833-8  Rect. (1/9): 1  09/2026 Servicios Eventuales
+Empleados en nómina: 2
+Suma de Rem. 1: 1.000.000,00
+a1 - Total de aportes S.S. 110.000,00
+a1 - Total de aportes O.S. 30.000,00
+b1 - Total de contribuciones 180.000,00
+b3 - Detracción art. 23 Ley 27.541 0,00
+Subtotal contribuciones S.S. 180.000,00
+Contribuciones S.S. SIPA 160.000,00
+Contribuciones S.S. No SIPA 20.000,00
+Subtotal contribuciones O.S. 60.000,00
+L.R.T. total a pagar 40.000,00
+S.C.V.O. a Pagar: 500,00
+Total Contribuciones RENATRE 0,00
+Pago a Cuenta Dec. 394: 0,00
+Total retenciones 0,00"""
+_f = leer_f931(_viejo)
+ok(_f["Remuneración total (Rem. 1)"] == 1_000_000.0 and _f["TOTAL CARGAS SOCIALES"] == 280_500.0 and "Campos sin dato" not in _f
+   and _f["Control SIPA+NoSIPA"] == "OK", "F931 completo: mismos importes que antes")
+
 # ------------------------------------------------ armado de asientos
 C, C2 = "30716548895", "20208313771"
 escribir(f"{R}/publico/clientes.json", [{"cuit": C, "razon_social": "RAPTOR.MAX SRL"}, {"cuit": C2, "razon_social": "VALGUARNERA HECTOR"}])
@@ -218,6 +250,25 @@ r = cg.get(f"/cliente/{C}/historica")
 ok(r.status_code == 200 and "F.399" in r.text and "45.210,50" in r.text and "05/2026" in r.text,
    "deuda histórica muestra los saldos a recuperar con el F.399")
 ok("Saldos a recuperar (F.399)" in cg.get("/alertas").text, "alerta del día para el encargado")
+
+# ------------------------------------------------ F.931 con personal y sin remuneración: lo completa el encargado
+escribir(f"{D}/{C}/f931/_lista.json", {"2026-10": {"empleados": 2, "estado": "OK"},
+                                       "2026-09": {"empleados": 2, "estado": "no se pudo leer (No se encontró: ...)"}})
+pend = asientos.f931_pendientes(C)
+ok([x["periodo"] for x in pend] == ["2026-09"], "F.931: detecta el mes con personal y sin remuneración leída")
+ok("F.931 para completar" in cg.get("/alertas").text, "alerta del día 'F.931 para completar'")
+r = ca.get(f"/asientos/sueldos?cuit={C}")
+ok("F.931 para completar" in r.text and "09/2026" in r.text, "pantalla Sueldos muestra el mes para completar")
+ca.post(f"/asientos/sueldos?cuit={C}", data={"csrf": token(r.text), "cuit": C, "accion": "f931_manual", "periodo": "2026-09",
+                                            "remuneracion": "800.000,00", "cargas": "", "aportes": "", "nota": "directores"})
+su = {a["periodo"]: a for a in asientos.armar(C, "sueldos")}
+ok(not asientos.f931_pendientes(C) and su["2026-09"]["debe"] == 800_000.0 and su["2026-09"]["balanceado"]
+   and any("a mano" in n for n in su["2026-09"]["notas"]), "el encargado lo completa y sale el asiento de sueldos")
+from robots_web import analisis  # noqa: E402
+_rm = {m["periodo"]: m for m in analisis.resultado_mensual(C)}
+ok(_rm.get("2026-09", {}).get("sueldos") == 800_000.0, "la relación débito/crédito toma la carga manual")
+ok(cb.post(f"/asientos/sueldos?cuit={C}", data={"csrf": tok_b, "cuit": C, "accion": "f931_manual", "periodo": "2026-08",
+                                               "remuneracion": "1"}).status_code == 403, "el equipo no carga F.931 a mano")
 
 # ------------------------------------------------ asignar clientes uno mismo (19/11/2026)
 C3 = "27169781295"

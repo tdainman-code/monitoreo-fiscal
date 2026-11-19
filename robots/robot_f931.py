@@ -113,6 +113,38 @@ def lista_dj(page) -> dict[str, int]:
     return out
 
 
+def empleados_lista(page) -> dict[str, int]:
+    """{'2026-10': cantidad de empleados de la DJ vigente} (columna 'Cant. de empleados' de dj_generadas.aspx)."""
+    filas = page.evaluate("""() => [...document.querySelectorAll('table tr')].map(r =>
+        [...r.cells].map(c => c.textContent.replace(/\\s+/g, ' ').trim()))""")
+    out: dict[str, tuple[int, int]] = {}
+    for c in filas:
+        if len(c) < 3:
+            continue
+        ms = re.match(r"(Original|Rectificativa)\s*\((\d+)\)", c[0])
+        mp = re.fullmatch(r"(\d{2})/(\d{4})", c[1])
+        if ms and mp and re.fullmatch(r"\d+", c[2]):
+            per, sec = f"{mp[2]}-{mp[1]}", int(ms[2])
+            if per not in out or sec > out[per][0]:
+                out[per] = (sec, int(c[2]))
+    return {p: v[1] for p, v in out.items()}
+
+
+def guardar_lista(carpeta: str, empleados: dict, estado: dict) -> None:
+    """f931/_lista.json: empleados por mes según la lista de DJ y si el formulario se pudo leer. Con personal y sin
+    remuneración leída, la web le pide al encargado que la complete (pedido de Gaby 19/11/2026)."""
+    ruta = os.path.join(carpeta, "_lista.json")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            previo = json.load(f)
+    except (OSError, ValueError):
+        previo = {}
+    for per, n in empleados.items():
+        previo[per] = {"empleados": n, "estado": estado.get(per, (previo.get(per) or {}).get("estado", ""))}
+    with open(ruta, "w", encoding="utf-8") as f:
+        json.dump(previo, f, ensure_ascii=False, indent=1)
+
+
 def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
     carpeta = os.path.join(DATOS, cuit, "f931")
 
@@ -127,6 +159,10 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
         _ir(page, BASE + "consultar/dj_generadas.aspx")
         _controlar_cuit(page, cuit)
         vigentes = lista_dj(page)
+        try:
+            empleados = empleados_lista(page)
+        except Exception:
+            empleados = {}
         os.makedirs(carpeta, exist_ok=True)
         for per in periodos:
             if per in estado:
@@ -155,8 +191,12 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
                 raise arca.ErrorRobot(f"F931: se pidió {per} y el formulario es de {d['Periodo']}")
             with open(ruta, "w", encoding="utf-8") as f:
                 json.dump(d, f, ensure_ascii=False, indent=1)
-            estado[per] = "OK"
+            estado[per] = "OK" if not d.get("Aviso") else "OK sin remuneración (completa el encargado)"
             arca.pausa(1.5, 3.0)
+        try:
+            guardar_lista(carpeta, {p: n for p, n in empleados.items() if p in periodos}, estado)
+        except OSError:
+            pass
         page.close()
         return dict(estado)
     return fn

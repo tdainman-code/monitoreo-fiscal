@@ -8,8 +8,7 @@ SIFERE y asientos contables". Tipos:
        Cargas sociales (pérdida)    D  contribuciones (S.S. + O.S. + ART + seguro de vida + RENATRE)
        Sueldos a pagar              H  remuneración − aportes S.S. − aportes O.S.
        Cargas sociales a pagar      H  aportes + contribuciones (total del F.931)
-     Remuneración: "Suma de Rem. 1" del F.931 (Gaby pidió la remuneración total con los no remunerativos: a confirmar
-     que ese importe los incluya; si no, el asiento sale igual balanceado).
+     Remuneración: Rem. 1 + conceptos no remunerativos del F.931 (F.931 bajados antes del 19/11/2026: solo Rem. 1).
 
   2. Devengamiento de IIBB, por DDJJ y por jurisdicción:
        IIBB <jur> (pérdida)         D  impuesto determinado (siempre completo)
@@ -77,6 +76,8 @@ def _con():
     con.executescript("""
     CREATE TABLE IF NOT EXISTS cuentas_cliente (cuit TEXT, concepto TEXT, cuenta TEXT, actualizado TEXT, usuario TEXT,
         PRIMARY KEY (cuit, concepto));
+    CREATE TABLE IF NOT EXISTS f931_manual (cuit TEXT, periodo TEXT, remuneracion REAL, cargas REAL, aportes REAL,
+        nota TEXT, fecha TEXT, usuario TEXT, PRIMARY KEY (cuit, periodo));
     CREATE TABLE IF NOT EXISTS revision_asientos (clave TEXT PRIMARY KEY, cuit TEXT, estado TEXT, nota TEXT, fecha TEXT,
         usuario TEXT, nombre TEXT);
     """)
@@ -125,6 +126,62 @@ def marcar_revisado(clave: str, cuit: str, revisado: bool, nota: str, usuario: s
         else:
             con.execute("DELETE FROM revision_asientos WHERE clave=? AND cuit=?", (clave, cuit))
     con.close()
+
+
+# ---------------------------------------------------------------- F.931 con personal y sin remuneración leída
+def f931_manual(cuit: str) -> dict:
+    """{periodo: {remuneracion, cargas, aportes, nota, fecha, usuario}} cargado a mano por el encargado."""
+    con = _con()
+    filas = con.execute("SELECT periodo, remuneracion, cargas, aportes, nota, fecha, usuario FROM f931_manual WHERE cuit=?",
+                        (cuit,)).fetchall()
+    con.close()
+    return {p: {"remuneracion": r or 0.0, "cargas": c or 0.0, "aportes": a or 0.0, "nota": n, "fecha": f, "usuario": u}
+            for p, r, c, a, n, f, u in filas}
+
+
+def guardar_f931_manual(cuit: str, periodo: str, rem, cargas, aportes, nota: str, usuario: str) -> None:
+    con = _con()
+    with con:
+        if rem is None:
+            con.execute("DELETE FROM f931_manual WHERE cuit=? AND periodo=?", (cuit, periodo))
+        else:
+            con.execute("INSERT OR REPLACE INTO f931_manual VALUES (?,?,?,?,?,?,?,?)",
+                        (cuit, periodo, rem, cargas or 0.0, aportes or 0.0, (nota or "")[:300], usuarios.ahora(), usuario))
+    con.close()
+
+
+def f931_pendientes(cuit: str) -> list[dict]:
+    """Meses con personal según la lista de DJ (Declaración en línea) en los que el robot no pudo tomar la
+    remuneración (formulario sin leer, o sin Rem. 1 ni no remunerativo) y que el encargado todavía no completó."""
+    lista = _leer(os.path.join(datos.DATOS, cuit, "f931", "_lista.json")) or {}
+    man = f931_manual(cuit)
+    out = []
+    for per, v in sorted(lista.items()):
+        n = int((v or {}).get("empleados") or 0)
+        if not _PER.match(per) or not n or per in man:
+            continue
+        d = _leer(os.path.join(datos.DATOS, cuit, "f931", f"{per}.json"))
+        rem = _n((d or {}).get("Remuneración total (con no remunerativos)", (d or {}).get("Remuneración total (Rem. 1)")))
+        if d and rem:
+            continue
+        out.append({"periodo": per, "empleados": n,
+                    "motivo": "no se pudo leer el formulario" if not d else "el formulario no tiene remuneración que el robot reconozca",
+                    "estado": (v or {}).get("estado", "")})
+    return out
+
+
+def f931_con_manual(cuit: str) -> dict:
+    """F.931 por mes con lo cargado a mano encima (para la relación D/C y los asientos)."""
+    meses = _meses(cuit, "f931")
+    for per, m in f931_manual(cuit).items():
+        d = dict(meses.get(per) or {"Periodo": per})
+        d["Remuneración total (con no remunerativos)"] = m["remuneracion"]
+        d["TOTAL CARGAS SOCIALES"] = m["cargas"]
+        d["Aportes S.S. (a1)"], d["Aportes O.S. (a1)"] = m["aportes"], 0.0
+        d["Total aportes (retenidos al empleado)"] = m["aportes"]
+        d["Carga manual"] = f"{m['usuario']} {str(m['fecha'])[:10]}"
+        meses[per] = d
+    return meses
 
 
 def puede_revisar(cuit: str, usuario: str, rol: str) -> bool:
@@ -188,14 +245,15 @@ def asientos_sueldos(cuit: str, eq: dict | None = None, rev: dict | None = None)
     eq = cuentas(cuit) if eq is None else eq
     rev = revisiones(cuit) if rev is None else rev
     out = []
-    for per, d in sorted(_meses(cuit, "f931").items()):
-        rem = _n(d.get("Remuneración total (Rem. 1)"))
+    for per, d in sorted(f931_con_manual(cuit).items()):
+        rem = _n(d.get("Remuneración total (con no remunerativos)", d.get("Remuneración total (Rem. 1)")))
         aportes = _n(d.get("Aportes S.S. (a1)")) + _n(d.get("Aportes O.S. (a1)"))
         contrib = _n(d.get("TOTAL CARGAS SOCIALES"))
         if not (rem or aportes or contrib):
             continue
         a = {"clave": f"sueldos:{per}", "tipo": "sueldos", "periodo": per, "fecha": _fin_de_mes(per),
-             "leyenda": f"Sueldos y cargas sociales {per[5:]}/{per[:4]} (F.931)", "notas": [],
+             "leyenda": f"Sueldos y cargas sociales {per[5:]}/{per[:4]} (F.931)",
+             "notas": [f"Importes cargados a mano por el encargado ({d['Carga manual']})"] if d.get("Carga manual") else [],
              "lineas": [_linea("sueldos", debe=rem, detalle="Remuneración del F.931"),
                         _linea("cargas_perdida", debe=contrib, detalle="Contribuciones, ART, seguro de vida, RENATRE"),
                         _linea("sueldos_a_pagar", haber=rem - aportes, detalle="Remuneración − aportes S.S. y O.S."),

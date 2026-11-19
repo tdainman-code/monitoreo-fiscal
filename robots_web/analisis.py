@@ -198,7 +198,8 @@ def resultado_mensual(cuit: str) -> list[dict]:
     saldo = ventas − erogaciones; índice = erogaciones / ventas; margen = 1 − índice; y sus acumulados.
     Fuentes: Libro IVA (Portal IVA), F.931 y SIFERE/ARBA. No usa Mis Comprobantes."""
     liva = _meses(cuit, "libro_iva")
-    f931 = _meses(cuit, "f931")
+    from . import asientos                           # F.931 + lo que completó a mano el encargado (19/11/2026)
+    f931 = asientos.f931_con_manual(cuit)
     iibb = _iibb(cuit)
     bc_mc = ((_leer(os.path.join(datos.DATOS, cuit, "conciliacion", "compras_bc_fuera_libro.json")) or {})
              .get("por_mes") or {})
@@ -220,7 +221,7 @@ def resultado_mensual(cuit: str) -> list[dict]:
             faltan.append("Libro IVA")
         if f or not f931:                                 # sin ningún F.931 bajado = sin empleados (no "falta")
             f = f or {}
-            sueldos = _num(f.get("Remuneración total (Rem. 1)"))
+            sueldos = _num(f.get("Remuneración total (con no remunerativos)", f.get("Remuneración total (Rem. 1)")))
             cargas = _num(f.get("TOTAL CARGAS SOCIALES"))
         else:
             sueldos = cargas = 0.0

@@ -175,6 +175,17 @@ def situacion(cuit: str) -> dict:
                             + len((fisc or {}).get("fiscalizacion_electronica") or []) + len(agip_f))
     r["ratio"] = analisis.ratio_dc(analisis.iva_mensual(cuit))
     r["alertas"] += ((agip or {}).get("alertas") or []) + ((fisc or {}).get("alertas") or []) + ((ccma or {}).get("alertas") or [])
+    try:                                              # F.931 con personal y sin remuneración leída (19/11/2026)
+        from . import asientos
+        pend = asientos.f931_pendientes(cuit)
+    except Exception:
+        pend = []
+    r["f931_pendientes"] = pend
+    if pend:
+        r["alertas"].append({"prioridad": "ALTA", "tipo": "F.931 para completar",
+                             "texto": f"{len(pend)} mes(es) con personal sin remuneración leída ("
+                                      + ", ".join(f"{x['periodo'][5:]}/{x['periodo'][:4]}" for x in pend[-6:])
+                                      + "): el encargado los completa en Asientos contables → Sueldos"})
     r["alertas"] += [{"prioridad": "ALTA", "tipo": f"Deuda histórica para revisar ({x['tema']})",
                       "texto": x["texto"] + f" — {_pesos_txt(x['importe'])} sin actualizar. El encargado tiene que marcarla vista."}
                      if x["importe"] is not None else
