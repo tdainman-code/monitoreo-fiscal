@@ -494,6 +494,9 @@ def ficha(cuit: str) -> dict:
         b.append({"id": "agip", "titulo": "AGIP (Ciudad)", "valor": s["agip_deuda"] or None, "pesos": True,
                   "sub": f"{(s['agip'] or {}).get('sin_abrir') or 0} comunicaciones sin abrir · deuda",
                   "color": "rojo" if s["agip_altas"] else "amarillo" if s["agip_deuda"] >= analisis.REGLAS["deuda_minima"] else "verde"})
+    if meses_liva:
+        b.append({"id": "ventas_bancos", "titulo": "Ventas para bancos", "valor": None,
+                  "sub": "reporte mensual desde el Portal IVA (Excel / PDF)", "color": "gris"})
     b.append({"id": "informes", "titulo": "Informes Excel", "valor": len(inf), "sub": "para bajar", "color": "gris"})
     s["botones"] = b
     return s

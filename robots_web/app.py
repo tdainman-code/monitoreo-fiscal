@@ -194,7 +194,8 @@ SECCIONES = {"deuda": "Deuda ARCA (vencida)", "por_vencer": "Por vencer", "plane
              "relacion": "Relación débito crédito", "compras": "Compras y APOC", "informes": "Informes Excel",
              "notas": "Notas del equipo", "iva": "Débito / crédito y proyección de IVA",
              "resultado": "Resultado mensual", "fiscalizaciones": "Fiscalizaciones y verificaciones", "agip": "AGIP (Ciudad)",
-             "ccma": "Autónomos y Monotributo (CCMA)", "historica": "Deuda histórica (Cuentas Tributarias)"}
+             "ccma": "Autónomos y Monotributo (CCMA)", "historica": "Deuda histórica (Cuentas Tributarias)",
+             "ventas_bancos": "Reporte de ventas para bancos"}
 
 
 def _solo():
@@ -234,6 +235,43 @@ def cliente(cuit):
                                cuit, monotributo=bool(s.get("categoria")) and not str(s.get("categoria")).startswith("Responsable")))
 
 
+def _ventas_bancos(cuit):
+    """Reporte de ventas para bancos desde el Libro IVA (Portal IVA), 20/11/2026."""
+    from . import reportes
+    libro = analisis._meses(cuit, "libro_iva")
+    pers = sorted(libro)
+    if not pers:
+        return None, libro
+    y, m = map(int, pers[-1].split("-"))
+    defecto_desde = f"{y - 1}-{m + 1:02d}" if m < 12 else f"{y}-01"
+    desde = request.args.get("desde") or defecto_desde
+    hasta = request.args.get("hasta") or pers[-1]
+    if not (re.fullmatch(r"\d{4}-\d{2}", desde) and re.fullmatch(r"\d{4}-\d{2}", hasta)) or desde > hasta:
+        desde, hasta = defecto_desde, pers[-1]
+    return reportes.ventas_bancos(libro, desde, hasta), libro
+
+
+@app.route("/cliente/<cuit>/ventas_bancos/<formato>")
+@requiere_login
+def ventas_bancos_bajar(cuit, formato):
+    info = _cliente_info(cuit)
+    r, _ = _ventas_bancos(cuit)
+    if not r or formato not in ("excel", "imprimir"):
+        abort(404)
+    nombre = info.get("razon_social") or datos.cuit_fmt(cuit)
+    cond = (usuarios.datos_cliente(cuit) or {}).get("condicion_iva", "")
+    usuarios.registrar(session["usuario"], f"reporte de ventas para bancos ({formato})", f"{cuit} {r['desde']} a {r['hasta']}", _ip())
+    if formato == "imprimir":
+        from . import reportes
+        return render_template("ventas_bancos_imprimir.html", r=r, nombre=nombre, cuit=cuit, condicion=cond, hoy=date.today(),
+                               meses_txt=reportes.MESES_TXT)
+    from io import BytesIO
+    from . import reportes
+    return send_file(BytesIO(reportes.ventas_bancos_excel(r, nombre, cuit, cond)), as_attachment=True,
+                     download_name=f"ventas_{cuit}_{r['desde']}_a_{r['hasta']}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @app.route("/cliente/<cuit>/<seccion>")
 @requiere_login
 def cliente_seccion(cuit, seccion):
@@ -244,6 +282,8 @@ def cliente_seccion(cuit, seccion):
     usuarios.registrar(session["usuario"], f"consulta {seccion}", cuit, _ip())
     org = request.args.get("org", "")
     graf = analisis.grafico_iva(s.get("iva") or [], s.get("proyeccion")) if seccion == "iva" else ""
+    if seccion == "ventas_bancos":
+        s = {**s, "vb": _ventas_bancos(cuit)[0], "vb_periodos": sorted(analisis._meses(cuit, "libro_iva"))}
     return render_template("seccion.html", c=info, s=s, sec=seccion, titulo=SECCIONES[seccion], org=org,
                            notas=usuarios.notas(cuit) if seccion == "notas" else [], grafico=graf,
                            informadas=usuarios.informadas() if seccion == "notificaciones" else {}, pct=analisis.pct,

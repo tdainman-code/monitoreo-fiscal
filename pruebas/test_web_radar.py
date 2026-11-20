@@ -506,6 +506,19 @@ ok(_x.status_code == 200 and _wb.sheetnames == ["Faltas de presentación", "Por 
 _x = cl.get("/cartera/faltas?excel=1&impuesto=NO-EXISTE")
 ok(__import__("openpyxl").load_workbook(__import__("io").BytesIO(_x.data))["Faltas de presentación"]["A5"].value == "Sin faltas de presentación",
    "reporte filtrado por impuesto")
+# reporte de ventas para bancos desde el Portal IVA (20/11/2026)
+_vb = cl.get(f"/cliente/{C}/ventas_bancos").text
+ok("Reporte de ventas para bancos" in _vb and "Promedio mensual neto (12 meses)" in _vb and "⬇ Excel" in _vb, "ventas para bancos: 12 meses por defecto")
+ok("Ventas para bancos" in cl.get(f"/cliente/{C}").text, "tarjeta 'Ventas para bancos' en la ficha")
+_x = cl.get(f"/cliente/{C}/ventas_bancos/excel?desde=2026-01&hasta=2026-03")
+_wv = __import__("openpyxl").load_workbook(__import__("io").BytesIO(_x.data))["Ventas"]
+_vals = [r for r in _wv.iter_rows(min_row=7, values_only=True) if r[0]]
+ok(_x.status_code == 200 and _wv["A1"].value == "DETALLE DE VENTAS MENSUALES" and [r[0] for r in _vals[:3]] == ["Enero 2026", "Febrero 2026", "Marzo 2026"]
+   and _vals[3][0] == "TOTAL" and any("Firma y sello" in str(r[5]) for r in _wv.iter_rows(values_only=True) if len(r) > 5),
+   "Excel de ventas: meses elegidos, total, promedio y firma del contador")
+_pr = cl.get(f"/cliente/{C}/ventas_bancos/imprimir?desde=2025-11&hasta=2026-10").text
+ok("Detalle de ventas mensuales" in _pr and "window.print()" in _pr and "Noviembre 2025" in _pr, "versión para imprimir / PDF")
+ok(cb.get(f"/cliente/{C}/ventas_bancos/excel").status_code == 403, "ventas para bancos: solo clientes propios")
 # descartar alertas por motivo; a los 30 días, si sigue igual, vuelve (18/11/2026)
 _al = cl.get("/alertas").text
 _m = re.search(r'name="cuit" value="(\d{11})">\s*<input type="hidden" name="tipo" value="([^"]*)"><input type="hidden" name="texto" value="([^"]*)">', _al)

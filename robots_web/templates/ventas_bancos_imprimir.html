@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ventas {{ nombre }} {{ r.desde }} a {{ r.hasta }}</title>
+<style>
+ body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:28px;font-size:13px}
+ h1{font-size:18px;margin:0 0 4px}.dato{margin:2px 0}
+ table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #999;padding:5px 8px}
+ th{background:#1F4E78;color:#fff;font-weight:bold}td.num{text-align:right;white-space:nowrap}
+ tr.total td{font-weight:bold;background:#f2f2f2}.nota{font-size:11px;color:#555;margin:3px 0}
+ .firma{margin-top:60px;display:flex;justify-content:space-between;align-items:flex-end}
+ .linea{border-top:1px solid #000;width:280px;text-align:center;padding-top:4px}
+ .barra{margin-bottom:16px}@media print{.barra{display:none}body{margin:10mm}}
+</style></head><body>
+<div class="barra"><button onclick="window.print()">🖨 Imprimir / guardar como PDF</button></div>
+<h1>Detalle de ventas mensuales</h1>
+<p class="dato"><b>Contribuyente:</b> {{ nombre }}</p>
+<p class="dato"><b>CUIT:</b> {{ cuit[:2] }}-{{ cuit[2:10] }}-{{ cuit[10] }}{% if condicion %} &nbsp;·&nbsp; <b>Condición frente al IVA:</b> {{ condicion }}{% endif %}</p>
+<p class="dato"><b>Período:</b> {{ r.filas[0].mes }} a {{ r.filas[-1].mes }}</p>
+<table><thead><tr><th>Mes</th><th>Neto gravado</th><th>Exento / no gravado</th><th>Ventas netas (sin IVA)</th><th>IVA débito fiscal</th><th>Total facturado</th></tr></thead><tbody>
+{% for f in r.filas %}{% if f.sin_dj %}<tr><td>{{ f.mes }}</td><td colspan="5"><i>Sin declaración jurada de IVA presentada</i></td></tr>
+{% else %}<tr><td>{{ f.mes }}</td><td class="num">{{ f.neto|pesos }}</td><td class="num">{{ f.exento|pesos }}</td><td class="num">{{ f.ventas_netas|pesos }}</td>
+  <td class="num">{{ f.iva|pesos }}</td><td class="num">{{ f.total|pesos }}</td></tr>{% endif %}{% endfor %}
+<tr class="total"><td>Total</td><td class="num">{{ r.total.neto|pesos }}</td><td class="num">{{ r.total.exento|pesos }}</td><td class="num">{{ r.total.ventas_netas|pesos }}</td><td class="num">{{ r.total.iva|pesos }}</td><td class="num">{{ r.total.total|pesos }}</td></tr>
+<tr class="total"><td>Promedio mensual ({{ r.total.meses }} meses)</td><td colspan="2"></td><td class="num">{{ r.total.promedio_netas|pesos }}</td><td></td><td class="num">{{ r.total.promedio_total|pesos }}</td></tr>
+</tbody></table>
+<p class="nota">Fuente: Libro IVA Digital — declaraciones juradas de IVA (F.2002) presentadas ante ARCA (Portal IVA).</p>
+<p class="nota">Ventas netas = neto gravado + exento y no gravado (sin IVA). Total facturado incluye IVA y otros tributos. Notas de crédito restadas.</p>
+{% if r.faltan %}<p class="nota">Meses sin declaración jurada de IVA presentada a la fecha: {{ r.faltan|join(', ') }}.</p>{% endif %}
+<div class="firma"><div>Lugar y fecha: ____________________, {{ hoy.day }} de {{ meses_txt[hoy.month - 1] }} de {{ hoy.year }}</div>
+  <div class="linea">Firma y sello del Contador Público</div></div>
+</body></html>
