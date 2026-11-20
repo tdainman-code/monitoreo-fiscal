@@ -524,6 +524,26 @@ def ficha(cuit: str) -> dict:
         b.append({"id": "ventas_bancos", "titulo": "Ventas para bancos", "valor": None,
                   "sub": "reporte mensual desde el Portal IVA (Excel / PDF)", "color": "gris"})
     b.append({"id": "informes", "titulo": "Informes Excel", "valor": len(inf), "sub": "para bajar", "color": "gris"})
+    # 20/11/2026: todos los clientes muestran las MISMAS tarjetas en el MISMO orden; si todavía no hay datos de algo,
+    # la tarjeta aparece en gris diciendo por qué (antes desaparecía y cada ficha se veía distinta).
+    falta = {"por_vencer": ("Por vencer", "falta leer Cuentas Tributarias"),
+             "iibb": ("Ingresos Brutos", "falta la clave o los datos de Convenio Multilateral / ARBA"),
+             "compras": ("Compras y APOC", "se lee en la corrida completa (Libro IVA / Nuestra Parte)"),
+             "iva": ("IVA: débito / crédito fiscal", "falta el Libro IVA (monotributo o sin presentar)"),
+             "relacion": ("Relación débito crédito", "falta el Libro IVA o el F.931"),
+             "fiscalizaciones": ("Fiscalizaciones", "se lee en la corrida completa"),
+             "historica": ("Deuda histórica", "se lee en la corrida completa (estado de cumplimiento)"),
+             "ccma": ("Autónomos / Monotributo", "se lee en la corrida completa (CCMA)"),
+             "agip": ("AGIP (Ciudad)", "falta cargar la Clave Ciudad de AGIP"),
+             "ventas_bancos": ("Ventas para bancos", "falta el Libro IVA del Portal IVA")}
+    hay = {x["id"] for x in b}
+    for id_, (tit, sub) in falta.items():
+        if id_ not in hay:
+            # pedido 20/11/2026: lo que no está configurado va en ROJO y dice "Pendiente de configurar"
+            b.append({"id": id_, "titulo": tit, "valor": "Pendiente de configurar", "sub": sub, "color": "rojo", "vacia": True})
+    orden = ["deuda", "por_vencer", "planes", "vencimientos", "ddjj", "notificaciones", "iibb", "compras", "iva", "relacion",
+             "fiscalizaciones", "historica", "ccma", "agip", "ventas_bancos", "informes"]
+    b.sort(key=lambda x: orden.index(x["id"]) if x["id"] in orden else len(orden))
     s["botones"] = b
     return s
 

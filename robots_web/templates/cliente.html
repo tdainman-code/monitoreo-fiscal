@@ -8,7 +8,7 @@
 <p class="sutil">{{ s.motivo }}</p>
 <section class="botonera">
 {% for b in s.botones %}
-  <a class="boton-ficha {{ b.color }}" href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion=b.id) }}">
+  <a class="boton-ficha {{ b.color }}{{ ' vacia' if b.vacia }}" href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion=b.id) }}">
     <span class="titulo">{{ b.titulo }}</span>
     <span class="numero">{% if b.valor is none %}ver{% elif b.pesos %}{{ b.valor|pesos }}{% else %}{{ b.valor }}{% endif %}{% if b.utilidad is defined and b.utilidad is not none %} <small class="{{ 'txt-rojo' if b.utilidad < 0 }}">· utilidad {{ (b.utilidad + 1)|utilidad }}</small>{% endif %}</span>
     <span class="sub">{{ b.sub }}</span>

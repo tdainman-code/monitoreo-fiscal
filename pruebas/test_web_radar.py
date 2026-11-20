@@ -615,6 +615,11 @@ escribir(f"{R}/publico/actualizaciones.json", [{"fecha": "2026-11-17T13:00:00", 
 ok("cambio de prueba" in cl2.get("/sistema").text and "Sistema" in cl2.get("/mas").text, "el admin ve la pantalla Sistema")
 ok(cl.get("/sistema").status_code == 403, "un colaborador no ve Sistema")
 ok(cl.get(f"/cliente/{C3}").status_code == 200 and cl.get(f"/cliente/{C3}/iva").status_code == 200, "cliente sin datos no rompe")
+_ids = lambda cu: re.findall(r'href="/cliente/' + cu + r'/([a-z_]+)"', cl.get(f"/cliente/{cu}").text)
+ok(_ids(C3) == _ids(C) and len(_ids(C3)) >= 16 and "boton-ficha rojo vacia" in cl.get(f"/cliente/{C3}").text and "Pendiente de configurar" in cl.get(f"/cliente/{C3}").text,
+   "todas las fichas tienen las mismas tarjetas en el mismo orden (lo no configurado en rojo: Pendiente de configurar)")
+_rotas = [i for i in _ids(C3) if cl.get(f"/cliente/{C3}/{i}").status_code != 200]
+ok(not _rotas, f"todas las tarjetas abren aunque no haya datos {_rotas}")
 # lo descartado de antes de 2020 (deuda / faltas de presentación) no vuelve nunca más (20/11/2026)
 C4 = "20123456786"
 def _sit4(ddjj):

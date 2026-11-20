@@ -228,3 +228,4 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 [hidden]{display:none!important}
 .fila-filtro .temas,.fila-filtro .segmentos{flex:0 1 auto}.fila-filtro .temas{flex:1;min-width:0}
 .tablero-filtros,.tablero-filtros>*,.fila-filtro>*{min-width:0;max-width:100%}
+.boton-ficha.vacia .numero{font-size:17px;color:var(--rojo);line-height:1.3}
