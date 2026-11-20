@@ -49,7 +49,7 @@ def consulta():
         tot = "<div>Deuda $ 0,00</div>"
         cuerpo = ""
     js = "<script>document.querySelector('button').onclick=()=>location.href='consulta?anio=" + str(a - 1) + "'</script>"
-    return f"<html><body><h2>Mostrar Consulta</h2>{cab}{tot}{cuerpo}{js}</body></html>"
+    return f"<html><body><h2>Mostrar Consulta</h2>{cab}{tot}{cuerpo}{js}<a href='parametros'>VOLVER</a></body></html>"
 
 
 def ruteo(route):
@@ -67,7 +67,7 @@ def ruteo(route):
     if "inicio" in u:
         return route.fulfill(content_type=h, body="<html><body><p>Sistema de cuentas tributarias</p></body></html>")
     return route.fulfill(content_type=h, body=f"""<html><body><nav><a>CUENTA CORRIENTE</a>
-        <a onclick="document.getElementById('c').src='{B}parametros'">ESTADO DE CUMPLIMIENTO</a></nav>
+        <a onclick="var f=document.getElementById('c'); if (!/consulta/.test(f.contentWindow.location.href)) f.src='{B}parametros'">ESTADO DE CUMPLIMIENTO</a></nav>
         <iframe id="c" src="{B}inicio" style="width:1200px;height:2000px"></iframe></body></html>""")
 
 

@@ -225,13 +225,45 @@ class Trabada(Exception):
     """La consulta no terminó de cargar (la SCT se cuelga, sobre todo al pasar de año)."""
 
 
+def _hay_marco(page, patron: str):
+    return _en_frames(page, lambda f: f if re.search(patron, f.locator("body").inner_text(timeout=3000), re.I) else None)
+
+
 def _ir_a_parametros(page):
-    try:
-        _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$", espera_s=15)
-    except arca.ErrorRobot:                            # menú plegado: se abre "CUENTA CORRIENTE"
-        _clic_texto(page, r"^\s*CUENTA CORRIENTE\s*$")
-        _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$")
-    return _marco_con(page, r"Ingreso de Par[aá]metros")
+    """Lleva al 'Ingreso de Parámetros' del estado de cumplimiento. Arreglo 20/11/2026 (error "no aparece 'Ingreso de
+    Parámetros'" en la 2ª consulta): estando en 'Mostrar Consulta', volver a tocar ESTADO DE CUMPLIMIENTO en el menú no
+    hace nada (misma pantalla); hay que tocar VOLVER. Orden: ya está -> VOLVER -> menú -> recargar y menú."""
+    fr = _hay_marco(page, r"Ingreso de Par[aá]metros")
+    if fr:
+        return fr
+
+    def menu():
+        try:
+            _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$", espera_s=15)
+        except arca.ErrorRobot:                        # menú plegado: se abre "CUENTA CORRIENTE"
+            _clic_texto(page, r"^\s*CUENTA CORRIENTE\s*$")
+            _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$")
+
+    def volver():
+        fr_c = _hay_marco(page, r"Mostrar Consulta|Per[ií]odo Fiscal consultado")
+        if fr_c:
+            b = fr_c.get_by_text(re.compile(r"^\s*VOLVER\s*$", re.I)).locator("visible=true")
+            if b.count():
+                b.first.click()
+                return
+        raise arca.ErrorRobot("sin botón VOLVER")
+
+    for paso_ in (volver, menu, lambda: (page.reload(wait_until="domcontentloaded"), page.wait_for_timeout(3000), menu())):
+        try:
+            paso_()
+        except Exception:
+            continue
+        try:
+            return _marco_con(page, r"Ingreso de Par[aá]metros", espera_s=25)
+        except arca.ErrorRobot:
+            continue
+    arca.verificar_sesion(page, "cuentas_tributarias")      # si se cortó la sesión, el robot vuelve a entrar
+    raise Trabada("no aparece 'Ingreso de Parámetros'")
 
 
 def _campos_periodo(fr):
@@ -390,7 +422,15 @@ def leer_anios(page, cuit: str, anios: int = ANIOS, hoy: date | None = None) -> 
                     pass
         return r
 
-    fr = _ir_a_parametros(page)
+    try:
+        fr = _ir_a_parametros(page)
+    except Trabada:
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_timeout(3000)
+        try:
+            fr = _ir_a_parametros(page)
+        except Trabada as e:
+            raise arca.ErrorRobot(f"Cuentas Tributarias: {e}")
     impuestos = impuestos_disponibles(fr)
     directo = _campos_periodo(fr) is not None
     for anio in objetivo:
