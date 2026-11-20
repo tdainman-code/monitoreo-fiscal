@@ -113,4 +113,18 @@ _m = [json.load(open(os.path.join(av.SALIDA, n))) for n in set(os.listdir(av.SAL
 chk(len(_m) == 1 and _m[0]["para"] == ["tomas@estudio.com"] and "18/12/2026" in _m[0]["cuerpo"] and "812.345,67" in _m[0]["cuerpo"],
     "IVA diferido: el mail va al encargado (no al cliente) con fecha e importe")
 
+# Anticipos: igual que el IVA diferido (Gaby 20/11/2026); de la solapa Vencimientos (sin importe)
+_d = json.load(open(_sit))
+_d["sct"]["vencimientos"] = [{"impuesto": "11 - GANANCIAS PERSONAS FISICAS", "concepto": "191 - ANTICIPOS", "periodo": "20260000",
+                              "periodo_txt": "2026", "cuota": "3", "vencimiento": "2026-12-14", "detalle": "PAGO"},
+                             {"impuesto": "30 - IVA", "concepto": "19 - DECLARACIÓN JURADA", "periodo": "20261100",
+                              "cuota": "0", "vencimiento": "2026-12-18", "detalle": "PRESENTACION"}]
+json.dump(_d, open(_sit, "w"))
+antes = set(os.listdir(av.SALIDA))
+chk(av.avisar_iva_diferido(av.contactos(), [C], dt.date(2026, 12, 4)) == 1 and
+    av.avisar_iva_diferido(av.contactos(), [C], dt.date(2026, 12, 5)) == 0, "anticipo: 10 días antes avisa una sola vez")
+_m = [json.load(open(os.path.join(av.SALIDA, n))) for n in set(os.listdir(av.SALIDA)) - antes]
+chk(len(_m) == 1 and "anticipo 3" in _m[0]["cuerpo"] and "14/12/2026" in _m[0]["cuerpo"] and _m[0]["para"] == ["tomas@estudio.com"],
+    "anticipo: mail al responsable con número de anticipo y vencimiento")
+
 print("TODO OK" if ok else "FALLAS"); sys.exit(0 if ok else 1)

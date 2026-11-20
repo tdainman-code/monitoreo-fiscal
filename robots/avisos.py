@@ -357,43 +357,68 @@ DIAS_IVA_DIFERIDO = 10
 
 
 def iva_por_vencer(cuit: str, hoy: dt.date) -> list[dict]:
-    """IVA diferido (pago a 90 días): obligaciones de IVA de la solapa Deudas de Cuentas Tributarias que todavía no
-    vencieron (pedido de Gaby 20/11/2026)."""
-    sit = _situacion(cuit) or {}
-    out = []
-    for d in (sit.get("sct") or {}).get("deudas") or []:
-        if not re.match(r"\s*0*30\b|.*\bIVA\b", str(d.get("impuesto") or ""), re.I):
-            continue
+    """Compatibilidad: solo el IVA diferido."""
+    return [d for d in por_vencer_avisables(cuit, hoy) if d["tipo_aviso"] == "IVA diferido"]
+
+
+def _es_iva(d):
+    return re.match(r"\s*0*30\b|.*\bIVA\b", str(d.get("impuesto") or ""), re.I)
+
+
+def _es_anticipo(d):
+    return re.search(r"anticip|\b191\b", f"{d.get('concepto') or ''} {d.get('subconcepto') or ''}", re.I)
+
+
+def por_vencer_avisables(cuit: str, hoy: dt.date) -> list[dict]:
+    """Lo que se le avisa al responsable 10 días antes (pedido de Gaby 20/11/2026), de Cuentas Tributarias:
+      - IVA diferido (pago a 90 días): obligaciones de IVA de la solapa Deudas todavía no vencidas;
+      - ANTICIPOS (Ganancias, Bienes Personales...): de la solapa Deudas si figuran con importe, y si no de la
+        solapa Vencimientos (concepto 191 - ANTICIPOS, detalle PAGO), que no trae importe."""
+    sct = (_situacion(cuit) or {}).get("sct") or {}
+    out, vistos = [], set()
+    for d in sct.get("deudas") or []:
         v = _fecha(d.get("vencimiento"))
         if not v or v < hoy or not (d.get("total") or d.get("capital")):
             continue
-        out.append({**d, "venc": v})
+        tipo = "IVA diferido" if _es_iva(d) else "Anticipo" if _es_anticipo(d) else None
+        if tipo:
+            out.append({**d, "venc": v, "tipo_aviso": tipo, "importe": d.get("total") or d.get("capital")})
+            vistos.add((str(d.get("impuesto"))[:3], str(d.get("periodo")), str(d.get("cuota")), v))
+    for d in sct.get("vencimientos") or []:
+        v = _fecha(d.get("vencimiento"))
+        if not v or v < hoy or not _es_anticipo(d) or not re.search(r"pago", str(d.get("detalle") or ""), re.I):
+            continue
+        if (str(d.get("impuesto"))[:3], str(d.get("periodo")), str(d.get("cuota")), v) in vistos:
+            continue
+        out.append({**d, "venc": v, "tipo_aviso": "Anticipo", "importe": None})
     return out
 
 
 def avisar_iva_diferido(cont: dict, cuits: list[str], hoy: dt.date) -> int:
-    """Mail al ENCARGADO del cliente 10 días corridos antes del vencimiento de cada IVA diferido, una sola vez, para
-    que él le avise al cliente (no se le manda nada al cliente)."""
+    """Mail al RESPONSABLE (encargado) del cliente 10 días corridos antes del vencimiento de cada IVA diferido y de
+    cada anticipo, una sola vez, para que él le avise al cliente (al cliente no se le manda nada)."""
     ruta = os.path.join(PUBLICO, "iva_diferido.json")
     hechos = _leer(ruta, {}) or {}
     n = 0
     for cuit in cuits:
         info = cont.get(cuit) or {}
-        for d in iva_por_vencer(cuit, hoy):
+        for d in por_vencer_avisables(cuit, hoy):
             faltan = (d["venc"] - hoy).days
-            clave = f"{cuit}:{d.get('periodo')}:{d.get('cuota')}:{d['venc'].isoformat()}"
-            if faltan > DIAS_IVA_DIFERIDO or clave in hechos:
+            clave = f"{cuit}:{d['tipo_aviso']}:{str(d.get('impuesto'))[:4]}:{d.get('periodo')}:{d.get('cuota')}:{d['venc'].isoformat()}"
+            viejo = f"{cuit}:{d.get('periodo')}:{d.get('cuota')}:{d['venc'].isoformat()}"     # clave de antes (solo IVA)
+            if faltan > DIAS_IVA_DIFERIDO or clave in hechos or (d["tipo_aviso"] == "IVA diferido" and viejo in hechos):
                 continue
             nombre = info.get("razon_social") or _cuit_fmt(cuit)
-            importe = d.get("total") or d.get("capital")
-            cuerpo = (f"Hola {info.get('encargado_nombre') or ''}:\n\n{nombre} ({_cuit_fmt(cuit)}) tiene IVA diferido que vence "
-                      f"el {d['venc']:%d/%m/%Y} (en {faltan} días): período {d.get('periodo_txt') or d.get('periodo')}, "
-                      f"{_pesos(importe)}.\n\nAvisale al cliente para que lo pague a término. Al cliente el sistema no le "
-                      "manda nada.\n")
-            hechos[clave] = {"fecha": hoy.isoformat(), "cuit": cuit, "importe": importe,
+            que = (f"IVA diferido, período {d.get('periodo_txt') or d.get('periodo')}" if d["tipo_aviso"] == "IVA diferido"
+                   else f"anticipo {d.get('cuota') or ''} de {d.get('impuesto') or ''} ({d.get('periodo_txt') or d.get('periodo')})")
+            imp = f", {_pesos(d['importe'])}" if d.get("importe") else " (el importe no figura en Cuentas Tributarias)"
+            cuerpo = (f"Hola {info.get('encargado_nombre') or ''}:\n\n{nombre} ({_cuit_fmt(cuit)}) tiene {que} que vence el "
+                      f"{d['venc']:%d/%m/%Y} (en {faltan} días){imp}.\n\nAvisale al cliente para que lo pague a término. "
+                      "Al cliente el sistema no le manda nada.\n")
+            hechos[clave] = {"fecha": hoy.isoformat(), "cuit": cuit, "importe": d.get("importe"), "tipo": d["tipo_aviso"],
                              "mail": encolar_mail([info.get("encargado_email", "")],
-                                                  f"IVA diferido vence el {d['venc']:%d/%m}: {nombre}", cuerpo,
-                                                  motivo=f"iva diferido {clave}")}
+                                                  f"{d['tipo_aviso']} vence el {d['venc']:%d/%m}: {nombre}", cuerpo,
+                                                  motivo=f"por vencer {clave}")}
             n += 1
     _guardar(ruta, hechos)
     return n
