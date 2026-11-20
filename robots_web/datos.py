@@ -200,6 +200,13 @@ def situacion(cuit: str) -> dict:
                             + len((fisc or {}).get("fiscalizacion_electronica") or []) + len(agip_f))
     r["ratio"] = analisis.ratio_dc(analisis.iva_mensual(cuit))
     r["alertas"] += ((agip or {}).get("alertas") or []) + ((fisc or {}).get("alertas") or []) + ((ccma or {}).get("alertas") or [])
+    for d in (sct or {}).get("deudas") or []:          # IVA diferido: aviso 10 días antes (20/11/2026)
+        if re.match(r"\s*0*30\b|.*\bIVA\b", str(d.get("impuesto") or ""), re.I) and not d.get("vencida"):
+            v = _fecha(str(d.get("vencimiento") or "")[:10])
+            if v and 0 <= (v - date.today()).days <= 10 and (d.get("total") or d.get("capital")):
+                r["alertas"].append({"prioridad": "ALTA", "tipo": "IVA diferido por vencer",
+                                     "texto": f"IVA {d.get('periodo_txt') or d.get('periodo')} vence el {v:%d/%m/%Y} "
+                                              f"({_pesos_txt(d.get('total') or d.get('capital'))}): avisarle al cliente"})
     _fu = _leer(os.path.join(base, "conciliacion", "fuentes.json")) or {}
     r["alertas"] += _fu.get("alertas") or []          # Libro IVA vs Mis Comprobantes (20/11/2026)
     try:                                              # F.931 con personal y sin remuneración leída (19/11/2026)

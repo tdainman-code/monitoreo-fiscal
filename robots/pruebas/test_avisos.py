@@ -97,4 +97,20 @@ mails = [json.load(open(os.path.join(av.SALIDA, f))) for f in os.listdir(av.SALI
 mr = [x for x in mails if x["motivo"].startswith("revisión cm:")]
 chk(n1 == 1 and n2 == 0 and len(mr) == 1 and mr[0]["para"] == ["tomas@estudio.com"] and "Visto, me ocupo" in mr[0]["cuerpo"]
     and "$ 500,00" in mr[0]["cuerpo"], "deuda histórica de Convenio: un mail al encargado, una sola vez")
+# IVA diferido (a 90 días): mail al encargado 10 días antes del vencimiento, una sola vez (20/11/2026)
+import glob as _g
+_sit = sorted(_g.glob(f"{R}/datos/{C}/situacion/*/resultado.json"))[-1]
+_d = json.load(open(_sit))
+_d["sct"] = {"deudas": [{"impuesto": "30 - IVA", "concepto": "DDJJ", "periodo": "202609", "periodo_txt": "09/2026",
+                         "cuota": "0", "vencimiento": "2026-12-18", "capital": 812345.67, "total": 812345.67, "vencida": False},
+                        {"impuesto": "11 - GANANCIAS", "periodo": "2026", "vencimiento": "2026-12-14", "total": 5.0, "vencida": False}]}
+json.dump(_d, open(_sit, "w"))
+antes = set(os.listdir(av.SALIDA))
+chk(av.avisar_iva_diferido(av.contactos(), [C], dt.date(2026, 12, 7)) == 0, "IVA diferido: 11 días antes todavía no avisa")
+chk(av.avisar_iva_diferido(av.contactos(), [C], dt.date(2026, 12, 8)) == 1 and
+    av.avisar_iva_diferido(av.contactos(), [C], dt.date(2026, 12, 9)) == 0, "IVA diferido: 10 días antes avisa una sola vez")
+_m = [json.load(open(os.path.join(av.SALIDA, n))) for n in set(os.listdir(av.SALIDA)) - antes]
+chk(len(_m) == 1 and _m[0]["para"] == ["tomas@estudio.com"] and "18/12/2026" in _m[0]["cuerpo"] and "812.345,67" in _m[0]["cuerpo"],
+    "IVA diferido: el mail va al encargado (no al cliente) con fecha e importe")
+
 print("TODO OK" if ok else "FALLAS"); sys.exit(0 if ok else 1)

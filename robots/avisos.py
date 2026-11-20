@@ -258,6 +258,10 @@ def evaluar(hoy: dt.date | None = None) -> dict:
     lista = sorted(avisos.values(), key=lambda a: (a["estado"] == "resuelto", -int(a.get("dias") or 0)))
     _guardar(ruta, lista[:2000])
     rev = avisar_revisiones(cont, cuits, hoy)
+    try:
+        avisar_iva_diferido(cont, cuits, hoy)
+    except Exception:
+        pass
     env = enviar_cola()
     return {"nuevos": nuevos, "automaticos": auto, "resueltos": resueltos, "revisiones": rev, "mails": env}
 
@@ -347,6 +351,52 @@ def mail_vep_deuda(cuit: str, v: dict, por: str) -> str:
     mid = encolar_mail(para, f"VEP ARCA {v['vep']} — {nombre} (vence hoy)", cuerpo,
                        cc=[info.get("encargado_email", "")], motivo=f"VEP deuda {cuit} por {por}")
     return f"mail al cliente ({', '.join(para)}): {estado_mail(mid)}"
+
+
+DIAS_IVA_DIFERIDO = 10
+
+
+def iva_por_vencer(cuit: str, hoy: dt.date) -> list[dict]:
+    """IVA diferido (pago a 90 días): obligaciones de IVA de la solapa Deudas de Cuentas Tributarias que todavía no
+    vencieron (pedido de Gaby 20/11/2026)."""
+    sit = _situacion(cuit) or {}
+    out = []
+    for d in (sit.get("sct") or {}).get("deudas") or []:
+        if not re.match(r"\s*0*30\b|.*\bIVA\b", str(d.get("impuesto") or ""), re.I):
+            continue
+        v = _fecha(d.get("vencimiento"))
+        if not v or v < hoy or not (d.get("total") or d.get("capital")):
+            continue
+        out.append({**d, "venc": v})
+    return out
+
+
+def avisar_iva_diferido(cont: dict, cuits: list[str], hoy: dt.date) -> int:
+    """Mail al ENCARGADO del cliente 10 días corridos antes del vencimiento de cada IVA diferido, una sola vez, para
+    que él le avise al cliente (no se le manda nada al cliente)."""
+    ruta = os.path.join(PUBLICO, "iva_diferido.json")
+    hechos = _leer(ruta, {}) or {}
+    n = 0
+    for cuit in cuits:
+        info = cont.get(cuit) or {}
+        for d in iva_por_vencer(cuit, hoy):
+            faltan = (d["venc"] - hoy).days
+            clave = f"{cuit}:{d.get('periodo')}:{d.get('cuota')}:{d['venc'].isoformat()}"
+            if faltan > DIAS_IVA_DIFERIDO or clave in hechos:
+                continue
+            nombre = info.get("razon_social") or _cuit_fmt(cuit)
+            importe = d.get("total") or d.get("capital")
+            cuerpo = (f"Hola {info.get('encargado_nombre') or ''}:\n\n{nombre} ({_cuit_fmt(cuit)}) tiene IVA diferido que vence "
+                      f"el {d['venc']:%d/%m/%Y} (en {faltan} días): período {d.get('periodo_txt') or d.get('periodo')}, "
+                      f"{_pesos(importe)}.\n\nAvisale al cliente para que lo pague a término. Al cliente el sistema no le "
+                      "manda nada.\n")
+            hechos[clave] = {"fecha": hoy.isoformat(), "cuit": cuit, "importe": importe,
+                             "mail": encolar_mail([info.get("encargado_email", "")],
+                                                  f"IVA diferido vence el {d['venc']:%d/%m}: {nombre}", cuerpo,
+                                                  motivo=f"iva diferido {clave}")}
+            n += 1
+    _guardar(ruta, hechos)
+    return n
 
 
 def vep_programado() -> bool:
