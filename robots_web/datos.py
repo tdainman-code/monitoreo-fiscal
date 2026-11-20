@@ -464,7 +464,8 @@ def ficha(cuit: str) -> dict:
               # crédito a recuperar con el F.399 (S.L.D. fuera del IVA), pedido de Gaby 20/11/2026
               "sub2": (f"crédito a recuperar (F.399): {_pesos_txt((s.get('scth') or {}).get('saldos_recuperar_total') or 0)}"
                        if "saldos_recuperar" in (s.get("scth") or {}) else
-                       "crédito a recuperar (F.399): se calcula en la próxima corrida de Deuda histórica" if s.get("scth") else "")})
+                       "crédito a recuperar (F.399): se calcula en la próxima corrida de Deuda histórica" if s.get("scth") else
+                       "crédito a recuperar (F.399): falta leer el estado de cumplimiento (pedir 'Deuda histórica')")})
     if sct:
         pv = s["deudas_por_vencer"]
         prox = min((d.get("vencimiento") or "" for d in pv if d.get("vencimiento")), default="")
