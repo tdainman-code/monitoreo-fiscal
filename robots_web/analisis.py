@@ -4,7 +4,8 @@ Traído de Radar fiscal (17/11/2026), con los mismos criterios por defecto que T
   - Relación débito/crédito de IVA de los últimos 12 meses: menos de 0,8 = Crítico, menos de 1,2 = Advertencia.
   - Proyección de IVA: tendencia lineal (mínimos cuadrados) del débito y del crédito, extendida un mes.
   - Resultado mensual:  Ventas netas − Compras netas − Sueldos netos − F.931 (aportes + contribuciones).
-      Ventas y compras: neto gravado + exento + no gravado del Libro IVA (sin IVA). Las compras B/C
+      Ventas y compras: neto gravado + exento + no gravado del Libro IVA (sin IVA). Ventas: además los comprobantes
+      sin desglose (facturas C, alquileres de vivienda): la utilidad es TODO lo vendido sin IVA contra erogaciones. Las compras B/C
       (sin IVA discriminado) se toman por el total, igual que en la relación D/C del estudio.
       Sueldos netos: remuneración (Rem. 1 del F.931) menos aportes retenidos (ESTIMADO: el robot todavía no
       baja el Libro de Sueldos Digital). F.931: aportes + cargas sociales (contribuciones, ART, SCVO, RENATRE).
@@ -172,6 +173,20 @@ def _compras_c(l: dict) -> float | None:
     return sum(_num(c.get("total")) for c in cc if c.get("b_c") and int(_num(c.get("tipo"))) in TIPOS_C)
 
 
+def ventas_sin_desglose(l: dict) -> float:
+    """Ventas sin IVA que no figuran como neto, no gravado ni exento (facturas C, alquileres de vivienda...).
+    Libros IVA bajados antes del 20/11/2026 no traen el dato: se calcula con los comprobantes guardados (los que no
+    tienen neto ni IVA) menos lo que ya figura como no gravado + exento."""
+    v = l.get("ventas") or {}
+    if "Otras ventas sin IVA (sin desglose)" in v:
+        return _num(v.get("Otras ventas sin IVA (sin desglose)"))
+    comps = l.get("comprobantes_ventas")
+    if not comps:
+        return 0.0
+    sin = sum(_num(c.get("total")) for c in comps if not _num(c.get("neto")) and not _num(c.get("iva")))
+    return round(max(0.0, sin - _num(v.get("No gravado")) - _num(v.get("Exento"))), 2)
+
+
 def _neto(res: dict, compras: bool) -> float:
     """Igual que la planilla 'Relación DC': ventas = neto gravado + no gravado + exento;
     compras = lo mismo + comprobantes B/C + impuesto a los combustibles."""
@@ -213,6 +228,7 @@ def resultado_mensual(cuit: str) -> list[dict]:
         l, f = liva.get(per), f931.get(per)
         if l:
             ventas, compras = _neto(l.get("ventas") or {}, False), _neto(l.get("compras") or {}, True)
+            ventas += ventas_sin_desglose(l)               # ingresos totales sin IVA (Gaby 20/11/2026)
             solo_c = _compras_c(l)
             if solo_c is not None:                         # saca las facturas B (datos bajados antes del 17/11)
                 compras += solo_c - _num((l.get("compras") or {}).get("Comprobantes B/C (sin IVA discriminado)"))

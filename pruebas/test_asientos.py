@@ -294,6 +294,20 @@ _av.DATOS = D
 ok({x["tema"] for x in _av.revisiones(C)} >= {"AGIP: compensar deuda con saldo a favor", "ARBA: deuda en juicio", "Saldos a recuperar (F.399)"},
    "mail al encargado: AGIP, ARBA y F.399")
 
+# ------------------------------------------------ ventas sin IVA (alquileres de vivienda, Humaitá 20/11/2026)
+from robots import lector_libro_iva as _li  # noqa: E402
+_c = _li._comprobante({"Tipo de Comprobante": "6", "Importe Total": "500000,00", "Importe de Operaciones Exentas": "500000,00",
+                       "Nro. Doc. Comprador": "20111111112"}, "Comprador")
+ok(_c["exento"] == 500000.0, "Libro IVA: toma el exento aunque la columna tenga otro título")
+_r = _li._resumir([_li._comprobante({"Tipo de Comprobante": "11", "Importe Total": "300000,00"}, "Comprador")], "2026-10", compras=False)
+ok(_r["Otras ventas sin IVA (sin desglose)"] == 300000.0, "Libro IVA: factura sin desglose cuenta como venta sin IVA")
+escribir(f"{D}/{C2}/libro_iva/2026-10.json", {"periodo": "2026-10", "ventas": {"Neto gravado total": 0.0, "Exento": 0.0, "No gravado": 0.0},
+         "compras": {"Neto gravado total": 100_000.0, "Exento": 0.0, "No gravado": 0.0},
+         "comprobantes_ventas": [{"tipo": 11, "neto": 0.0, "iva": 0.0, "total": 400_000.0}]})
+_rm = {m["periodo"]: m for m in analisis.resultado_mensual(C2)}
+ok(_rm["2026-10"]["ventas"] == 400_000.0 and _rm["2026-10"]["resultado"] > 0,
+   "relación D/C: alquileres sin IVA entran en ventas (Libro IVA bajado antes del arreglo)")
+
 # ------------------------------------------------ asignar clientes uno mismo (19/11/2026)
 C3 = "27169781295"
 escribir(f"{R}/publico/clientes.json", [{"cuit": C, "razon_social": "RAPTOR.MAX SRL"}, {"cuit": C2, "razon_social": "VALGUARNERA HECTOR"},

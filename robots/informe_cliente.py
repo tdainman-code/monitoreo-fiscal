@@ -184,7 +184,18 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
     r_vng = formula("Neto gravado total", f"SUM({{c}}{rv[0]}:{{c}}{rv[-1]})")
     r_vnog = datos("No gravado", lambda p: val(p, "emitidos", "No gravado"))
     r_vex = datos("Exento", lambda p: val(p, "emitidos", "Exento"))
-    r_vtot = formula("TOTAL VENTAS NETAS", f"{{c}}{r_vng}+{{c}}{r_vnog}+{{c}}{r_vex}")
+    def _sin_desglose(p):                          # facturas C / alquileres sin desglose (20/11/2026)
+        l = liva.get(p)
+        if not l:
+            return None
+        v = l.get("ventas") or {}
+        if "Otras ventas sin IVA (sin desglose)" in v:
+            return v["Otras ventas sin IVA (sin desglose)"]
+        comps = l.get("comprobantes_ventas") or []
+        sin = sum(c.get("total") or 0 for c in comps if not c.get("neto") and not c.get("iva"))
+        return round(max(0.0, sin - (v.get("No gravado") or 0) - (v.get("Exento") or 0)), 2)
+    r_vsd = datos("Otras ventas sin IVA (sin desglose)", _sin_desglose)
+    r_vtot = formula("TOTAL VENTAS NETAS", f"{{c}}{r_vng}+{{c}}{r_vnog}+{{c}}{r_vex}+N({{c}}{r_vsd})")
     r_deb = datos("IVA Débito fiscal", lambda p: val(p, "emitidos", "Total IVA"))
     # COMPRAS
     seccion("COMPRAS (Libro IVA – Portal IVA)")

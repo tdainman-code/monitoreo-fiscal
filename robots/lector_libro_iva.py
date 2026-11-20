@@ -84,6 +84,15 @@ def _x(xml: dict, sufijo: str) -> float:
     return sum(v for k, v in xml.items() if k.endswith(sufijo) and isinstance(v, float))
 
 
+def _col_como(f: dict, patron: str) -> str:
+    """Valor de la primera columna cuyo nombre contiene 'patron' (por si el CSV trae otro título, p. ej. 'Importe de
+    Operaciones Exentas'; caso Humaitá, alquileres de vivienda, 20/11/2026)."""
+    for k, v in f.items():
+        if k and re.search(patron, k, re.I) and re.search(r"importe|monto|operac", k, re.I):
+            return v
+    return ""
+
+
 def _comprobante(f: dict, lado: str) -> dict:
     tipo = int(f.get("Tipo de Comprobante") or 0)
     tc = _num(f.get("Tipo de Cambio")) or 1.0
@@ -96,7 +105,8 @@ def _comprobante(f: dict, lado: str) -> dict:
         "nombre": f.get(f"Denominación {lado}", ""),
         "moneda": moneda, "tipo_cambio": tc,
         "total": _num(f.get("Importe Total")),
-        "no_gravado": _num(f.get("Importe No Gravado")), "exento": _num(f.get("Importe Exento")),
+        "no_gravado": _num(f.get("Importe No Gravado") or _col_como(f, r"no\s*gravad")),
+        "exento": _num(f.get("Importe Exento") or _col_como(f, r"exent")),
         "percepciones": sum(_num(f.get(k)) for k in PERCEPCIONES),
         "otros_costos": sum(_num(f.get(k)) for k in OTROS_COSTOS),
         "credito_computable": _num(f.get("Crédito Fiscal Computable")),
@@ -150,6 +160,10 @@ def _resumir(comps: list[dict], periodo: str, compras: bool) -> dict:
         r["Comprobantes B (no computables, informativo)"] = s([c for c in bc if c["tipo"] not in TIPOS_C], "total")
         r["Crédito fiscal computable"] = s(a, "credito_computable")
     else:
+        # comprobantes sin neto, sin IVA, sin no gravado ni exento (p. ej. facturas C o alquileres de vivienda que el CSV
+        # no desglosa): su total también es venta sin IVA (Gaby 20/11/2026: la utilidad es TODO lo vendido sin IVA)
+        r["Otras ventas sin IVA (sin desglose)"] = round(sum(c["total"] for c in comps if not c["neto"] and not c["iva"]
+                                                             and not c["no_gravado"] and not c["exento"]), 2)
         r["Ventas a consumidor final (sin identificar)"] = round(sum(c["total"] for c in comps if not c["cuit"].strip("0")), 2)
     return r
 
@@ -215,7 +229,7 @@ def leer_zip(ruta_o_bytes) -> dict:
         "comprobantes_compras": [{k: c[k] for k in ("fecha", "tipo", "punto_venta", "numero", "cuit", "nombre",
                                                     "neto", "iva", "total", "b_c")} for c in compras],
         "comprobantes_ventas": [{k: c[k] for k in ("fecha", "tipo", "punto_venta", "numero", "cuit", "nombre",
-                                                   "neto", "iva", "total")} for c in ventas],
+                                                   "neto", "iva", "total", "no_gravado", "exento")} for c in ventas],
         "control": control, "alertas": alertas,
     }
 
