@@ -173,20 +173,69 @@ ORDEN = {"rojo": 0, "amarillo": 1, "verde": 2, "gris": 3}
 @app.route("/")
 @requiere_login
 def inicio():
-    q = request.args.get("q", "").strip().lower()
+    """Tablero de clientes (rediseñado el 20/11/2026: filtros por tema y por encargado, búsqueda al tipear, orden por
+    columna y un resumen corto de 'qué pasa' por cliente). Los filtros corren en el navegador; ?q= y ?f= siguen andando."""
+    q = request.args.get("q", "").strip()
     filtro = request.args.get("f", "")
-    todos = []
+    es_admin = _solo() is None
+    enc = usuarios.encargados()
+    nombres = {u[0]: (u[1] or u[0]) for u in usuarios.listar()}
+    hoy = date.today()
+    filas = []
     for c in datos.lista_clientes(_solo()):
-        if q and q not in c["cuit"] and q not in (c.get("razon_social") or "").lower():
-            continue
-        todos.append({**c, **datos.situacion(c["cuit"])})
-    filas = [x for x in todos if not filtro or x["semaforo"] == filtro]
+        x = {**c, **datos.situacion(c["cuit"])}
+        x["clave_mal"] = any(a.get("estado") == "Clave inválida" for a in (c.get("accesos") or []))
+        try:
+            x["dias"] = (hoy - date.fromisoformat(str(x.get("fecha") or "")[:10])).days
+        except ValueError:
+            x["dias"] = None
+        x["encargado"] = enc.get(c["cuit"], "")
+        x["encargado_nombre"] = nombres.get(x["encargado"], x["encargado"])
+        x["tags"] = _que_pasa(x)
+        filas.append(x)
     filas.sort(key=lambda x: (ORDEN[x["semaforo"]], (x.get("razon_social") or x["cuit"]).upper()))
-    cuenta = {k: sum(1 for f in todos if f["semaforo"] == k) for k in ORDEN}
-    suma = lambda k: sum(x.get(k) or 0 for x in todos)
-    kpi = {"clientes": len(todos), "deuda": suma("deuda_vencida"), "cuotas": suma("cuotas_impagas"),
-           "dfe": suma("dfe_sin_abrir"), "ddjj": suma("ddjj")}
-    return render_template("inicio.html", filas=filas, q=q, f=filtro, cuenta=cuenta, kpi=kpi, solo_mios=_solo() is not None)
+    cuenta = {k: sum(1 for f in filas if f["semaforo"] == k) for k in ORDEN}
+    temas = [  # (id, título, cuántos clientes, total en pesos o None)
+        ("deuda", "Deuda vencida", sum(1 for x in filas if x.get("deuda_vencida")), sum(x.get("deuda_vencida") or 0 for x in filas)),
+        ("ddjj", "DDJJ sin presentar", sum(1 for x in filas if x.get("ddjj")), None),
+        ("cuotas", "Cuotas impagas", sum(1 for x in filas if x.get("cuotas_impagas")), None),
+        ("dfe", "Notificaciones sin abrir", sum(1 for x in filas if x.get("dfe_sin_abrir")), None),
+        ("clave", "Clave inválida", sum(1 for x in filas if x["clave_mal"]), None),
+        ("viejos", "Sin actualizar (+10 días)", sum(1 for x in filas if x["dias"] is not None and x["dias"] > 10), None),
+    ]
+    encargados_lista = sorted({x["encargado"] for x in filas if x["encargado"]}, key=lambda u: nombres.get(u, u).upper())
+    return render_template("inicio.html", filas=filas, q=q, f=filtro, cuenta=cuenta, temas=temas, total=len(filas),
+                           solo_mios=not es_admin, es_admin=es_admin, nombres=nombres, encargados_lista=encargados_lista,
+                           sin_encargado=sum(1 for x in filas if not x["encargado"]))
+
+
+def _que_pasa(r: dict) -> list[tuple]:
+    """Etiquetas cortas de lo que NO está en las columnas del tablero (deuda, DDJJ, cuotas y notificaciones ya tienen la suya)."""
+    t = []
+    if r.get("caducos"):
+        t.append(("rojo", f"{r['caducos']} plan caduco" if r["caducos"] == 1 else f"{r['caducos']} planes caducos"))
+    if r.get("revisar"):
+        t.append(("rojo", "deuda histórica a revisar"))
+    if r.get("fiscalizaciones"):
+        t.append(("rojo", "fiscalización abierta"))
+    if r.get("ccma_impagos"):
+        t.append(("rojo", "autónomos/monotributo impago"))
+    if r.get("arba_altas"):
+        t.append(("rojo", "aviso de ARBA"))
+    if r.get("agip_altas"):
+        t.append(("rojo", "aviso de AGIP"))
+    rt = r.get("ratio") or {}
+    if rt and (rt.get("meses") or 0) >= 6 and rt.get("nivel") in ("Crítico", "Advertencia"):
+        t.append(("rojo" if rt["nivel"] == "Crítico" else "ambar", f"D/C {rt['ratio']:.2f}".replace(".", ",")))
+    if (r.get("agip_deuda") or 0) > 0:
+        t.append(("ambar", "deuda AGIP"))
+    if r.get("deuda_cm"):
+        t.append(("ambar", "deuda Convenio"))
+    if r.get("cuotas_15"):
+        t.append(("ambar", "cuota vence en 15 días"))
+    if r.get("errores"):
+        t.append(("gris", "corrida con errores"))
+    return t
 
 
 SECCIONES = {"deuda": "Deuda ARCA (vencida)", "por_vencer": "Por vencer", "planes": "Planes de pago", "vencimientos": "Vencimientos",

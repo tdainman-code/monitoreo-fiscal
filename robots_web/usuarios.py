@@ -330,6 +330,21 @@ def asignados(usuario: str) -> set:
     return out
 
 
+def encargados() -> dict:
+    """{cuit: usuario encargado} de todos los clientes (para el tablero, 20/11/2026)."""
+    import json as _json
+    con = conectar()
+    filas = con.execute("SELECT cuit, datos FROM datos_cliente").fetchall()
+    con.close()
+    out = {}
+    for cuit, txt in filas:
+        try:
+            out[cuit] = (_json.loads(txt or "{}") or {}).get("encargado") or ""
+        except ValueError:
+            pass
+    return out
+
+
 def datos_cliente(cuit) -> dict:
     import json as _json
     con = conectar()

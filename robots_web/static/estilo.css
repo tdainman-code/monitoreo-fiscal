@@ -192,3 +192,39 @@ details.grupo-alertas{background:#fff;border:1px solid var(--borde);border-radiu
 details.grupo-alertas>summary{cursor:pointer;font-size:15px;list-style:none}details.grupo-alertas>summary::-webkit-details-marker{display:none}
 details.grupo-alertas>summary::before{content:"▸ ";color:var(--gris)}details.grupo-alertas[open]>summary::before{content:"▾ "}
 details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px dashed var(--borde)}
+/* ---- Tablero de clientes rediseñado (20/11/2026): filtros por estado, tema y encargado ---- */
+.tablero-filtros{background:#fff;border:1px solid var(--borde);border-radius:16px;box-shadow:var(--sombra);padding:14px 16px;margin:12px 0 10px;display:flex;flex-direction:column;gap:10px}
+.buscar-grande input{width:100%;font-size:16px;padding:12px 14px;border:1px solid var(--borde);border-radius:12px;background:#f8fafc}
+.buscar-grande input:focus{outline:2px solid var(--azul);background:#fff}
+.fila-filtro{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.fila-filtro .rotulo{font-size:11.5px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.05em;min-width:130px}
+.segmentos{display:inline-flex;flex-wrap:wrap;border:1px solid var(--borde);border-radius:12px;overflow:hidden}
+.segmentos button{background:#fff;color:#1f2937;border:0;border-right:1px solid var(--borde);border-radius:0;padding:8px 14px;font-size:14px;display:flex;align-items:center;gap:6px}
+.segmentos button:last-child{border-right:0}.segmentos button b{color:var(--gris);font-weight:700}
+.segmentos button.activo{background:var(--azul);color:#fff}.segmentos button.activo b{color:#fff}
+.temas{display:flex;flex-wrap:wrap;gap:8px}
+.tema{background:#fff;color:#1f2937;border:1px solid var(--borde);border-radius:999px;padding:7px 14px;font-size:14px;display:inline-flex;align-items:baseline;gap:6px}
+.tema b{color:var(--rojo)}.tema small{color:var(--gris);font-size:12px}
+.tema:hover:not(:disabled){border-color:var(--azul)}
+.tema.activo{background:var(--azul);color:#fff;border-color:var(--azul)}.tema.activo b,.tema.activo small{color:#fff}
+.tema.vacio{opacity:.45;cursor:default}.tema.vacio b{color:var(--gris)}
+#t-encargado{padding:8px 10px;border:1px solid var(--borde);border-radius:10px;font:inherit;background:#fff;min-width:200px}
+.t-resumen{display:flex;align-items:center;gap:12px;margin:4px 2px 8px;color:var(--gris);font-size:13px}
+.link-boton{background:none;color:var(--azul);padding:0;font-size:13px;text-decoration:underline}
+.clientes th.ordenable{cursor:pointer;user-select:none}.clientes th.ordenable:hover{color:var(--azul)}
+.clientes th.orden-activo{color:var(--azul)}.clientes th.orden-activo::after{content:" ↕"}
+.etiquetas{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.etq{font-size:12px;border-radius:6px;padding:2px 7px;background:#f1f5f9;color:#475569}
+.etq.rojo{background:#fef2f2;color:var(--rojo)}.etq.ambar{background:#fffbeb;color:#a16207}
+.nada{color:#cbd5e1}.txt-ambar{color:#b45309}
+.clientes tr[hidden]{display:none}
+@media (max-width:700px){
+ .fila-filtro{flex-direction:column;align-items:stretch;gap:6px}.fila-filtro .rotulo{min-width:0}
+ .segmentos{display:grid;grid-template-columns:1fr 1fr}.segmentos button{border-bottom:1px solid var(--borde);justify-content:center}
+ .temas{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.tema{white-space:nowrap}
+ .clientes td.num .nada,.clientes td .nada{display:none}
+ .clientes td[data-l]:has(.nada){display:none}
+}
+[hidden]{display:none!important}
+.fila-filtro .temas,.fila-filtro .segmentos{flex:0 1 auto}.fila-filtro .temas{flex:1;min-width:0}
+.tablero-filtros,.tablero-filtros>*,.fila-filtro>*{min-width:0;max-width:100%}
