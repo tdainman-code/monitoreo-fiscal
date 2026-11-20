@@ -5,14 +5,28 @@
 
 {% if sec == 'deuda' %}
   {% if s.sct %}
-  <p><b>Deuda vencida: {{ s.deuda_vencida|pesos }}</b> <span class="sutil">(capital + intereses, {{ s.sct.deudas|length }} obligaciones)</span></p>
+  <p><b>Deuda vencida: {{ s.deuda_vencida|pesos }}</b> <span class="sutil">(capital + intereses, {{ s.deudas_vencidas|length }} obligación(es) vencida(s))</span></p>
+  {% if s.deudas_por_vencer %}<p class="sutil">Lo que todavía no venció ({{ s.deudas_por_vencer|length }}) está en <a href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='por_vencer') }}">Por vencer →</a></p>{% endif %}
   {% if s.deuda_vencida %}<div class="pedir"><b>¿Envío VEP de la deuda al cliente?</b>
     <button disabled title="Se habilita cuando el robot tenga programado el VEP de obligaciones (esperando las pantallas)">Sí, generar y enviar VEP</button>
     <span class="sutil">En preparación: falta relevar en ARCA cómo se genera el VEP de obligaciones pendientes.</span></div>{% endif %}
   <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Vencimiento</th><th class="num">Capital</th><th class="num">Intereses</th><th class="num">Total</th></tr></thead><tbody>
-  {% for d in s.sct.deudas|sort(attribute='total', reverse=True) %}<tr class="{{ 'fila-roja' if d.vencida }}"><td>{{ d.impuesto }}</td><td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td>
+  {% for d in s.deudas_vencidas|sort(attribute='total', reverse=True) %}<tr class="fila-roja"><td>{{ d.impuesto }}</td><td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td>
   <td class="num" data-l="Capital">{{ d.capital|pesos }}</td><td class="num" data-l="Intereses">{{ (d.int_resarcitorio + d.int_punitorio)|pesos }}</td><td class="num" data-l="Total"><b>{{ d.total|pesos }}</b></td></tr>{% endfor %}
   </tbody></table>
+  {% if not s.deudas_vencidas %}<p class="sutil">Sin deuda vencida.</p>{% endif %}
+  {% else %}<p class="sutil">Sin datos de Cuentas Tributarias todavía.</p>{% endif %}
+
+{% elif sec == 'por_vencer' %}
+  {% if s.sct %}
+  {% set pv = s.deudas_por_vencer %}
+  <p><b>Por vencer: {{ (pv|sum(attribute='total'))|pesos }}</b> <span class="sutil">({{ pv|length }} obligación(es) de Cuentas Tributarias que todavía no vencieron)</span></p>
+  <table class="tabla"><thead><tr><th>Vencimiento</th><th>Impuesto</th><th>Período</th><th class="num">Capital</th><th class="num">Total</th></tr></thead><tbody>
+  {% for d in pv|sort(attribute='vencimiento') %}<tr><td><b>{{ d.vencimiento|fecha }}</b></td><td data-l="Impuesto">{{ d.impuesto }}</td><td data-l="Período">{{ d.periodo_txt }}</td>
+  <td class="num" data-l="Capital">{{ d.capital|pesos }}</td><td class="num" data-l="Total"><b>{{ d.total|pesos }}</b></td></tr>
+  {% else %}<tr><td colspan="5" class="sutil">Nada por vencer.</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="sutil">Las deudas ya vencidas están en <a href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='deuda') }}">Deuda ARCA</a>.</p>
   {% else %}<p class="sutil">Sin datos de Cuentas Tributarias todavía.</p>{% endif %}
 
 {% elif sec == 'planes' %}

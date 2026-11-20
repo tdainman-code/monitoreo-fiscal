@@ -189,7 +189,7 @@ def inicio():
     return render_template("inicio.html", filas=filas, q=q, f=filtro, cuenta=cuenta, kpi=kpi, solo_mios=_solo() is not None)
 
 
-SECCIONES = {"deuda": "Deuda ARCA", "planes": "Planes de pago", "vencimientos": "Vencimientos",
+SECCIONES = {"deuda": "Deuda ARCA (vencida)", "por_vencer": "Por vencer", "planes": "Planes de pago", "vencimientos": "Vencimientos",
              "ddjj": "DDJJ / faltas de presentación", "notificaciones": "Notificaciones", "iibb": "Ingresos Brutos",
              "relacion": "Relación débito crédito", "compras": "Compras y APOC", "informes": "Informes Excel",
              "notas": "Notas del equipo", "iva": "Débito / crédito y proyección de IVA",
@@ -251,7 +251,7 @@ def cliente_seccion(cuit, seccion):
 
 
 # ---------------------------------------------------------------- traído de Radar fiscal (17/11/2026)
-VISTAS = {"dfe": "Domicilio fiscal electrónico", "deudas": "Deudas", "planes": "Planes de pago",
+VISTAS = {"dfe": "Domicilio fiscal electrónico", "deudas": "Deudas vencidas", "por_vencer": "Por vencer", "planes": "Planes de pago",
           "faltas": "Falta de presentación", "iva": "Débito / crédito", "proyeccion": "Proyección de IVA",
           "resultado": "Relación débito crédito", "fiscalizaciones": "Fiscalizaciones y verificaciones"}
 
@@ -298,6 +298,12 @@ def cartera(vista):
                 filas.append({**c, "arca": arca_, "cm": f["deuda_cm"] or 0.0, "agip": f["agip_deuda"] or 0.0, "total": total})
         filas.sort(key=lambda x: -x["total"])
         extra["total"] = sum(x["total"] for x in filas)
+    elif vista == "por_vencer":
+        for c in todos:
+            for d in c["f"].get("deudas_por_vencer") or []:
+                filas.append({**c, "d": d})
+        filas.sort(key=lambda x: (str(x["d"].get("vencimiento") or "9999"), x["nombre"]))
+        extra["total"] = sum(x["d"].get("total") or 0 for x in filas)
     elif vista == "planes":
         for c in todos:
             for p in ((c["f"]["mf"] or {}).get("vigentes") or []):

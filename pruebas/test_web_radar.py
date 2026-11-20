@@ -481,6 +481,20 @@ ok(cl.get(f"/informe/2026-11-15/situacion_fiscal_{C}.xlsx").status_code == 200, 
 ok(cl.get("/informe/../../etc/passwd").status_code == 404, "no se sale de la carpeta de informes")
 ok("Plan" in cl.get("/agenda").text, "agenda")
 ok(cl.get("/alertas").status_code == 200 and "Relación débito/crédito crítica" in cl.get("/alertas").text, "alertas del día con D/C")
+# Deuda ARCA solo vencida; lo que no venció va a "Por vencer" (20/11/2026)
+import glob as _glob  # noqa: E402
+_rs = sorted(_glob.glob(f"{D}/{C}/situacion/*/resultado.json"))[-1]
+_sit = json.load(open(_rs))
+_sit["sct"]["deudas"].append({"impuesto": "30 - IVA", "periodo_txt": "10/2026", "vencimiento": "2099-12-18", "capital": 777.0,
+                              "int_resarcitorio": 0.0, "int_punitorio": 0.0, "total": 777.0, "vencida": False})
+json.dump(_sit, open(_rs, "w"))
+_dv = cl.get(f"/cliente/{C}/deuda").text
+_pv = cl.get(f"/cliente/{C}/por_vencer").text
+ok("777,00" not in _dv and "Por vencer →" in _dv, "Deuda ARCA muestra solo lo vencido (y remite a Por vencer)")
+ok("777,00" in _pv and "18/12/2099" in _pv, "Por vencer: obligaciones que todavía no vencieron")
+ok("Por vencer" in cl.get(f"/cliente/{C}").text, "tarjeta 'Por vencer' en la ficha")
+_cp = cl.get("/cartera/por_vencer").text
+ok("777,00" in _cp and "777,00" not in cl.get("/cartera/deudas").text, "cartera: Por vencer aparte de Deudas vencidas")
 # descartar alertas por motivo; a los 30 días, si sigue igual, vuelve (18/11/2026)
 _al = cl.get("/alertas").text
 _m = re.search(r'name="cuit" value="(\d{11})">\s*<input type="hidden" name="tipo" value="([^"]*)"><input type="hidden" name="texto" value="([^"]*)">', _al)

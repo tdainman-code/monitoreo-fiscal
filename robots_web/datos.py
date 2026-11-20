@@ -82,6 +82,11 @@ def _abiertas(filas) -> list:
     return out
 
 
+def _fecha_txt(v) -> str:
+    d = _fecha(v)
+    return d.strftime("%d/%m/%Y") if d else str(v or "")
+
+
 def _pesos_txt(x) -> str:
     return f"$ {x or 0:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
@@ -386,7 +391,11 @@ def ficha(cuit: str) -> dict:
         return "gris" if not hay else "rojo" if rojo else "amarillo" if amarillo else "verde"
     b = []
     sct, mf = s["sct"], s["mf"]
-    n_obl = len((sct or {}).get("deudas") or [])
+    # 20/11/2026: "Deuda" muestra solo lo VENCIDO; lo que está por vencer va a su propia pantalla
+    deudas_ = (sct or {}).get("deudas") or []
+    s["deudas_vencidas"] = [d for d in deudas_ if d.get("vencida") and (d.get("total") or 0) > 0]
+    s["deudas_por_vencer"] = [d for d in deudas_ if not d.get("vencida") and (d.get("total") or 0) > 0]
+    n_obl = len(s["deudas_vencidas"])
     # 20/11/2026 (Benavidez): si Cuentas Tributarias no se pudo leer, no decir "sin datos" cuando hay deuda conocida
     # por otras consultas (autónomos/monotributo de CCMA, estado de cumplimiento).
     otras = []
@@ -397,7 +406,7 @@ def ficha(cuit: str) -> dict:
             otras.append(("estado de cumplimiento", s["scth"]["deuda_total"]))
     valor_deuda = s["deuda_vencida"] if sct else (max(v for _, v in otras) if otras else None)
     b.append({"id": "deuda", "titulo": "Deuda ARCA", "valor": valor_deuda, "pesos": True,
-              "sub": (f"{n_obl} obligaciones" if sct else
+              "sub": (f"{n_obl} obligación(es) vencida(s)" if sct else
                       "Cuentas Tributarias sin leer (la corrida falló) · " + " · ".join(f"{t} {_pesos_txt(v)}" for t, v in otras)
                       if otras else "sin datos (Cuentas Tributarias sin leer)"),
               "color": color((valor_deuda or 0) > 0, hay=bool(sct) or bool(otras)),
@@ -405,6 +414,13 @@ def ficha(cuit: str) -> dict:
               "sub2": (f"crédito a recuperar (F.399): {_pesos_txt((s.get('scth') or {}).get('saldos_recuperar_total') or 0)}"
                        if "saldos_recuperar" in (s.get("scth") or {}) else
                        "crédito a recuperar (F.399): se calcula en la próxima corrida de Deuda histórica" if s.get("scth") else "")})
+    if sct:
+        pv = s["deudas_por_vencer"]
+        prox = min((d.get("vencimiento") or "" for d in pv if d.get("vencimiento")), default="")
+        b.append({"id": "por_vencer", "titulo": "Por vencer", "valor": round(sum(d.get("total") or 0 for d in pv), 2) if pv else 0,
+                  "pesos": bool(pv),
+                  "sub": (f"{len(pv)} obligación(es) · próxima {_fecha_txt(prox)}" if pv else "nada por vencer en Cuentas Tributarias"),
+                  "color": "amarillo" if pv else "verde"})
     b.append({"id": "planes", "titulo": "Planes de pago", "valor": s["planes"],
               "sub": (f"{s['cuotas_impagas'] or 0} cuotas impagas · {s['caducos']} caducos · {s['cuotas_15'] or 0} vencen en 15 días"
                       if mf else "sin datos"),

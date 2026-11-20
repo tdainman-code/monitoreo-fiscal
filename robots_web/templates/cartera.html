@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block titulo %}{{ titulo }}{% endblock %}
 {% block cuerpo %}
 <nav class="menu-cartera">
-{% for k, t in [('dfe','Domicilio fiscal'),('deudas','Deudas'),('planes','Planes de pago'),('faltas','Falta de presentación'),('iva','Débito / crédito'),('proyeccion','Proyección de IVA'),('resultado','Resultado mensual'),('fiscalizaciones','Fiscalizaciones')] %}
+{% for k, t in [('dfe','Domicilio fiscal'),('deudas','Deudas vencidas'),('por_vencer','Por vencer'),('planes','Planes de pago'),('faltas','Falta de presentación'),('iva','Débito / crédito'),('proyeccion','Proyección de IVA'),('resultado','Resultado mensual'),('fiscalizaciones','Fiscalizaciones')] %}
   <a class="{{ 'activo' if vista == k }}" href="{{ url_for('cartera', vista=k) }}">{{ t }}</a>
 {% endfor %}
 </nav>
@@ -50,6 +50,14 @@
     <td class="num" data-l="ARCA">{{ d.arca|pesos }}</td><td class="num" data-l="Convenio">{{ d.cm|pesos }}</td><td class="num" data-l="AGIP">{{ d.agip|pesos }}</td>
     <td class="num" data-l="Total"><b>{{ d.total|pesos }}</b></td><td data-l="Datos al">{{ d.f.fecha|fecha }}</td></tr>
   {% else %}<tr><td colspan="6" class="sutil">Ningún cliente con deuda vencida.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'por_vencer' %}
+  <p class="sutil">Obligaciones de Cuentas Tributarias que todavía no vencieron, de la más próxima a la más lejana. Total: <b>{{ x.total|pesos }}</b>. Lo vencido está en <a href="{{ url_for('cartera', vista='deudas') }}">Deudas vencidas</a>.</p>
+  <table class="tabla"><thead><tr><th>Vencimiento</th><th>Cliente</th><th>Impuesto</th><th>Período</th><th class="num">Total</th></tr></thead><tbody>
+  {% for d in filas %}<tr><td><b>{{ d.d.vencimiento|fecha }}</b></td><td data-l="Cliente"><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='por_vencer') }}">{{ d.nombre }}</a></td>
+    <td data-l="Impuesto">{{ d.d.impuesto }}</td><td data-l="Período">{{ d.d.periodo_txt }}</td><td class="num" data-l="Total"><b>{{ d.d.total|pesos }}</b></td></tr>
+  {% else %}<tr><td colspan="5" class="sutil">Nada por vencer.</td></tr>{% endfor %}
   </tbody></table>
 
 {% elif vista == 'planes' %}
