@@ -649,6 +649,16 @@ def datos_del_cliente(cuit):
             antes = usuarios.datos_cliente(cuit) or {}
             nuevos["encargado"], nuevos["equipo"] = antes.get("encargado", ""), antes.get("equipo", "")
         nuevos["medios_vep"] = ", ".join(m for m in MEDIOS_VEP if m in request.form.getlist("medios_vep"))
+        antes_d = usuarios.datos_cliente(cuit) or {}
+        nuevos["razon_social_corregida"] = antes_d.get("razon_social_corregida", "")
+        rz = re.sub(r"[\x00-\x1f<>]", "", request.form.get("razon_social", "")).strip()[:120]
+        if session.get("rol") == "admin" and rz and rz != (info.get("razon_social") or ""):
+            nuevos["razon_social_corregida"] = rz          # corrección de datos mal cargados: solo admin (20/11/2026)
+            try:
+                claves.encolar_razon_social(cuit, rz, session["usuario"])
+            except Exception:
+                pass
+            usuarios.registrar(session["usuario"], "razón social corregida", f"{cuit}: {rz}", _ip())
         usuarios.guardar_datos_cliente(cuit, nuevos, session["usuario"])
         usuarios.registrar(session["usuario"], "datos del cliente", cuit, _ip())
         flash("Datos del cliente guardados", "ok")

@@ -6,6 +6,11 @@
 {% if d._actualizado %}Última modificación: {{ d._usuario }} el {{ d._actualizado[:16]|replace('T', ' ') }}.{% endif %}</p>
 <form method="post" class="form-datos">
   <input type="hidden" name="csrf" value="{{ csrf() }}">
+  <label class="ancho">Razón social
+  {% if es_admin %}<input name="razon_social" value="{{ c.razon_social or '' }}" maxlength="120">
+    <span class="sutil">Solo administradores: corrige un dato mal cargado (se ve enseguida y el robot lo actualiza en su base en unos minutos).</span>
+  {% else %}<b>{{ c.razon_social or '—' }}</b> <span class="sutil">La corrige un administrador.</span>{% endif %}</label>
+  <label class="ancho">CUIT <b>{{ cuit_fmt(c.cuit) }}</b> <span class="sutil">El CUIT no se cambia: si está mal, hay que dar de alta el cliente con el CUIT correcto.</span></label>
   {% for k, titulo in campos.items() %}
     <label class="{{ 'ancho' if k in ('observaciones', 'emails', 'medios_vep', 'equipo', 'agente', 'jurisdicciones_iibb', 'convenios') }}">{{ titulo }}
     {% if k == 'medios_vep' %}<span class="sutil">Depende del convenio de cada banco del cliente; si tiene varios bancos, marcá todos: se genera un VEP por medio.</span>

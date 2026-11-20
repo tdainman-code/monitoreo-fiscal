@@ -338,6 +338,16 @@ escribir(f"{D}/{C2}/ccma/2026-11-20.json", {"fecha": "2026-11-20", "deuda_impaga
 r = cg.get(f"/cliente/{C2}").text
 ok("Cuentas Tributarias sin leer" in r and "248.283,00" in r, "Deuda ARCA: muestra autónomos impagos aunque falle Cuentas Tributarias")
 
+# ------------------------------------------------ corregir razón social: solo admin (20/11/2026)
+r = cg.get(f"/cliente/{C2}/datos")
+cg.post(f"/cliente/{C2}/datos", data={"csrf": token(r.text), "razon_social": "VALGUARNERA HECTOR OSCAR"})
+ok(any(c["razon_social"] == "VALGUARNERA HECTOR OSCAR" for c in __import__("robots_web.datos", fromlist=["x"]).lista_clientes()),
+   "el admin corrige la razón social y se ve enseguida")
+_rb = cb.get(f"/cliente/{C}/datos")
+cb.post(f"/cliente/{C}/datos", data={"csrf": tok_b, "razon_social": "OTRO NOMBRE"})
+ok(not any(c["razon_social"] == "OTRO NOMBRE" for c in __import__("robots_web.datos", fromlist=["x"]).lista_clientes()),
+   "un colaborador no puede cambiar la razón social")
+
 # ------------------------------------------------ asignar clientes uno mismo (19/11/2026)
 C3 = "27169781295"
 escribir(f"{R}/publico/clientes.json", [{"cuit": C, "razon_social": "RAPTOR.MAX SRL"}, {"cuit": C2, "razon_social": "VALGUARNERA HECTOR"},

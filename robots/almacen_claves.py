@@ -374,6 +374,21 @@ def procesar_bandeja(verificar: bool = True) -> dict:
             with open(ruta, encoding="utf-8") as f:
                 s = json.load(f)
             cuit = _limpiar_cuit(s["cuit"])
+            if s.get("tipo") == "razon_social":          # corrección de datos desde la web (solo admin, 20/11/2026)
+                with closing(conectar()) as con:
+                    ex = con.execute("SELECT datos FROM clientes WHERE cuit=?", (cuit,)).fetchone()
+                    con.execute("INSERT OR REPLACE INTO clientes VALUES (?,?,?)",
+                                (cuit, str(s.get("razon_social") or "")[:120], ex[0] if ex else "{}"))
+                    _auditar(con, cuit, "-", "razón social corregida desde la web", f"por {s.get('por', '?')}")
+                    con.commit()
+                os.remove(ruta)
+                r["aplicados"] += 1
+                try:
+                    from .publicar import publicar
+                    publicar()
+                except Exception:
+                    pass
+                continue
             org = s["organismo"]
             detalle = s.get("detalle") or ""
             clave = _abrir_sobre(s["clave_sellada"])

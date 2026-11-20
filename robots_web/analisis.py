@@ -251,7 +251,7 @@ def resultado_mensual(cuit: str) -> list[dict]:
         bc = _num(bc_mc.get(per)) if l else 0.0     # facturas B/C de Mis Comprobantes que no están en el Libro IVA
         erog = compras + bc + sueldos + cargas + (ib or 0.0)
         saldo = ventas - erog
-        if ventas:
+        if ventas or erog:                         # 20/11/2026: un mes sin ventas igual suma sus gastos al acumulado
             acum_v += ventas
             acum_e += erog
             acum_s += saldo

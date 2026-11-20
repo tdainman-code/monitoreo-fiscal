@@ -360,6 +360,23 @@ def datos_cliente(cuit) -> dict:
     return d
 
 
+def razones_corregidas() -> dict:
+    """{cuit: razón social} corregida a mano por un admin (se ve enseguida, antes de que el robot la publique)."""
+    import json as _json
+    con = conectar()
+    filas = con.execute("SELECT cuit, datos FROM datos_cliente").fetchall()
+    con.close()
+    out = {}
+    for cuit, txt in filas:
+        try:
+            r = (_json.loads(txt or "{}") or {}).get("razon_social_corregida")
+        except ValueError:
+            r = None
+        if r:
+            out[cuit] = r
+    return out
+
+
 def guardar_datos_cliente(cuit, datos: dict, usuario):
     import json as _json
     con = conectar()

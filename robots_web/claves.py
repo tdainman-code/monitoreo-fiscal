@@ -73,6 +73,20 @@ def encolar(cuit: str, razon_social: str, organismo: str, usuario: str, clave: s
     return sobre["id"]
 
 
+def encolar_razon_social(cuit: str, razon_social: str, por: str) -> None:
+    """Corrige la razón social en el almacén del robot (sin clave). Lo aplica la bandeja en pocos minutos."""
+    if not cuit_valido(cuit):
+        raise ErrorClaves("El CUIT no es válido")
+    os.makedirs(BANDEJA, exist_ok=True)
+    sobre = {"v": 1, "tipo": "razon_social", "id": uuid.uuid4().hex,
+             "fecha": dt.datetime.now().isoformat(timespec="seconds"), "por": por, "cuit": cuit,
+             "razon_social": razon_social.strip()[:120]}
+    ruta = os.path.join(BANDEJA, f"{sobre['fecha'].replace(':', '')}_{sobre['id'][:8]}.json")
+    with open(ruta + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(sobre, f)
+    os.replace(ruta + ".tmp", ruta)
+
+
 def pendientes() -> list[dict]:
     out = []
     try:
@@ -81,6 +95,8 @@ def pendientes() -> list[dict]:
                 try:
                     with open(os.path.join(BANDEJA, n), encoding="utf-8") as f:
                         s = json.load(f)
+                    if s.get("tipo"):                    # correcciones de datos: no son claves pendientes
+                        continue
                     out.append({k: s.get(k, "") for k in ("cuit", "razon_social", "organismo", "por", "fecha")})
                 except (OSError, ValueError):
                     pass

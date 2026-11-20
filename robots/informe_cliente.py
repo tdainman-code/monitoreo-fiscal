@@ -272,14 +272,18 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
         c.alignment = Alignment(horizontal="center")
     # RESULTADO
     seccion("RESULTADO BRUTO")
+    # 20/11/2026 (Benavidez): un mes SIN ventas igual tiene gastos; antes todo quedaba en blanco si las ventas eran 0
+    # y el saldo acumulado no tomaba esos gastos. Ahora: erogaciones y saldo siempre que el mes tenga algún dato;
+    # el acumulado suma todos los meses; los índices (divisiones) solo cuando hay ventas.
+    vacio = lambda c: f'AND({c}{r_vtot}=0,{c}{r_ctot}=0,{c}{r_sue}=0,N({c}{r_iibb})=0)'
     r_ero = formula("Total erogaciones (compras + sueldos y cargas + IIBB)",
-                    f'IF({{c}}{r_vtot}=0,"",{{c}}{r_ctot}+{{c}}{r_sue}+N({{c}}{r_iibb}))')
-    r_sal = formula("SALDO MENSUAL (Ventas − erogaciones)", f'IF({{c}}{r_vtot}=0,"",{{c}}{r_vtot}-{{c}}{r_ero})')
+                    f'IF({vacio("{c}")},"",{{c}}{r_ctot}+{{c}}{r_sue}+N({{c}}{r_iibb}))')
+    r_sal = formula("SALDO MENSUAL (Ventas − erogaciones)", f'IF({vacio("{c}")},"",{{c}}{r_vtot}-N({{c}}{r_ero}))')
     # acumulado: el primer mes y después se le va sumando el de cada columna (pedido del 15/11)
-    r_salac = formula("Saldo acumulado", f'IF({{c}}{r_vtot}=0,"",SUM($B${r_sal}:{{c}}{r_sal}))', total=False)
-    r_ind = formula("Índice erogaciones / ventas", f'IF({{c}}{r_vtot}=0,"",{{c}}{r_ero}/{{c}}{r_vtot})', PCT, total=False)
+    r_salac = formula("Saldo acumulado", f'IF({vacio("{c}")},"",SUM($B${r_sal}:{{c}}{r_sal}))', total=False)
+    r_ind = formula("Índice erogaciones / ventas", f'IF({{c}}{r_vtot}=0,"",N({{c}}{r_ero})/{{c}}{r_vtot})', PCT, total=False)
     r_indac = formula("Índice acumulado (erogaciones / ventas acumuladas)",
-                      f'IF({{c}}{r_vtot}=0,"",SUM($B${r_ero}:{{c}}{r_ero})/SUM($B${r_vtot}:{{c}}{r_vtot}))', PCT, total=False)
+                      f'IF(SUM($B${r_vtot}:{{c}}{r_vtot})=0,"",SUM($B${r_ero}:{{c}}{r_ero})/SUM($B${r_vtot}:{{c}}{r_vtot}))', PCT, total=False)
     for r_ in (r_salac, r_indac):
         for j in range(1, n + 2):
             ws.cell(r_, j).font = Font(italic=True, bold=(j == 1))

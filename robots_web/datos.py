@@ -52,6 +52,12 @@ def lista_clientes(solo: set | None = None) -> list[dict]:
 
 def _lista_clientes() -> list[dict]:
     pub = _leer(os.path.join(PUBLICO, "clientes.json")) or []
+    try:                                               # razón social corregida por un admin (20/11/2026)
+        from . import usuarios as _u
+        corr = _u.razones_corregidas()
+        pub = [{**c, "razon_social": corr[c["cuit"]]} if c.get("cuit") in corr else c for c in pub]
+    except Exception:
+        pass
     vistos = {c["cuit"] for c in pub}
     for d in sorted(glob.glob(os.path.join(DATOS, "*"))):
         c = os.path.basename(d)
