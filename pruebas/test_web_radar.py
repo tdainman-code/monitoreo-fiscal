@@ -495,6 +495,17 @@ ok("777,00" in _pv and "18/12/2099" in _pv, "Por vencer: obligaciones que todav�
 ok("Por vencer" in cl.get(f"/cliente/{C}").text, "tarjeta 'Por vencer' en la ficha")
 _cp = cl.get("/cartera/por_vencer").text
 ok("777,00" in _cp and "777,00" not in cl.get("/cartera/deudas").text, "cartera: Por vencer aparte de Deudas vencidas")
+# reporte de falta de presentación de todos los clientes (20/11/2026)
+_fp = cl.get("/cartera/faltas").text
+ok("Bajar reporte (Excel)" in _fp and "IVA" in _fp, "cartera: falta de presentación con botón de reporte")
+_x = cl.get("/cartera/faltas?excel=1")
+_wb = _lw(_io.BytesIO(_x.data)) if "_lw" in globals() else __import__("openpyxl").load_workbook(__import__("io").BytesIO(_x.data))
+ok(_x.status_code == 200 and _wb.sheetnames == ["Faltas de presentación", "Por cliente", "Por impuesto"]
+   and _wb["Faltas de presentación"].max_row >= 5 and "Días de atraso" in [c.value for c in _wb["Faltas de presentación"][4]],
+   "reporte Excel: detalle, por cliente y por impuesto")
+_x = cl.get("/cartera/faltas?excel=1&impuesto=NO-EXISTE")
+ok(__import__("openpyxl").load_workbook(__import__("io").BytesIO(_x.data))["Faltas de presentación"]["A5"].value == "Sin faltas de presentación",
+   "reporte filtrado por impuesto")
 # descartar alertas por motivo; a los 30 días, si sigue igual, vuelve (18/11/2026)
 _al = cl.get("/alertas").text
 _m = re.search(r'name="cuit" value="(\d{11})">\s*<input type="hidden" name="tipo" value="([^"]*)"><input type="hidden" name="texto" value="([^"]*)">', _al)

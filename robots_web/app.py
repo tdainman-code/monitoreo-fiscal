@@ -313,10 +313,31 @@ def cartera(vista):
                     filas.append({**c, "caduco": a.get("texto", "")})
         filas.sort(key=lambda x: (not x.get("caduco"), -((x.get("p") or {}).get("vencidas_impagas") or 0), x["nombre"]))
     elif vista == "faltas":
+        # reporte de falta de presentación de todos los clientes (20/11/2026): filtros por impuesto y encargado + Excel
+        imp_f, enc_f = request.args.get("impuesto", ""), request.args.get("encargado", "")
+        encs = {c["cuit"]: (usuarios.datos_cliente(c["cuit"]) or {}).get("encargado") or "" for c in todos}
+        impuestos = set()
         for c in todos:
             for d in ((c["f"]["sct"] or {}).get("ddjj_pendientes") or []):
-                filas.append({**c, "d": d})
-        filas.sort(key=lambda x: x["nombre"])
+                impuestos.add(d.get("impuesto") or "")
+                if imp_f and d.get("impuesto") != imp_f:
+                    continue
+                if enc_f and encs.get(c["cuit"]) != (enc_f if enc_f != "-" else ""):
+                    continue
+                filas.append({**c, "d": d, "encargado": encs.get(c["cuit"]), "fecha": c["f"].get("fecha")})
+        filas.sort(key=lambda x: (x["nombre"], str(x["d"].get("vencimiento") or "")))
+        extra.update(impuestos=sorted(i for i in impuestos if i), imp_f=imp_f, enc_f=enc_f,
+                     encargados=[(u[0], u[1]) for u in usuarios.listar() if u[3]], n_clientes=len({f["cuit"] for f in filas}))
+        if request.args.get("excel"):
+            from io import BytesIO
+            from . import reportes
+            filtro = " · ".join(x for x in [f"impuesto {imp_f}" if imp_f else "",
+                                            f"encargado {enc_f if enc_f != '-' else '(sin encargado)'}" if enc_f else "",
+                                            "solo mis clientes" if _solo() is not None else "todos los clientes"] if x)
+            usuarios.registrar(session["usuario"], "reporte de faltas de presentación (Excel)", filtro, _ip())
+            return send_file(BytesIO(reportes.faltas_excel(filas, filtro)), as_attachment=True,
+                             download_name=f"faltas_de_presentacion_{date.today().isoformat()}.xlsx",
+                             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     elif vista in ("iva", "proyeccion"):
         for c in todos:
             iva = c["f"].get("iva") or []
