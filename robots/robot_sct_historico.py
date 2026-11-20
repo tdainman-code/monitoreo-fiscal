@@ -266,23 +266,43 @@ def _ir_a_parametros(page):
     raise Trabada("no aparece 'Ingreso de Parámetros'")
 
 
+_JS_CAMPOS = r"""() => {
+  // inputs que siguen a los textos 'Período Fiscal Desde' / 'Período Fiscal Hasta' (en ARCA la etiqueta no está
+  // ligada al input: se busca el primer input visible que viene DESPUÉS del texto en el documento)
+  const vis = e => e.offsetParent !== null;
+  const inputs = [...document.querySelectorAll('input')].filter(i => vis(i) && !['checkbox','radio','hidden','button','submit'].includes(i.type));
+  inputs.forEach((i, n) => i.setAttribute('data-robot-in', String(n)));
+  const etiquetas = [...document.querySelectorAll('label, span, div, td, p, mat-label')].filter(e => vis(e) &&
+      e.children.length === 0 && /per[ií]odo\s+fiscal\s+(desde|hasta)/i.test(e.textContent));
+  const sig = (et) => inputs.find(i => et.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const out = {};
+  for (const et of etiquetas) {
+    const k = /desde/i.test(et.textContent) ? 'desde' : 'hasta';
+    const i = sig(et);
+    if (i && !out[k]) out[k] = {n: Number(i.getAttribute('data-robot-in')), max: i.maxLength};
+  }
+  if (!out.desde || !out.hasta) {             // respaldo: por name / id / placeholder
+    for (const i of inputs) {
+      const t = [i.name, i.id, i.placeholder, i.getAttribute('formcontrolname'), i.getAttribute('aria-label')].join(' ').toLowerCase();
+      const n = Number(i.getAttribute('data-robot-in'));
+      if (!out.desde && /desde/.test(t)) out.desde = {n, max: i.maxLength};
+      if (!out.hasta && /hasta/.test(t)) out.hasta = {n, max: i.maxLength};
+    }
+  }
+  return out;
+}"""
+
+
 def _campos_periodo(fr):
-    """Campos 'período desde' / 'período hasta' del Ingreso de Parámetros, si se reconocen (por name, id,
-    placeholder o el texto de al lado). Devuelve (desde, hasta) o None. Pantalla a confirmar con captura."""
+    """Campos 'Período Fiscal Desde' / 'Período Fiscal Hasta' del Ingreso de Parámetros (captura de Gaby 20/11/2026).
+    Devuelve (desde, hasta) o None."""
     try:
-        info = fr.evaluate("""() => [...document.querySelectorAll('input[type=text], input:not([type]), input[type=number]')]
-            .filter(i => i.offsetParent).map((i, n) => {
-              const lab = (i.labels && i.labels[0] ? i.labels[0].innerText : '') + ' ' + (i.closest('td,div,label') || {}).innerText;
-              i.setAttribute('data-robot-in', String(n));
-              return {n, txt: [i.name, i.id, i.placeholder, lab].join(' ').toLowerCase(), max: i.maxLength};
-            })""")
+        out = fr.evaluate(_JS_CAMPOS)
     except Exception:
         return None
-    desde = next((x for x in info if re.search(r"desde|inicio|inicial", x["txt"]) and re.search(r"per", x["txt"])), None)
-    hasta = next((x for x in info if re.search(r"hasta|fin(al)?\b", x["txt"]) and re.search(r"per", x["txt"])), None)
-    if not desde or not hasta:
+    if not out.get("desde") or not out.get("hasta") or out["desde"]["n"] == out["hasta"]["n"]:
         return None
-    return desde, hasta
+    return out["desde"], out["hasta"]
 
 
 def _select_impuesto(fr):
@@ -290,26 +310,58 @@ def _select_impuesto(fr):
     return sel.first if sel.count() else None
 
 
+_RE_OPCION = re.compile(r"^\s*(\d+)\s*-\s*\S")
+
+
+def _combo_impuesto(fr):
+    """El combo 'Impuesto' de ARCA es un desplegable con buscador (no un <select> común): el elemento que muestra
+    'Todos' o el impuesto elegido, debajo del texto 'Impuesto'."""
+    return fr.locator("xpath=//*[normalize-space(text())='Impuesto']/following::*[contains(@class,'select') or "
+                      "@role='combobox' or contains(@class,'ng-select') or contains(@class,'mat-select')][1]").first
+
+
+def _opciones_visibles(fr) -> list:
+    return [t.strip() for t in fr.locator("li, [role=option], .ng-option, mat-option").locator("visible=true").all_inner_texts()
+            if _RE_OPCION.match(t.strip())]
+
+
 def impuestos_disponibles(fr) -> list[str]:
     """Opciones del combo Impuesto ('11 - GANANCIAS PERSONAS FISICAS', '28 - SEGURO DE VIDA COLECTIVO', '30 - IVA'...):
     son los impuestos del cliente (sus inscripciones). Devuelve los códigos."""
     sel = _select_impuesto(fr)
-    if sel is None:
+    if sel is not None:
+        return [m[1] for o in sel.locator("option").all_inner_texts() if (m := _RE_OPCION.match(o))]
+    try:                                               # desplegable con buscador: se abre, se leen y se cierra
+        combo = _combo_impuesto(fr)
+        combo.click(timeout=10_000)
+        fr.page.wait_for_timeout(800) if hasattr(fr, "page") else None
+        ops = _opciones_visibles(fr)
+        fr.locator("body").press("Escape")
+        return [m[1] for o in ops if (m := _RE_OPCION.match(o))]
+    except Exception:
         return []
-    return [m[1] for o in sel.locator("option").all_inner_texts() if (m := re.match(r"\s*(\d+)\s*-", o))]
 
 
 def _elegir_impuesto(fr, impuesto: str) -> bool:
-    """El combo es un desplegable con buscador (select2): se elige en el <select> de abajo y se avisa el cambio."""
     sel = _select_impuesto(fr)
-    if sel is None:
+    if sel is not None:
+        op = next((o for o in sel.locator("option").all_inner_texts() if re.match(rf"\s*0*{impuesto}\s*-", o)), None)
+        if not op:
+            return False
+        sel.select_option(label=op, force=True)
+        sel.evaluate("s => { s.dispatchEvent(new Event('change', {bubbles: true})); if (window.jQuery) jQuery(s).trigger('change'); }")
+        return True
+    try:                                               # desplegable con buscador
+        _combo_impuesto(fr).click(timeout=10_000)
+        op = fr.locator("li, [role=option], .ng-option, mat-option").locator("visible=true").filter(
+            has_text=re.compile(rf"^\s*0*{impuesto}\s*-"))
+        if not op.count():
+            fr.locator("body").press("Escape")
+            return False
+        op.first.click()
+        return True
+    except Exception:
         return False
-    op = next((o for o in sel.locator("option").all_inner_texts() if re.match(rf"\s*0*{impuesto}\s*-", o)), None)
-    if not op:
-        return False
-    sel.select_option(label=op, force=True)
-    sel.evaluate("s => { s.dispatchEvent(new Event('change', {bubbles: true})); if (window.jQuery) jQuery(s).trigger('change'); }")
-    return True
 
 
 def _consultar(page, cuit: str, anio: int, impuesto: str | None = None) -> dict | None:
@@ -433,10 +485,24 @@ def leer_anios(page, cuit: str, anios: int = ANIOS, hoy: date | None = None) -> 
             raise arca.ErrorRobot(f"Cuentas Tributarias: {e}")
     impuestos = impuestos_disponibles(fr)
     directo = _campos_periodo(fr) is not None
+    if not directo or not impuestos:                    # para ajustar el robot: se guarda cómo vino la pantalla
+        try:
+            os.makedirs(os.path.join(DATOS, cuit, "capturas"), exist_ok=True)
+            with open(os.path.join(DATOS, cuit, "capturas", "sct_parametros.html"), "w", encoding="utf-8") as f:
+                f.write(fr.content())
+        except Exception:
+            pass
     for anio in objetivo:
-        if not directo:                                  # recorrido viejo, año completo con todos los impuestos
+        if not directo:
+            # 20/11/2026: sin campos de período reconocibles NO se usa AÑO ANTERIOR (se cuelga): solo el año en curso
+            # (lo que ARCA consulta si no se cargan períodos); los demás años quedan pendientes con el motivo.
             k = f"{anio}|todos"
             if k in partes:
+                continue
+            if anio != actual:
+                pendientes.append({"anio": str(anio), "motivo": "no se reconocieron los campos de período en la pantalla",
+                                   "impuestos": []})
+                guardar()
                 continue
             r = intentar(lambda: _por_anio_anterior(page, cuit, anio))
             if r and r.get("estado") == "OK":
@@ -493,9 +559,9 @@ def _por_anio_anterior(page, cuit: str, anio: int) -> dict:
     r = _leer_consulta(page, cuit)
     while int(r["anio"] or 0) > anio:
         fr = _marco_con(page, r"Per[ií]odo Fiscal consultado")
-        boton = fr.get_by_text(re.compile(r"A[ÑN]O ANTERIOR", re.I))
+        boton = fr.get_by_text(re.compile(r"A[ÑN]O ANTERIOR", re.I)).locator("visible=true")
         if not boton.count():
-            return {"anio": str(anio), "estado": "no hay año anterior"}
+            raise Trabada("no hay botón AÑO ANTERIOR visible")
         antes = r["anio"]
         boton.first.click()
         page.wait_for_timeout(2500)

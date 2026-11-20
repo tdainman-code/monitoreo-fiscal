@@ -89,22 +89,26 @@ with sync_playwright() as p:
     ctx.route("https://ctacte.cloud.afip.gob.ar/**", ruteo)
     pg = ctx.new_page()
     pg.goto(B + "externo")
-    res = rh.resumir(rh.leer_anios(pg, CUIT, anios=4))
+    # pantalla sin campos de período (versión vieja): NO se usa AÑO ANTERIOR (se cuelga); solo el año en curso y el
+    # resto queda pendiente con el motivo (20/11/2026)
+    _r0 = rh.leer_anios(pg, CUIT, anios=4)
+    res = rh.resumir(_r0)
     anios = [a["anio"] for a in res["anios"]]
-    chk(anios == ["2026", "2025", "2024", "2023"], f"recorre año por año con AÑO ANTERIOR ({anios})")
+    chk(anios == ["2026"] and [p["anio"] for p in _r0["pendientes"]] == ["2025", "2024", "2023"],
+        f"sin campos de período: solo el año en curso, el resto pendiente ({anios}, {_r0['pendientes']})")
     t = res["anios"][0]["totales"]
     chk(t["deuda"] == 22105640.35 and t["saldo_tecnico"] == 2918725.52 and t["otros_creditos"] == 597411.24, "totales del año")
     d = {(x["impuesto"], x["periodo"]): x for x in res["deudas"]}
-    chk(set(d) == {("28", "20261000"), ("30", "20260200"), ("302", "20260100"), ("312", "20251100")},
+    chk(set(d) == {("28", "20261000"), ("30", "20260200"), ("302", "20260100")},
         f"solo filas con deuda, sin subtotales ({sorted(d)})")
     chk(d[("30", "20260200")]["color"] == "rojo" and d[("302", "20260100")]["color"] == "verde"
         and d[("30", "20260200")]["estado_pago"] == "OBLIGACIÓN NOTIFICADA", "color de la deuda y estado de pago")
-    chk(res["deuda_f931_otros"] == round(5520.06 + 6362.93 + 1000.0, 2), f"F.931 fuera de 301/351 ({res['deuda_f931_otros']})")
-    chk(res["alertas"] and "2025, 2026" in res["alertas"][0]["texto"], "alerta con los años")
-    chk(res["deuda_terceros"] == round(5520.06 + 6362.93 + 1000.0, 2) and res["deuda_arca"] == 3288469.89,
+    chk(res["deuda_f931_otros"] == round(5520.06 + 6362.93, 2), f"F.931 fuera de 301/351 ({res['deuda_f931_otros']})")
+    chk(res["alertas"] and "2026" in res["alertas"][0]["texto"], "alerta con los años")
+    chk(res["deuda_terceros"] == round(5520.06 + 6362.93, 2) and res["deuda_arca"] == 3288469.89,
         "verde = para terceros (OS, ART, seguro de vida); rojo = propia de ARCA")
     sr = {(x["impuesto"], x["periodo"]): x["sld"] for x in res["saldos_recuperar"]}
-    chk(sr == {("302", "20260500"): 45210.5, ("312", "20250700"): 12000.0} and res["saldos_recuperar_total"] == 57210.5,
+    chk(sr == {("302", "20260500"): 45210.5} and res["saldos_recuperar_total"] == 45210.5,
         f"saldos a recuperar (S.L.D.) de cargas sociales, sin IVA ({sr})")
     chk(any("F.399" in a["texto"] and "302 05/2026" in a["texto"] for a in res["alertas"]), "alerta para reimputar con el F.399")
     try:
@@ -127,6 +131,17 @@ def ruteo2(route):
     h = "text/html; charset=utf-8"
     if not MODO["directo"]:
         return _ruteo_viejo(route)
+    if "parametros" in u and MODO.get("combo"):   # combo con buscador (no <select>) y etiquetas sueltas
+        return route.fulfill(content_type=h, body="""<html><body><h2>Ingreso de Parámetros</h2><script>window.imp='';</script>
+          <div><span>Impuesto</span></div><div><span class="select2-selection" role="combobox"
+             onclick="document.getElementById('ops').style.display='block'">Todos</span></div>
+          <ul id="ops" style="display:none"><li onclick="window.imp='';this.parentNode.style.display='none'">Todos</li>
+          <li onclick="window.imp='28';this.parentNode.style.display='none'">28 - SEGURO DE VIDA COLECTIVO</li>
+          <li onclick="window.imp='312';this.parentNode.style.display='none'">312 - ASEG.RIESGO DE TRABAJO L 24557</li></ul>
+          <div><span>Período Fiscal Desde</span></div><div><input placeholder="AAAAMMDD"></div>
+          <div><span>Período Fiscal Hasta</span></div><div><input></div>
+          <a href="#" onclick="var i=document.querySelectorAll('input');location.href='consulta?anio='+i[0].value+'&hasta='+i[1].value
+             +'&imp='+window.imp">SIGUIENTE</a></body></html>""")
     if "parametros" in u:                         # como la captura de Gaby del 20/11/2026
         return route.fulfill(content_type=h, body="""<html><body><h2>Ingreso de Parámetros</h2>
           <div><label>Impuesto</label><select name="impuesto" style="display:none"><option value="">Todos</option>
@@ -197,6 +212,14 @@ with sync_playwright() as p:
         chk(False, "otro CUIT debe frenar (consulta por impuesto)")
     except arca.CuitEquivocado:
         chk(True, "consulta por impuesto: si la pantalla muestra otro contribuyente, se detiene")
+    # combo con buscador y etiquetas no ligadas a los campos (como el ARCA real): igual consulta por año e impuesto
+    MODO.update(combo=True, traba=set(), consultas=[], rangos=[])
+    if os.path.exists(rh._ruta_parcial(C2)):
+        os.remove(rh._ruta_parcial(C2))
+    pg.goto(B + "externo")
+    r3 = rh.leer_anios(pg, C2, anios=1)
+    chk(set(MODO["consultas"]) == {(2026, "28"), (2026, "312")} and ("20260000", "20261200") in MODO["rangos"] and not r3["pendientes"],
+        f"combo con buscador: lee los impuestos y consulta cada uno, sin AÑO ANTERIOR ({sorted(set(MODO['consultas']))})")
     b.close()
 
 print("OK" if ok else "FALLÓ")
