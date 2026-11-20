@@ -241,14 +241,15 @@
   {% set fu = s.fuentes or {} %}
   <h2>Revisión cruzada: Libro IVA contra Mis Comprobantes</h2>
   {% if fu.meses %}
-  <p class="sutil">Misma fórmula con las dos fuentes (ventas y compras sin IVA). Diferencia relevante: más del 2 % o de $ 25.000 en el mes (lo que sea mayor). Comparado el {{ fu.fecha|fecha }}.</p>
+  <p class="sutil">Misma fórmula con las dos fuentes (ventas y compras sin IVA). Los tiques de controlador fiscal (ticketeadoras) y las cuentas de venta y líquido producto no suben a Mis Comprobantes: se descuentan de las ventas del Libro IVA antes de comparar. Diferencia relevante: más del 2 % o de $ 25.000 en el mes (lo que sea mayor). Comparado el {{ fu.fecha|fecha }}.</p>
   <div class="panel desplazable"><table class="tabla"><thead><tr><th>Mes</th><th class="num">Ventas Libro IVA</th><th class="num">Ventas Mis Comp.</th><th class="num">Dif.</th>
     <th class="num">Compras Libro IVA</th><th class="num">Compras Mis Comp.</th><th class="num">Dif.</th><th>Estado</th></tr></thead><tbody>
+  {# 20/11/2026: tiques de controlador fiscal y líquido producto no suben a Mis Comprobantes: se descuentan antes de comparar #}
   {% for f in fu.meses %}{% set li = f.libro_iva or {} %}{% set mc = f.mis_comprobantes or {} %}
   <tr class="{{ 'sem-rojo' if f.estado == 'DIFERENCIA' else 'fila-gris' if f.estado.startswith('no comparable') }}">
     <td>{{ periodo_txt(f.periodo) }}</td>
     {% if f.estado.startswith('no comparable') %}<td colspan="6" class="sutil">{{ f.estado }} (datos incompletos)</td>{% else %}
-    <td class="num">{{ li.ventas|pesos }}</td><td class="num">{{ mc.ventas|pesos }}</td><td class="num {{ 'txt-rojo' if f.estado == 'DIFERENCIA' }}">{{ f.dif_ventas|pesos }}</td>
+    <td class="num">{{ li.ventas|pesos }}{% if f.tiques %}<div class="sutil">− {{ f.tiques|pesos }} tiques / líquido producto{% if f.tiques_pv %} (PV {{ f.tiques_pv|join(', ') }}){% endif %}</div>{% endif %}</td><td class="num">{{ mc.ventas|pesos }}</td><td class="num {{ 'txt-rojo' if f.estado == 'DIFERENCIA' }}">{{ f.dif_ventas|pesos }}</td>
     <td class="num">{{ li.compras|pesos }}</td><td class="num">{{ mc.compras|pesos }}</td><td class="num {{ 'txt-rojo' if f.estado == 'DIFERENCIA' }}">{{ f.dif_compras|pesos }}</td>{% endif %}
     <td>{{ f.estado if not f.estado.startswith('no comparable') else 'no comparable' }}</td></tr>
   {% if f.solo_en_una %}<tr><td></td><td colspan="7"><details class="plegado"><summary>{{ f.solo_en_una|length }} comprobante(s) en una sola fuente</summary>

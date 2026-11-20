@@ -318,11 +318,19 @@ os.makedirs(f"{D}/{C2}/2026-08", exist_ok=True)                         # mes co
 _mc = {"2026-09": {"ventas": 1_300_000.0, "compras": 500_000.0}, "2026-10": {"ventas": 400_000.0, "compras": 100_000.0},
        "2026-08": {"ventas": 1.0, "compras": 1.0}}
 _co._mc_totales = lambda cuit, per: _mc.get(per)
+escribir(f"{D}/{C2}/libro_iva/2026-10.json", {"periodo": "2026-10", "ventas": {"Neto gravado total": 876_446.28, "Exento": 0.0, "No gravado": 0.0},
+         "compras": {"Neto gravado total": 100_000.0, "Exento": 0.0, "No gravado": 0.0},
+         "comprobantes_ventas": [{"tipo": 11, "punto_venta": 2, "neto": 0.0, "iva": 0.0, "total": 400_000.0},
+                                 {"tipo": 83, "punto_venta": 7, "neto": 826_446.28, "iva": 173_553.72, "total": 1_000_000.0},
+                                 {"tipo": 60, "punto_venta": 9, "neto": 50_000.0, "iva": 10_500.0, "total": 60_500.0}]})
+_co._pv_mc = lambda cuit: {2}
 _fu = _co.comparar_fuentes(C2, {"no_declaradas": [{"Período MC": "2026-09", "Comprobante": "Factura A", "Pto. venta": 3,
                                                    "Número": 99, "Receptor": "X", "Total MC": 363000.0}]}, {})
 _e = {f["periodo"]: f for f in _fu["meses"]}
 ok(_e["2026-09"]["estado"] == "DIFERENCIA" and _e["2026-10"]["estado"] == "OK" and _e["2026-08"]["estado"].startswith("no comparable")
    and _e["2026-09"]["solo_en_una"], "Libro IVA vs Mis Comprobantes: diferencia > 2 % / $25.000, 'no comparable' si falta una fuente")
+ok(_e["2026-10"]["tiques"] == 876_446.28 and _e["2026-10"]["tiques_pv"] == [7, 9] and _e["2026-10"]["estado"] == "OK",
+   "tiques (ticketeadora) y líquido producto se descuentan: no suben a Mis Comprobantes (Goncalves)")
 r = cg.get(f"/cliente/{C2}/relacion").text
 ok("Revisión cruzada" in r and "DIFERENCIA" in r and "no comparable" in r and "Saldo con Mis Comprobantes" in r,
    "relación D/C: tabla de revisión cruzada y saldo con la segunda fuente")

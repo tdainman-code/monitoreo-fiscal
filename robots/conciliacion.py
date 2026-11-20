@@ -430,13 +430,53 @@ def _liva_totales(d: dict) -> dict:
     return {"ventas": round(ventas, 2), "compras": round(compras, 2)}
 
 
+# Tiques de controlador fiscal (ticketeadoras): NO suben a Mis Comprobantes (Gaby 20/11/2026, caso Goncalves).
+TIQUES = {81, 82, 83, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120}
+# Cuentas de venta y líquido producto / liquidaciones (las emite el consignatario o acopiador por cuenta del cliente):
+# tampoco figuran como emitidos del cliente en Mis Comprobantes (Gaby 20/11/2026).
+LIQUIDO_PRODUCTO = {33, 58, 59, 60, 61, 63, 64, 331, 332}
+NO_VAN_A_MC = TIQUES | LIQUIDO_PRODUCTO
+
+
+def _neto_comp(c: dict) -> float:
+    if "no_gravado" in c or "exento" in c:
+        return float(c.get("neto") or 0) + float(c.get("no_gravado") or 0) + float(c.get("exento") or 0)
+    return float(c.get("total") or 0) - float(c.get("iva") or 0)
+
+
+def _pv_mc(cuit: str) -> set:
+    """Puntos de venta que figuran en Mis Comprobantes (emitidos) en cualquier mes bajado."""
+    pvs = set()
+    for d in glob.glob(os.path.join(DATOS, cuit, "[0-9][0-9][0-9][0-9]-[0-9][0-9]")):
+        try:
+            pvs |= {c["punto_venta"] for c in _mc_emitidos(cuit, os.path.basename(d))}
+        except Exception:
+            continue
+    return pvs
+
+
+def tiques_del_mes(d: dict, pv_mc: set) -> tuple[float, list]:
+    """Ventas del Libro IVA que no pueden estar en Mis Comprobantes: tiques de controlador fiscal (por tipo) o de un
+    punto de venta que nunca aparece en Mis Comprobantes (ticketeadora). Devuelve (importe sin IVA, puntos de venta)."""
+    tot, pvs = 0.0, set()
+    for c in d.get("comprobantes_ventas") or []:
+        tipo, pv = int(c.get("tipo") or 0), int(c.get("punto_venta") or 0)
+        if tipo in NO_VAN_A_MC or (pv_mc and pv not in pv_mc):
+            tot += _neto_comp(c)
+            pvs.add(pv)
+    return round(tot, 2), sorted(pvs)
+
+
 def comparar_fuentes(cuit: str, ventas: dict | None = None, compras: dict | None = None) -> dict:
     """Mes a mes y por concepto (ventas, compras): Libro IVA (Portal IVA) contra Mis Comprobantes. Diferencia
     relevante = más del 2 % o de $25.000 en el mes (lo que sea mayor). Mes sin alguna de las dos fuentes completa =
     'no comparable'. Guarda DATOS/<cuit>/conciliacion/fuentes.json para la web."""
-    meses = {}
+    meses, tiques = {}, {}
+    pv_mc = _pv_mc(cuit)
     for r in sorted(glob.glob(os.path.join(DATOS, cuit, "libro_iva", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json"))):
-        meses[os.path.basename(r)[:7]] = _liva_totales(_leer_json(r))
+        d_ = _leer_json(r)
+        meses[os.path.basename(r)[:7]] = _liva_totales(d_)
+        tiques[os.path.basename(r)[:7]] = tiques_del_mes(d_, pv_mc)
     for d in sorted(glob.glob(os.path.join(DATOS, cuit, "[0-9][0-9][0-9][0-9]-[0-9][0-9]"))):
         meses.setdefault(os.path.basename(d), None)
     filas = []
@@ -446,14 +486,16 @@ def comparar_fuentes(cuit: str, ventas: dict | None = None, compras: dict | None
             mc = _mc_totales(cuit, per)
         except Exception:
             mc = None
-        f = {"periodo": per, "libro_iva": li, "mis_comprobantes": mc}
+        tq, tq_pv = tiques.get(per, (0.0, []))
+        f = {"periodo": per, "libro_iva": li, "mis_comprobantes": mc, "tiques": tq, "tiques_pv": tq_pv}
         if li is None or mc is None:
             f["estado"] = "no comparable: falta " + ("el Libro IVA" if li is None else "Mis Comprobantes")
         else:
             f["estado"] = "OK"
             for k in ("ventas", "compras"):
-                dif = round(mc[k] - li[k], 2)
-                umbral = max(0.02 * max(abs(li[k]), abs(mc[k])), 25_000.0)
+                base_li = li[k] - (tq if k == "ventas" else 0.0)       # los tiques no están en Mis Comprobantes
+                dif = round(mc[k] - base_li, 2)
+                umbral = max(0.02 * max(abs(base_li), abs(mc[k])), 25_000.0)
                 f[f"dif_{k}"] = dif
                 if abs(dif) > umbral:
                     f["estado"] = "DIFERENCIA"
@@ -464,6 +506,10 @@ def comparar_fuentes(cuit: str, ventas: dict | None = None, compras: dict | None
                                  ("compras de Mis Comprobantes que no están en el Libro IVA", (compras or {}).get("no_tomadas"), "Período MC"),
                                  ("compras del Libro IVA que no están en Mis Comprobantes", (compras or {}).get("solo_libro_iva"), "Período")):
         for x in lista or []:
+            if "Libro IVA que no están" in nombre and nombre.startswith("ventas") and (
+                    re.search(r"tique|l[ií]quido producto|liquidaci", str(x.get("Comprobante") or ""), re.I)
+                    or (pv_mc and int(x.get("Pto. venta") or 0) not in pv_mc)):
+                continue                                   # tiques de controlador fiscal: no van a Mis Comprobantes
             per = str(x.get(campo) or x.get("Período") or "")[:7]
             det.setdefault(per, []).append({"que": nombre, **{k: (str(v) if not isinstance(v, (int, float)) else v)
                                                               for k, v in x.items()}})
