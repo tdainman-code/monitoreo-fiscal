@@ -284,6 +284,7 @@ def _consultar(page, cuit: str, anio: int, impuesto: str | None = None) -> dict 
     """Consulta NUEVA de un año y un impuesto: Período Fiscal Desde AAAA0000 / Hasta AAAA1200 (formato AAAAMMDD, el
     mismo rango que usa ARCA para el año: 'Período Fiscal consultado 20260000 a 20261200'). Pedido de Gaby 20/11/2026:
     por año y por impuesto no se cuelga y es más rápido. None = la pantalla no tiene esos campos."""
+    arca.verificar_sesion(page, "cuentas_tributarias")    # cada consulta: que la sesión siga abierta (Gaby 20/11)
     fr = _ir_a_parametros(page)
     campos = _campos_periodo(fr)
     if not campos:
@@ -295,7 +296,9 @@ def _consultar(page, cuit: str, anio: int, impuesto: str | None = None) -> dict 
     if impuesto and not _elegir_impuesto(fr, impuesto):
         return {"anio": str(anio), "impuesto": impuesto, "estado": "sin ese impuesto en el selector"}
     fr.get_by_text(re.compile(r"^\s*SIGUIENTE\s*$", re.I)).first.click()
-    r = _leer_consulta(page, cuit, str(anio))
+    arca.verificar_sesion(page, "cuentas_tributarias")
+    r = _leer_consulta(page, cuit, str(anio))          # controla año y CUIT (mismo contribuyente)
+    r["fecha_lectura"] = date.today().isoformat()
     if impuesto:                                         # cada vez: que la consulta sea del impuesto pedido
         otros = [t for t in r["impuestos"] if not re.match(rf"\s*0*{impuesto}\s*-", t)]
         if otros:
@@ -362,7 +365,10 @@ def leer_anios(page, cuit: str, anios: int = ANIOS, hoy: date | None = None) -> 
     if par.get("fecha", "")[:7] < (hoy.replace(day=1) - timedelta(days=40)).isoformat()[:7]:
         par = {}                                        # lo guardado tiene más de un mes: se lee todo de nuevo
     viejos = par.get("partes") or {}                    # {"2025|312": {...}} consultas que salieron bien
-    partes = {k: v for k, v in viejos.items() if v.get("estado") == "OK" and not k.startswith(f"{actual}|")}
+    # se conservan las consultas buenas de años anteriores y las del año en curso hechas HOY (si ARCA corta la sesión
+    # y el robot vuelve a entrar, retoma desde donde quedó sin repetir lo ya leído)
+    partes = {k: v for k, v in viejos.items() if v.get("estado") == "OK"
+              and (not k.startswith(f"{actual}|") or v.get("fecha_lectura") == hoy.isoformat())}
     par = {"fecha": hoy.isoformat(), "partes": dict(partes), "pendientes": []}
     pendientes = []
 

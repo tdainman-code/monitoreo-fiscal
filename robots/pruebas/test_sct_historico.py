@@ -178,8 +178,14 @@ with sync_playwright() as p:
     MODO.update(traba=set(), consultas=[])
     pg.goto(B + "externo")
     r2 = rh.leer_anios(pg, C2, anios=3)
-    chk(not r2["pendientes"] and set(MODO["consultas"]) == {(2026, "28"), (2026, "30"), (2026, "302"), (2026, "312"), (2025, "312")},
-        f"la corrida siguiente retoma solo lo pendiente y el año en curso ({sorted(set(MODO['consultas']))})")
+    chk(not r2["pendientes"] and set(MODO["consultas"]) == {(2025, "312")},
+        f"si se corta y vuelve a entrar el mismo día, retoma solo lo pendiente ({sorted(set(MODO['consultas']))})")
+    from datetime import date as _d, timedelta as _td
+    MODO.update(consultas=[])
+    pg.goto(B + "externo")
+    rh.leer_anios(pg, C2, anios=3, hoy=_d.today() + _td(days=1))
+    chk(set(MODO["consultas"]) == {(2026, "28"), (2026, "30"), (2026, "302"), (2026, "312")},
+        f"otro día: el año en curso se lee de nuevo y lo viejo ya leído no ({sorted(set(MODO['consultas']))})")
     res2 = rh.resumir(r2)
     chk(any(x["impuesto"] == "312" for x in res2["saldos_recuperar"]), "con lo retomado aparecen los saldos del 312")
     chk(r2["anios"][0]["totales"]["deuda"] is not None, "totales del año sumando los impuestos")
