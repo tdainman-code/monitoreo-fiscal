@@ -42,8 +42,8 @@ SEL = {
 }
 SERVICIOS = [
     ("dfe", ["Domicilio Fiscal Electrónico", "Domicilio Fiscal Electronico", "DFE"]),
-    ("deuda", ["Estado de Cuenta", "Consulta de Deuda", "Estado de deuda", "Deuda"]),
-    ("fiscalizacion", ["Fiscalización Electrónica", "Fiscalizacion Electronica"]),
+    ("deuda", ["Estado de Cuenta", "Consulta de Deuda", "Estado de deuda"]),   # "Deuda" a secas abría Patentes
+    ("fiscalizacion", ["Fiscalización Electrónica AGIP", "Fiscalización Electrónica", "Fiscalizacion Electronica"]),
     # Nueva Cuenta Corriente Tributaria (portal-cct.agip.gob.ar), relevada con Gaby el 18/11/2026 (Dinafer S R L)
     ("cct", ["Nueva Cuenta Corriente Tributaria", "Cuenta Corriente Tributaria"]),
 ]
@@ -201,8 +201,11 @@ def _abrir(ctx, page, textos: list[str]):
     """Abre un servicio del portal por el texto del enlace. Devuelve la pestaña (nueva o la misma) o None."""
     for t in textos:
         link = page.locator(f"a:has-text('{t}')").filter(visible=True)
-        if not link.count():                             # tarjetas del menú que no son <a> (18/11/2026)
+        if not link.count():                             # tarjetas del menú que no son <a> (captura 20/11/2026)
             link = page.get_by_text(t, exact=True).filter(visible=True)
+        if not link.count():
+            link = page.locator("h1, h2, h3, h4, h5, h6, strong, b, .card-title, .titulo").filter(
+                has_text=re.compile(rf"^\s*{re.escape(t)}", re.I)).filter(visible=True)
         if not link.count():
             continue
         destino = link.first.get_attribute("target") or ""

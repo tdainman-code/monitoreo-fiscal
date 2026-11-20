@@ -132,7 +132,7 @@
   {% if r %}
   <div class="tarjetas">
     <div class="tarjeta"><span class="sutil">Relación D/C {{ r.meses }} meses</span><b class="nivel-{{ r.nivel }}">{{ r.ratio|dec if r.credito else '—' }}</b><span class="sutil nivel-{{ r.nivel }}">{{ r.nivel }}</span></div>
-    {% if r.credito %}<div class="tarjeta"><span class="sutil">Utilidad (D/C − 1)</span><b class="{{ 'txt-rojo' if r.ratio < 1 }}">{{ r.ratio|utilidad }}</b></div>{% endif %}
+    {% if r.credito %}<div class="tarjeta"><span class="sutil">Débito sobre crédito fiscal (D/C − 1) · no es la utilidad: ver Relación débito crédito</span><b class="{{ 'txt-rojo' if r.ratio < 1 }}">{{ r.ratio|utilidad }}</b></div>{% endif %}
     <div class="tarjeta"><span class="sutil">Débito {{ periodo_txt(r.desde) }} a {{ periodo_txt(r.hasta) }}</span><b>{{ r.debito|pesos }}</b></div>
     <div class="tarjeta"><span class="sutil">Crédito {{ periodo_txt(r.desde) }} a {{ periodo_txt(r.hasta) }}</span><b>{{ r.credito|pesos }}</b></div>
     {% if p %}<div class="tarjeta"><span class="sutil">Saldo proyectado {{ periodo_txt(p.periodo) }}</span><b class="{{ 'txt-rojo' if p.saldo > 0 }}">{{ p.saldo|pesos if p.saldo > 0 else 'a favor ' ~ (-p.saldo)|pesos }}</b>
@@ -171,17 +171,35 @@
       ('IIBB determinado (SIFERE / ARBA)', 'iibb', 'pesos', true),
       ('Total erogaciones', 'erogaciones', 'pesos', true),
       ('SALDO MENSUAL (ventas − erogaciones)', 'resultado', 'pesos', true),
+      ('Saldo con Mis Comprobantes (misma fórmula)', 'resultado_mc', 'pesos', false),
       ('Saldo acumulado', 'saldo_acumulado', 'pesos', false),
       ('Índice erogaciones / ventas', 'indice', 'pct', false),
       ('Índice acumulado', 'indice_acumulado', 'pct', false),
       ('Margen de utilidad bruto (1 − índice)', 'margen', 'pct', false)] %}
   {% for titulo, k, fmt, sumar in filas_rel %}
   <tr class="{{ 'fila-total' if k in ('erogaciones', 'resultado') }}"><td><b>{{ titulo }}</b></td>
-    {% for m in a.meses %}{% set v = m[k] %}<td class="num {{ 'txt-rojo' if (k in ('resultado', 'saldo_acumulado', 'margen') and v is not none and v < 0) or (k in ('indice', 'indice_acumulado') and v and v > 1) }} {{ 'celda-falta' if not m.completo and k in ('resultado', 'indice', 'margen') }}"
+    {% for m in a.meses %}{% set v = m.get(k) %}<td class="num {{ 'txt-rojo' if (k in ('resultado', 'saldo_acumulado', 'margen') and v is not none and v < 0) or (k in ('indice', 'indice_acumulado') and v and v > 1) }} {{ 'celda-falta' if not m.completo and k in ('resultado', 'indice', 'margen') }}"
       title="{{ 'Falta: ' ~ m.faltantes|join(', ') if not m.completo else '' }}">{% if v is none %}{{ 'sin dato' if k == 'iibb' and 'IIBB' in m.faltantes else '—' }}{% elif fmt == 'pct' %}{{ pct(v) }}{% else %}{{ v|pesos }}{% endif %}</td>{% endfor %}
-    <td class="num"><b>{% if k == 'indice' or k == 'indice_acumulado' %}{{ pct(a.total.indice) }}{% elif k == 'margen' %}{{ pct(a.total.margen) }}{% elif k == 'saldo_acumulado' %}{{ a.total.resultado|pesos }}{% else %}{{ a.total[k]|pesos }}{% endif %}</b></td></tr>
+    <td class="num"><b>{% if k == 'indice' or k == 'indice_acumulado' %}{{ pct(a.total.indice) }}{% elif k == 'margen' %}{{ pct(a.total.margen) }}{% elif k == 'saldo_acumulado' %}{{ a.total.resultado|pesos }}{% elif k == 'resultado_mc' %}{{ a.meses|map(attribute='resultado_mc')|select('number')|sum|pesos if a.meses|map(attribute='resultado_mc')|select('number')|list else '—' }}{% else %}{{ a.total[k]|pesos }}{% endif %}</b></td></tr>
   {% endfor %}
   </tbody></table></div>
+  {% set fu = s.fuentes or {} %}
+  <h2>Revisión cruzada: Libro IVA contra Mis Comprobantes</h2>
+  {% if fu.meses %}
+  <p class="sutil">Misma fórmula con las dos fuentes (ventas y compras sin IVA). Diferencia relevante: más del 2 % o de $ 25.000 en el mes (lo que sea mayor). Comparado el {{ fu.fecha|fecha }}.</p>
+  <div class="panel desplazable"><table class="tabla"><thead><tr><th>Mes</th><th class="num">Ventas Libro IVA</th><th class="num">Ventas Mis Comp.</th><th class="num">Dif.</th>
+    <th class="num">Compras Libro IVA</th><th class="num">Compras Mis Comp.</th><th class="num">Dif.</th><th>Estado</th></tr></thead><tbody>
+  {% for f in fu.meses %}{% set li = f.libro_iva or {} %}{% set mc = f.mis_comprobantes or {} %}
+  <tr class="{{ 'sem-rojo' if f.estado == 'DIFERENCIA' else 'fila-gris' if f.estado.startswith('no comparable') }}">
+    <td>{{ periodo_txt(f.periodo) }}</td>
+    {% if f.estado.startswith('no comparable') %}<td colspan="6" class="sutil">{{ f.estado }} (datos incompletos)</td>{% else %}
+    <td class="num">{{ li.ventas|pesos }}</td><td class="num">{{ mc.ventas|pesos }}</td><td class="num {{ 'txt-rojo' if f.estado == 'DIFERENCIA' }}">{{ f.dif_ventas|pesos }}</td>
+    <td class="num">{{ li.compras|pesos }}</td><td class="num">{{ mc.compras|pesos }}</td><td class="num {{ 'txt-rojo' if f.estado == 'DIFERENCIA' }}">{{ f.dif_compras|pesos }}</td>{% endif %}
+    <td>{{ f.estado if not f.estado.startswith('no comparable') else 'no comparable' }}</td></tr>
+  {% if f.solo_en_una %}<tr><td></td><td colspan="7"><details class="plegado"><summary>{{ f.solo_en_una|length }} comprobante(s) en una sola fuente</summary>
+    <ul>{% for x in f.solo_en_una %}<li class="sutil">{{ x.que }}: {{ x.get('Comprobante', '') }} {{ x.get('Pto. venta', '') }}-{{ x.get('Número', '') }} · {{ x.get('Receptor') or x.get('Emisor') or '' }} · {{ (x.get('Total MC') or x.get('Total') or x.get('Neto gravado') or 0)|pesos }}</li>{% endfor %}</ul></details></td></tr>{% endif %}
+  {% endfor %}</tbody></table></div>
+  {% else %}<p class="sutil">Todavía no se comparó (se arma en la próxima corrida completa, con el informe de conciliación).</p>{% endif %}
   <p class="sutil">Mismas fórmulas que la planilla "Relación DC": ventas y compras del Libro IVA (Portal IVA, DJ presentadas), más las facturas C de compra que están en Mis Comprobantes y no se cargaron en el Libro IVA (no dan crédito, pero son gasto; las facturas B no se toman nunca); remuneraciones y cargas sociales del F.931; IIBB determinado de SIFERE y ARBA. Las celdas en amarillo son meses con alguna fuente faltante (pasá el mouse para ver cuál).</p>
   {% else %}<p class="sutil">Todavía no hay meses del Libro IVA ni del F.931 bajados.</p>{% endif %}
   {% if sec == 'relacion' %}<h2>Excel</h2><ul class="informes">

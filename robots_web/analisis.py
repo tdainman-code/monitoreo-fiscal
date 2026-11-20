@@ -218,6 +218,8 @@ def resultado_mensual(cuit: str) -> list[dict]:
     iibb = _iibb(cuit)
     bc_mc = ((_leer(os.path.join(datos.DATOS, cuit, "conciliacion", "compras_bc_fuera_libro.json")) or {})
              .get("por_mes") or {})
+    fuentes = {f["periodo"]: f for f in ((_leer(os.path.join(datos.DATOS, cuit, "conciliacion", "fuentes.json")) or {})
+                                           .get("meses") or [])}
     ajustes = ((_leer(os.path.join(datos.DATOS, cuit, "conciliacion", "ajustes_conciliacion.json")) or {})
                .get("por_mes") or {})
     hay_iibb = bool(iibb) or os.path.isdir(os.path.join(datos.DATOS, cuit, "sifere"))
@@ -258,7 +260,13 @@ def resultado_mensual(cuit: str) -> list[dict]:
         aj_dup, aj_nc, aj_nt = (_num(aj.get(f"{k}_neto")) for k in ("duplicados", "nc", "no_tomadas"))
         aj_iva = sum(_num(aj.get(f"{k}_iva")) for k in ("duplicados", "nc", "no_tomadas"))
         erog_aj = erog + aj_dup + aj_nc + aj_nt
-        out.append({"aj_duplicados": aj_dup, "aj_nc": aj_nc, "aj_no_tomadas": aj_nt, "aj_iva_credito": aj_iva,
+        # segunda fuente (Mis Comprobantes, misma fórmula) para la revisión cruzada (20/11/2026)
+        fu = fuentes.get(per) or {}
+        mc = fu.get("mis_comprobantes")
+        out_mc = {"ventas_mc": mc["ventas"] if mc else None, "compras_mc": mc["compras"] if mc else None,
+                  "resultado_mc": (mc["ventas"] - mc["compras"] - sueldos - cargas - (ib or 0.0)) if mc else None,
+                  "fuentes_estado": fu.get("estado", "sin comparar")}
+        out.append({**out_mc, "aj_duplicados": aj_dup, "aj_nc": aj_nc, "aj_no_tomadas": aj_nt, "aj_iva_credito": aj_iva,
                     "erogaciones_ajustadas": erog_aj, "resultado_ajustado": ventas - erog_aj,
                     "indice_ajustado": erog_aj / ventas if ventas else None,
                     "debito": _num((l or {}).get("ventas", {}).get("Total IVA")),

@@ -309,6 +309,35 @@ _rm = {m["periodo"]: m for m in analisis.resultado_mensual(C2)}
 ok(_rm["2026-10"]["ventas"] == 400_000.0 and _rm["2026-10"]["resultado"] > 0,
    "relación D/C: alquileres sin IVA entran en ventas (Libro IVA bajado antes del arreglo)")
 
+# ------------------------------------------------ dos fuentes de la relación D/C (Benavidez, 20/11/2026)
+from robots import conciliacion as _co  # noqa: E402
+_co.DATOS = D
+escribir(f"{D}/{C2}/libro_iva/2026-09.json", {"periodo": "2026-09", "ventas": {"Neto gravado total": 1_000_000.0},
+         "compras": {"Neto gravado total": 500_000.0}, "comprobantes_ventas": []})
+os.makedirs(f"{D}/{C2}/2026-08", exist_ok=True)                         # mes con Mis Comprobantes y sin Libro IVA
+_mc = {"2026-09": {"ventas": 1_300_000.0, "compras": 500_000.0}, "2026-10": {"ventas": 400_000.0, "compras": 100_000.0},
+       "2026-08": {"ventas": 1.0, "compras": 1.0}}
+_co._mc_totales = lambda cuit, per: _mc.get(per)
+_fu = _co.comparar_fuentes(C2, {"no_declaradas": [{"Período MC": "2026-09", "Comprobante": "Factura A", "Pto. venta": 3,
+                                                   "Número": 99, "Receptor": "X", "Total MC": 363000.0}]}, {})
+_e = {f["periodo"]: f for f in _fu["meses"]}
+ok(_e["2026-09"]["estado"] == "DIFERENCIA" and _e["2026-10"]["estado"] == "OK" and _e["2026-08"]["estado"].startswith("no comparable")
+   and _e["2026-09"]["solo_en_una"], "Libro IVA vs Mis Comprobantes: diferencia > 2 % / $25.000, 'no comparable' si falta una fuente")
+r = cg.get(f"/cliente/{C2}/relacion").text
+ok("Revisión cruzada" in r and "DIFERENCIA" in r and "no comparable" in r and "Saldo con Mis Comprobantes" in r,
+   "relación D/C: tabla de revisión cruzada y saldo con la segunda fuente")
+ok("Relación D/C: las dos fuentes no coinciden" in cg.get("/alertas").text, "alerta si las fuentes no coinciden")
+r = cg.get(f"/cliente/{C2}").text
+ok("IVA: débito / crédito fiscal" in r and ("datos incompletos" in r or "índice erogaciones/ventas" in r),
+   "tarjetas sin la 'utilidad' contradictoria; datos incompletos a la vista")
+
+# ------------------------------------------------ Deuda ARCA cuando Cuentas Tributarias falló (Benavidez)
+import glob as _g  # noqa: E402
+escribir(f"{D}/{C2}/ccma/2026-11-20.json", {"fecha": "2026-11-20", "deuda_impaga": 248283.0, "impagos": [{"periodo": "2026-08"}],
+                                                      "periodos": [], "totales": {}, "alertas": []})
+r = cg.get(f"/cliente/{C2}").text
+ok("Cuentas Tributarias sin leer" in r and "248.283,00" in r, "Deuda ARCA: muestra autónomos impagos aunque falle Cuentas Tributarias")
+
 # ------------------------------------------------ asignar clientes uno mismo (19/11/2026)
 C3 = "27169781295"
 escribir(f"{R}/publico/clientes.json", [{"cuit": C, "razon_social": "RAPTOR.MAX SRL"}, {"cuit": C2, "razon_social": "VALGUARNERA HECTOR"},

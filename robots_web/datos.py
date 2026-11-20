@@ -189,6 +189,8 @@ def situacion(cuit: str) -> dict:
                             + len((fisc or {}).get("fiscalizacion_electronica") or []) + len(agip_f))
     r["ratio"] = analisis.ratio_dc(analisis.iva_mensual(cuit))
     r["alertas"] += ((agip or {}).get("alertas") or []) + ((fisc or {}).get("alertas") or []) + ((ccma or {}).get("alertas") or [])
+    _fu = _leer(os.path.join(base, "conciliacion", "fuentes.json")) or {}
+    r["alertas"] += _fu.get("alertas") or []          # Libro IVA vs Mis Comprobantes (20/11/2026)
     try:                                              # F.931 con personal y sin remuneración leída (19/11/2026)
         from . import asientos
         pend = asientos.f931_pendientes(cuit)
@@ -385,8 +387,20 @@ def ficha(cuit: str) -> dict:
     b = []
     sct, mf = s["sct"], s["mf"]
     n_obl = len((sct or {}).get("deudas") or [])
-    b.append({"id": "deuda", "titulo": "Deuda ARCA", "valor": s["deuda_vencida"], "pesos": True,
-              "sub": f"{n_obl} obligaciones" if sct else "sin datos", "color": color((s["deuda_vencida"] or 0) > 0, hay=bool(sct)),
+    # 20/11/2026 (Benavidez): si Cuentas Tributarias no se pudo leer, no decir "sin datos" cuando hay deuda conocida
+    # por otras consultas (autónomos/monotributo de CCMA, estado de cumplimiento).
+    otras = []
+    if not sct:
+        if s.get("ccma_deuda"):
+            otras.append(("autónomos / monotributo impagos", s["ccma_deuda"]))
+        if (s.get("scth") or {}).get("deuda_total"):
+            otras.append(("estado de cumplimiento", s["scth"]["deuda_total"]))
+    valor_deuda = s["deuda_vencida"] if sct else (max(v for _, v in otras) if otras else None)
+    b.append({"id": "deuda", "titulo": "Deuda ARCA", "valor": valor_deuda, "pesos": True,
+              "sub": (f"{n_obl} obligaciones" if sct else
+                      "Cuentas Tributarias sin leer (la corrida falló) · " + " · ".join(f"{t} {_pesos_txt(v)}" for t, v in otras)
+                      if otras else "sin datos (Cuentas Tributarias sin leer)"),
+              "color": color((valor_deuda or 0) > 0, hay=bool(sct) or bool(otras)),
               # crédito a recuperar con el F.399 (S.L.D. fuera del IVA), pedido de Gaby 20/11/2026
               "sub2": (f"crédito a recuperar (F.399): {_pesos_txt((s.get('scth') or {}).get('saldos_recuperar_total') or 0)}"
                        if "saldos_recuperar" in (s.get("scth") or {}) else
@@ -421,18 +435,29 @@ def ficha(cuit: str) -> dict:
     s["iva"], s["proyeccion"] = iva, analisis.proyectar_iva(iva)
     if iva:
         rt = s["ratio"]
-        b.append({"id": "iva", "titulo": "Débito / crédito y proyección", "valor": f"{rt['ratio']:.2f}".replace(".", ",") if rt and rt["credito"] else None,
-                  "utilidad": (rt["ratio"] - 1) if rt and rt["credito"] else None,
-                  "sub": f"relación D/C {rt['meses']} meses · {rt['nivel']}" if rt else "",
+        # 20/11/2026: es débito fiscal ÷ crédito fiscal de IVA, NO la utilidad (la utilidad está en "Relación débito
+        # crédito": ventas sin IVA − erogaciones). Mostrarla acá como "utilidad" contradecía a la otra tarjeta.
+        b.append({"id": "iva", "titulo": "IVA: débito / crédito fiscal", "valor": f"{rt['ratio']:.2f}".replace(".", ",") if rt and rt["credito"] else None,
+                  "sub": f"débito fiscal ÷ crédito fiscal, {rt['meses']} meses · {rt['nivel']} · proyección" if rt else "",
                   "color": {"Crítico": "rojo", "Advertencia": "amarillo"}.get((rt or {}).get("nivel"), "verde")})
     res = analisis.resultado_mensual(cuit)
     s["resultado"] = analisis.analizar_resultado(res)
     if res or meses_liva or any(i["tipo"] == "Relación débito/crédito" for i in inf):
         tot = (s["resultado"] or {}).get("total") or {"resultado": None}
-        b.append({"id": "relacion", "titulo": "Relación débito crédito", "valor": tot["resultado"], "pesos": True,
-                  "sub": f"{len(res)} meses · ventas − compras − sueldos − cargas sociales",
-                  "color": "gris" if tot["resultado"] is None else "rojo" if tot["resultado"] < 0
-                           else "amarillo" if s["resultado"]["incompletos"] else "verde"})
+        inc = (s["resultado"] or {}).get("incompletos") or []
+        fu = _leer(os.path.join(DATOS, cuit, "conciliacion", "fuentes.json")) or {}
+        s["fuentes"] = fu
+        dif = [f for f in fu.get("meses") or [] if f.get("estado") == "DIFERENCIA"]
+        r_pct = lambda x: f"{x * 100:.2f}%".replace(".", ",") if x is not None else "—"
+        if inc:                                            # 20/11/2026: sin números engañosos si faltan datos
+            b.append({"id": "relacion", "titulo": "Relación débito crédito", "valor": "datos incompletos",
+                      "sub": f"{len(inc)} de {len(res)} meses sin alguna fuente (" + ", ".join(sorted({x for m in inc for x in m.get('faltantes', [])}))
+                             + ") · ver detalle", "color": "amarillo"})
+        else:
+            b.append({"id": "relacion", "titulo": "Relación débito crédito", "valor": tot["resultado"], "pesos": True,
+                      "sub": f"{len(res)} meses · índice erogaciones/ventas {r_pct(tot.get('indice'))} · margen {r_pct(tot.get('margen'))}"
+                             + (f" · {len(dif)} mes(es) no coinciden con Mis Comprobantes" if dif else ""),
+                      "color": "gris" if tot["resultado"] is None else "rojo" if tot["resultado"] < 0 or dif else "verde"})
     if s["fisc"] or (s["agip"] or {}).get("fiscalizacion") is not None:
         b.append({"id": "fiscalizaciones", "titulo": "Fiscalizaciones", "valor": s["fiscalizaciones"],
                   "sub": "ARCA (OI, SIACE) y AGIP", "color": "rojo" if s["fiscalizaciones"] else "verde"})

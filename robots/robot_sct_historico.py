@@ -253,29 +253,54 @@ def _campos_periodo(fr):
     return desde, hasta
 
 
+def _select_impuesto(fr):
+    sel = fr.locator("select").filter(has=fr.locator("option", has_text=re.compile(r"^\s*\d+\s*-\s*\S")))
+    return sel.first if sel.count() else None
+
+
+def impuestos_disponibles(fr) -> list[str]:
+    """Opciones del combo Impuesto ('11 - GANANCIAS PERSONAS FISICAS', '28 - SEGURO DE VIDA COLECTIVO', '30 - IVA'...):
+    son los impuestos del cliente (sus inscripciones). Devuelve los códigos."""
+    sel = _select_impuesto(fr)
+    if sel is None:
+        return []
+    return [m[1] for o in sel.locator("option").all_inner_texts() if (m := re.match(r"\s*(\d+)\s*-", o))]
+
+
 def _elegir_impuesto(fr, impuesto: str) -> bool:
-    sel = fr.locator("select").filter(has=fr.locator("option", has_text=re.compile(rf"^\s*0*{impuesto}\b")))
-    if not sel.count():
+    """El combo es un desplegable con buscador (select2): se elige en el <select> de abajo y se avisa el cambio."""
+    sel = _select_impuesto(fr)
+    if sel is None:
         return False
-    op = next((o for o in sel.first.locator("option").all_inner_texts() if re.match(rf"\s*0*{impuesto}\b", o)), None)
-    sel.first.select_option(label=op)
+    op = next((o for o in sel.locator("option").all_inner_texts() if re.match(rf"\s*0*{impuesto}\s*-", o)), None)
+    if not op:
+        return False
+    sel.select_option(label=op, force=True)
+    sel.evaluate("s => { s.dispatchEvent(new Event('change', {bubbles: true})); if (window.jQuery) jQuery(s).trigger('change'); }")
     return True
 
 
 def _consultar(page, cuit: str, anio: int, impuesto: str | None = None) -> dict | None:
-    """Consulta NUEVA de un año (y opcionalmente un impuesto) eligiendo el período directo. None = la pantalla de
-    parámetros no tiene campos de período reconocibles (se usa el recorrido con AÑO ANTERIOR)."""
+    """Consulta NUEVA de un año y un impuesto: Período Fiscal Desde AAAA0000 / Hasta AAAA1200 (formato AAAAMMDD, el
+    mismo rango que usa ARCA para el año: 'Período Fiscal consultado 20260000 a 20261200'). Pedido de Gaby 20/11/2026:
+    por año y por impuesto no se cuelga y es más rápido. None = la pantalla no tiene esos campos."""
     fr = _ir_a_parametros(page)
     campos = _campos_periodo(fr)
     if not campos:
         return None
-    for x, mes in ((campos[0], "01"), (campos[1], "12")):
-        valor = f"{anio}{mes}" if x["max"] in (6, -1, 524288) or x["max"] < 8 else f"{anio}{mes}00"
-        fr.locator(f"[data-robot-in='{x['n']}']").fill(valor)
+    for x, valor in ((campos[0], f"{anio}0000"), (campos[1], f"{anio}1200")):
+        loc = fr.locator(f"[data-robot-in='{x['n']}']")
+        loc.fill("")
+        loc.fill(valor)
     if impuesto and not _elegir_impuesto(fr, impuesto):
         return {"anio": str(anio), "impuesto": impuesto, "estado": "sin ese impuesto en el selector"}
     fr.get_by_text(re.compile(r"^\s*SIGUIENTE\s*$", re.I)).first.click()
-    return _leer_consulta(page, cuit, str(anio))
+    r = _leer_consulta(page, cuit, str(anio))
+    if impuesto:                                         # cada vez: que la consulta sea del impuesto pedido
+        otros = [t for t in r["impuestos"] if not re.match(rf"\s*0*{impuesto}\s*-", t)]
+        if otros:
+            raise Trabada(f"se pidió el impuesto {impuesto} y la pantalla muestra {', '.join(otros)[:80]}")
+    return r
 
 
 def _leer_consulta(page, cuit: str, anio_esperado: str | None = None) -> dict:
@@ -321,78 +346,98 @@ def _guardar_parcial(cuit: str, p: dict) -> None:
 
 def leer_anios(page, cuit: str, anios: int = ANIOS, hoy: date | None = None) -> dict:
     """Pedido de Gaby 20/11/2026 (la SCT se colgaba al pasar de año y el robot terminaba en falla):
-      - cada año es una consulta NUEVA eligiendo el período directo (no el botón AÑO ANTERIOR); si la pantalla de
-        parámetros no tiene campos de período reconocibles, se usa el recorrido con AÑO ANTERIOR como antes;
-      - si un año se traba se recarga la consulta (sin reloguear) y se reintenta; si se traba con todos los
-        impuestos juntos se pide impuesto por impuesto; lo que no sale queda PENDIENTE y se sigue;
-      - cada año se guarda al terminarlo (_parcial.json); la próxima corrida retoma solo lo pendiente
-        (el año en curso se lee siempre de nuevo).
+      - consulta NUEVA por año (Período Fiscal Desde AAAA0000 / Hasta AAAA1200) y por impuesto (los del combo
+        Impuesto, que son las inscripciones del cliente); cada vez se controla año, impuesto y CUIT;
+      - si una consulta se traba se recarga (sin reloguear) y se reintenta; si sigue trabada queda PENDIENTE y se
+        sigue con la próxima;
+      - se guarda cada impuesto y año al terminarlo (_parcial.json); la corrida siguiente retoma solo lo pendiente
+        (el año en curso se lee siempre de nuevo);
+      - si la pantalla de parámetros no tuviera esos campos, se usa el recorrido viejo con AÑO ANTERIOR.
     Devuelve {"anios": [...], "pendientes": [...], "leidos": [...]}."""
+    from datetime import timedelta
     hoy = hoy or date.today()
     actual = hoy.year
     objetivo = list(range(actual, actual - anios, -1))
     par = _parcial(cuit)
-    if par.get("fecha", "")[:7] < (hoy.replace(day=1) - __import__("datetime").timedelta(days=40)).isoformat()[:7]:
+    if par.get("fecha", "")[:7] < (hoy.replace(day=1) - timedelta(days=40)).isoformat()[:7]:
         par = {}                                        # lo guardado tiene más de un mes: se lee todo de nuevo
-    hechos = {a: v for a, v in (par.get("anios") or {}).items() if v.get("estado") == "OK" and int(a) != actual}
-    par = {"fecha": hoy.isoformat(), "anios": dict(hechos), "pendientes": []}
+    viejos = par.get("partes") or {}                    # {"2025|312": {...}} consultas que salieron bien
+    partes = {k: v for k, v in viejos.items() if v.get("estado") == "OK" and not k.startswith(f"{actual}|")}
+    par = {"fecha": hoy.isoformat(), "partes": dict(partes), "pendientes": []}
     pendientes = []
-    directo = None                                       # None = todavía no se sabe si hay campos de período
-    for anio in objetivo:
-        if str(anio) in hechos:
-            continue
+
+    def guardar():
+        par["pendientes"] = pendientes
+        _guardar_parcial(cuit, par)
+
+    def intentar(fn):
         r = None
-        for intento in range(2):
+        for _ in range(2):
             try:
-                if directo is not False:
-                    r = _consultar(page, cuit, anio)
-                    if r is None:
-                        directo = False
-                    else:
-                        directo = True
-                if directo is False:
-                    r = _por_anio_anterior(page, cuit, anio)
-                break
+                return fn()
             except Trabada as e:
-                r = {"anio": str(anio), "estado": f"trabada: {e}"}
+                r = {"estado": f"trabada: {e}"}
                 try:
                     page.reload(wait_until="domcontentloaded")    # recargar sin reloguear
                     page.wait_for_timeout(3000)
                 except Exception:
                     pass
-        if r and r.get("estado") != "OK" and directo:          # todos juntos no sale: de a un impuesto
-            imps = sorted({re.match(r"(\d+)", t)[1] for v in par["anios"].values() for t in v.get("impuestos") or []
-                           if re.match(r"\d+", t)} | set(F931))
-            partes, faltan = [], []
-            for imp in imps:
-                try:
-                    x = _consultar(page, cuit, anio, imp)
-                    if x and x.get("estado") == "OK":
-                        partes.append(x)
-                    elif x and "sin ese impuesto" not in x.get("estado", ""):
-                        faltan.append(imp)
-                except Trabada:
-                    faltan.append(imp)
-                    try:
-                        page.reload(wait_until="domcontentloaded")
-                    except Exception:
-                        pass
-            if partes:
-                r = {"anio": str(anio), "totales": partes[0]["totales"], "estado": "OK" if not faltan else "parcial",
-                     "deudas": [d for x in partes for d in x["deudas"]], "saldos_sld": [d for x in partes for d in x["saldos_sld"]],
-                     "movimientos": [d for x in partes for d in x.get("movimientos", [])],
-                     "impuestos": [t for x in partes for t in x["impuestos"]], "impuestos_pendientes": faltan}
-        if not r or r.get("estado") != "OK":
-            pendientes.append({"anio": str(anio), "motivo": (r or {}).get("estado", "sin datos"),
-                               "impuestos": (r or {}).get("impuestos_pendientes", [])})
-        if r and r.get("deudas") is not None:
-            par["anios"][str(anio)] = r
-        par["pendientes"] = pendientes
-        _guardar_parcial(cuit, par)                      # se guarda año por año
-        arca.pausa(1.0, 2.0)
-    anios_ok = [par["anios"][str(a)] for a in objetivo if str(a) in par["anios"]]
-    return {"anios": anios_ok, "pendientes": pendientes,
-            "leidos": [a["anio"] + ("" if a.get("estado") == "OK" else " (parcial)") for a in anios_ok]}
+        return r
+
+    fr = _ir_a_parametros(page)
+    impuestos = impuestos_disponibles(fr)
+    directo = _campos_periodo(fr) is not None
+    for anio in objetivo:
+        if not directo:                                  # recorrido viejo, año completo con todos los impuestos
+            k = f"{anio}|todos"
+            if k in partes:
+                continue
+            r = intentar(lambda: _por_anio_anterior(page, cuit, anio))
+            if r and r.get("estado") == "OK":
+                partes[k] = par["partes"][k] = r
+            else:
+                pendientes.append({"anio": str(anio), "motivo": (r or {}).get("estado", "sin datos"), "impuestos": []})
+            guardar()
+            continue
+        for imp in impuestos or [None]:
+            k = f"{anio}|{imp or 'todos'}"
+            if k in partes:
+                continue
+            r = intentar(lambda: _consultar(page, cuit, anio, imp))
+            if r and r.get("estado") == "OK":
+                partes[k] = par["partes"][k] = r
+            elif r and "sin ese impuesto" in r.get("estado", ""):
+                pass
+            else:
+                pendientes.append({"anio": str(anio), "impuesto": imp, "motivo": (r or {}).get("estado", "sin datos")})
+            guardar()                                    # se guarda cada impuesto y año al terminarlo
+            arca.pausa(0.5, 1.2)
+    anios_ok = []
+    for anio in objetivo:
+        ps = [v for k, v in partes.items() if k.startswith(f"{anio}|")]
+        if not ps:
+            continue
+        pend_anio = [p for p in pendientes if p["anio"] == str(anio)]
+        tot = {}
+        for clave in ("deuda", "sld", "saldo_tecnico", "otros_creditos", "multas_no_firmes"):
+            vals = [(x.get("totales") or {}).get(clave) for x in ps]
+            tot[clave] = round(sum(v for v in vals if v is not None), 2) if any(v is not None for v in vals) else None
+        tot["desde"], tot["hasta"] = f"{anio}0000", f"{anio}1200"
+        anios_ok.append({"anio": str(anio), "totales": tot,
+                         "estado": "OK" if not pend_anio else "parcial",
+                         "deudas": [d for x in ps for d in x.get("deudas", [])],
+                         "saldos_sld": [d for x in ps for d in x.get("saldos_sld", [])],
+                         "movimientos": [d for x in ps for d in x.get("movimientos", [])],
+                         "impuestos": [t for x in ps for t in x.get("impuestos", [])]})
+    # pendientes agrupados por año para la ficha: {"anio", "impuestos": [...]}
+    agrup = {}
+    for p in pendientes:
+        g = agrup.setdefault(p["anio"], {"anio": p["anio"], "motivo": p.get("motivo", ""), "impuestos": []})
+        if p.get("impuesto"):
+            g["impuestos"].append(p["impuesto"])
+    return {"anios": anios_ok, "pendientes": list(agrup.values()),
+            "leidos": [a["anio"] + ("" if a["estado"] == "OK" else " (parcial)") for a in anios_ok],
+            "impuestos_consultados": impuestos}
 
 
 def _por_anio_anterior(page, cuit: str, anio: int) -> dict:

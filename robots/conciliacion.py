@@ -389,7 +389,103 @@ def ajustes_por_mes(r: dict) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- dos fuentes para la relación D/C (20/11/2026)
+def _mc_totales(cuit: str, per: str) -> dict | None:
+    """Ventas y compras SIN IVA del mes según Mis Comprobantes, con la MISMA fórmula que el Libro IVA:
+    ventas = neto gravado + no gravado + exento (+ el total de los comprobantes sin desglose, p. ej. facturas C);
+    compras = lo mismo sin las facturas B (no se toman) y con el total de las C. None = el mes no está bajado."""
+    emi, rec = os.path.join(DATOS, cuit, per, "emitidos.csv"), os.path.join(DATOS, cuit, per, "recibidos.csv")
+    if not os.path.exists(emi) or not os.path.exists(rec):
+        return None
+    from .lector_mis_comprobantes import leer
+
+    def suma(ruta, compras):
+        df = leer(ruta)
+        t = 0.0
+        for _, x in df.iterrows():
+            tipo = int(x["Tipo"])
+            if compras and tipo in TIPOS_B:
+                continue
+            neto = float(x["Imp. Neto Gravado Total"] or 0)
+            ng = float(x.get("Imp. Neto No Gravado") or 0)
+            ex = float(x.get("Imp. Op. Exentas") or 0)
+            iva = float(x["Total IVA"] or 0)
+            t += neto + ng + ex if (neto or ng or ex or iva) else float(x["Imp. Total"] or 0)
+        return round(t, 2)
+    return {"ventas": suma(emi, False), "compras": suma(rec, True)}
+
+
+def _liva_totales(d: dict) -> dict:
+    v, c = d.get("ventas") or {}, d.get("compras") or {}
+    n = lambda r, k: float(r.get(k) or 0)
+    ventas = n(v, "Neto gravado total") + n(v, "Exento") + n(v, "No gravado")
+    if "Otras ventas sin IVA (sin desglose)" in v:
+        ventas += n(v, "Otras ventas sin IVA (sin desglose)")
+    else:
+        comps = d.get("comprobantes_ventas") or []
+        sin = sum(float(x.get("total") or 0) for x in comps if not x.get("neto") and not x.get("iva"))
+        ventas += max(0.0, sin - n(v, "Exento") - n(v, "No gravado"))
+    compras = (n(c, "Neto gravado total") + n(c, "Exento") + n(c, "No gravado")
+               + n(c, "Comprobantes B/C (sin IVA discriminado)"))
+    return {"ventas": round(ventas, 2), "compras": round(compras, 2)}
+
+
+def comparar_fuentes(cuit: str, ventas: dict | None = None, compras: dict | None = None) -> dict:
+    """Mes a mes y por concepto (ventas, compras): Libro IVA (Portal IVA) contra Mis Comprobantes. Diferencia
+    relevante = más del 2 % o de $25.000 en el mes (lo que sea mayor). Mes sin alguna de las dos fuentes completa =
+    'no comparable'. Guarda DATOS/<cuit>/conciliacion/fuentes.json para la web."""
+    meses = {}
+    for r in sorted(glob.glob(os.path.join(DATOS, cuit, "libro_iva", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json"))):
+        meses[os.path.basename(r)[:7]] = _liva_totales(_leer_json(r))
+    for d in sorted(glob.glob(os.path.join(DATOS, cuit, "[0-9][0-9][0-9][0-9]-[0-9][0-9]"))):
+        meses.setdefault(os.path.basename(d), None)
+    filas = []
+    for per in sorted(meses)[-12:]:
+        li = meses[per]
+        try:
+            mc = _mc_totales(cuit, per)
+        except Exception:
+            mc = None
+        f = {"periodo": per, "libro_iva": li, "mis_comprobantes": mc}
+        if li is None or mc is None:
+            f["estado"] = "no comparable: falta " + ("el Libro IVA" if li is None else "Mis Comprobantes")
+        else:
+            f["estado"] = "OK"
+            for k in ("ventas", "compras"):
+                dif = round(mc[k] - li[k], 2)
+                umbral = max(0.02 * max(abs(li[k]), abs(mc[k])), 25_000.0)
+                f[f"dif_{k}"] = dif
+                if abs(dif) > umbral:
+                    f["estado"] = "DIFERENCIA"
+        filas.append(f)
+    det = {}
+    for nombre, lista, campo in (("ventas emitidas que no están en el Libro IVA", (ventas or {}).get("no_declaradas"), "Período MC"),
+                                 ("ventas del Libro IVA que no están en Mis Comprobantes", (ventas or {}).get("solo_libro_iva"), "Período"),
+                                 ("compras de Mis Comprobantes que no están en el Libro IVA", (compras or {}).get("no_tomadas"), "Período MC"),
+                                 ("compras del Libro IVA que no están en Mis Comprobantes", (compras or {}).get("solo_libro_iva"), "Período")):
+        for x in lista or []:
+            per = str(x.get(campo) or x.get("Período") or "")[:7]
+            det.setdefault(per, []).append({"que": nombre, **{k: (str(v) if not isinstance(v, (int, float)) else v)
+                                                              for k, v in x.items()}})
+    for f in filas:
+        f["solo_en_una"] = det.get(f["periodo"], [])[:60]
+    res = {"cuit": cuit, "fecha": date.today().isoformat(), "meses": filas,
+           "alertas": [{"prioridad": "ALTA", "tipo": "Relación D/C: las dos fuentes no coinciden",
+                        "texto": "; ".join(f"{f['periodo']}: ventas {f.get('dif_ventas', 0):,.2f}, compras {f.get('dif_compras', 0):,.2f}"
+                                           for f in filas if f["estado"] == "DIFERENCIA")
+                                 + " (Mis Comprobantes − Libro IVA, más del 2 % o $25.000)"}]
+           if any(f["estado"] == "DIFERENCIA" for f in filas) else []}
+    os.makedirs(os.path.join(DATOS, cuit, "conciliacion"), exist_ok=True)
+    with open(os.path.join(DATOS, cuit, "conciliacion", "fuentes.json"), "w", encoding="utf-8") as fh:
+        json.dump(res, fh, ensure_ascii=False, indent=1, default=str)
+    return res
+
+
 def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
+    try:                                   # comparación de las dos fuentes de la relación D/C (20/11/2026)
+        comparar_fuentes(cuit, conciliar_ventas(cuit), conciliar(cuit))
+    except Exception:
+        pass
     r = conciliar(cuit)
     if r.get("sin_libro_iva"):
         return None

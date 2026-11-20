@@ -325,8 +325,9 @@ ok(_mf.status_code == 200 and "icono-512.png" in _mf.text and _mf.mimetype == "a
 from robots_web.app import utilidad  # noqa: E402
 ok(utilidad(1.5) == "50,00%" and utilidad(0.87) == "−13,00%" and utilidad(1.23456) == "23,46%", "utilidad = D/C − 1 con 2 decimales")
 _ri = cl.get(f"/cliente/{C2}/iva").text
-ok("Utilidad (D/C − 1)" in _ri and "−50,00%" in _ri and "txt-rojo" in _ri, "utilidad negativa con signo menos y en rojo")
-ok("· utilidad −50,00%" in r.text, "ficha del cliente: D/C con utilidad")
+ok("(D/C − 1)" in _ri and "no es la utilidad" in _ri and "−50,00%" in _ri and "txt-rojo" in _ri, "D/C − 1 con signo menos, en rojo y aclarando que no es la utilidad")
+ok("IVA: débito / crédito fiscal" in r.text and "· utilidad" not in r.text and "índice erogaciones/ventas" in r.text or "datos incompletos" in r.text,
+   "ficha del cliente: la tarjeta de IVA ya no dice 'utilidad'; la utilidad está en la relación D/C (20/11/2026)")
 ok("con ajustes" not in r2.text, "sin conciliación: no muestra el bloque de ajustes")
 _per = analisis.resultado_mensual(C2)[0]["periodo"]
 escribir(f"{D}/{C2}/conciliacion/ajustes_conciliacion.json",
@@ -337,7 +338,7 @@ ok(abs(_m["erogaciones_ajustadas"] - (_m["erogaciones"] - 60_000)) < 1 and abs(_
 r2 = cl.get(f"/cliente/{C2}/relacion")
 ok("con ajustes" not in r2.text, "relación D/C sin la conciliación (va en la planilla de conciliación aparte)")
 os.remove(f"{D}/{C2}/conciliacion/ajustes_conciliacion.json")
-ok("Débito / crédito y proyección" in r.text and "Relación débito crédito" in r.text and "Fiscalizaciones" in r.text
+ok("IVA: débito / crédito fiscal" in r.text and "Relación débito crédito" in r.text and "Fiscalizaciones" in r.text
    and "AGIP (Ciudad)" in r.text and "Pedir corrida" in r.text, "ficha con botones nuevos y pedir corrida")
 escribir(f"{R}/publico/grupos.json", {C2: {"dia": 2, "semana": 1}, C3: {"dia": 4, "semana": 0}})
 ok("<b>todos los miércoles</b>" in cl.get(f"/cliente/{C2}").text, "inscripto (o sin clasificar): todas las semanas")
