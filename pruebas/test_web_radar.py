@@ -525,6 +525,30 @@ ok(_pv and len(_pv[0]["conceptos"]) == min(2, len(_vals)) and _pv[0]["medio"] ==
 for n in os.listdir(os.path.join(BANDEJA, "pedidos")):
     if n.endswith(".json") and json.load(open(os.path.join(BANDEJA, "pedidos", n))).get("robot") == "vep_deuda":
         os.remove(os.path.join(BANDEJA, "pedidos", n))
+# VEPs generados: se ven en Deuda con número, importe, conceptos y la pantalla de ARCA (20/11/2026)
+os.makedirs(f"{R}/datos/{C}/vep", exist_ok=True)
+escribir(f"{R}/datos/{C}/vep/2026-11-20_deuda_1710611439.json",
+         {"vep": "1710611439", "medio": "Pago Mis Cuentas (Banelco)", "importe": 98765.43, "descripcion": "VCON#6",
+          "conceptos": [{"impuesto": "IVA", "concepto": "Impuesto", "periodo": "2026-09", "total": 98765.43}],
+          "creado": "2026-11-20T15:30:00", "vence": "2026-11-20", "pedido_por": "ana", "captura": True})
+open(f"{R}/datos/{C}/vep/2026-11-20_deuda_1710611439.png", "wb").write(b"\x89PNG\r\n\x1a\nfalso")
+_pe = os.path.join(R, "publico", "pedidos_estado.json")
+_pe_viejo = json.load(open(_pe)) if os.path.exists(_pe) else []
+escribir(_pe, [{"id": "aa11", "fecha": "2026-11-20T15:40:00", "por": "ana", "cuit": C, "robot": "vep_deuda", "estado": "error",
+                "detalle": "ErrorRobot: VEP: la confirmación muestra 3 conceptos y se tildaron 2. No se generó.",
+                "medio": "Interbanking", "n_conceptos": 2},
+               {"id": "aa12", "fecha": "2026-11-20T15:29:00", "por": "ana", "cuit": C, "robot": "vep_deuda", "estado": "terminado",
+                "detalle": "OK VEP 1710611439 por $ 98.765,43"}] + _pe_viejo)
+_dv = cl.get(f"/cliente/{C}/deuda").text
+ok("VEPs generados desde el sistema" in _dv and "1710611439" in _dv and "98.765,43" in _dv and "VCON#6" in _dv
+   and "Pago Mis Cuentas (Banelco)" in _dv and "Ver pantalla de ARCA" in _dv and _dv.count("1710611439") <= 3,
+   "Deuda: VEP generado con número, importe, medio, conceptos y captura (sin repetir el pedido terminado)")
+ok("No se generó" in _dv and "se tildaron 2" in _dv, "Deuda: el pedido de VEP que falló se ve con el motivo")
+_im = cl.get(f"/cliente/{C}/vep_captura/2026-11-20_deuda_1710611439")
+ok(_im.status_code == 200 and _im.mimetype == "image/png", "se ve la pantalla de ARCA del VEP")
+ok(cl.get(f"/cliente/{C}/vep_captura/..%2Fclave").status_code == 404 and cb.get(f"/cliente/{C}/vep_captura/2026-11-20_deuda_1710611439").status_code == 403,
+   "captura del VEP: sin rutas raras y solo para quien lleva el cliente")
+escribir(_pe, _pe_viejo)
 # reporte de ventas para bancos desde el Portal IVA (20/11/2026)
 _vb = cl.get(f"/cliente/{C}/ventas_bancos").text
 ok("Reporte de ventas para bancos" in _vb and "Promedio mensual neto (12 meses)" in _vb and "⬇ Excel" in _vb, "ventas para bancos: 12 meses por defecto")

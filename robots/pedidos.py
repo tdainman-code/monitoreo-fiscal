@@ -65,6 +65,7 @@ def _anotar(p: dict, estado: str, detalle: str = "") -> None:
     lista = [x for x in _estado_leer() if x.get("id") != p["id"]]
     lista.insert(0, {"id": p["id"], "fecha": p.get("fecha"), "por": p.get("por"), "cuit": p["cuit"],
                      "robot": p["robot"], "estado": estado, "detalle": detalle[:400],
+                     "medio": p.get("medio"), "n_conceptos": len(p.get("conceptos") or []) or None,
                      "actualizado": dt.datetime.now().isoformat(timespec="seconds")})
     _estado_guardar(lista)
 
@@ -153,7 +154,7 @@ def procesar() -> int:
                     res = avisos.accion_web(p["aviso"], con_vep=True, por=p.get("por") or "?")
                 elif p["robot"] == "vep_deuda":              # VEP de deuda pedido desde la web (20/11/2026)
                     from . import avisos, robot_vep_deuda
-                    v = robot_vep_deuda.correr(p["cuit"], p["conceptos"], p["medio"])
+                    v = robot_vep_deuda.correr(p["cuit"], p["conceptos"], p["medio"], por=p.get("por") or "")
                     res = (f"OK VEP {v['vep']} por $ {v.get('importe') or 0:,.2f} ({p['medio']}), vence hoy a la medianoche"
                            .replace(",", "X").replace(".", ",").replace("X", "."))
                     if p.get("enviar"):

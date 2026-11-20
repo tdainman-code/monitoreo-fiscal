@@ -286,7 +286,7 @@ def cliente_seccion(cuit, seccion):
         s = {**s, "dc": usuarios.datos_cliente(cuit)}
     if seccion == "ventas_bancos":
         s = {**s, "vb": _ventas_bancos(cuit)[0], "vb_periodos": sorted(analisis._meses(cuit, "libro_iva"))}
-    return render_template("seccion.html", c=info, s=s, sec=seccion, titulo=SECCIONES[seccion], org=org,
+    return render_template("seccion.html", c=info, s=s, sec=seccion, hoy_iso=date.today().isoformat(), titulo=SECCIONES[seccion], org=org,
                            notas=usuarios.notas(cuit) if seccion == "notas" else [], grafico=graf,
                            informadas=usuarios.informadas() if seccion == "notificaciones" else {}, pct=analisis.pct,
                            medios_vep_todos=MEDIOS_VEP_DEUDA, vep_deuda_listo=VEP_DEUDA_LISTO,
@@ -548,6 +548,19 @@ def vep_deuda(cuit):
         except pedidos.ErrorPedido as e:
             flash(str(e), "error")
     return redirect(url_for("cliente_seccion", cuit=cuit, seccion="deuda"))
+@app.route("/cliente/<cuit>/vep_captura/<archivo>")
+@requiere_login
+def vep_captura(cuit, archivo):
+    """Captura de la pantalla final de ARCA con el VEP generado (20/11/2026)."""
+    _cliente_info(cuit)
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}_deuda_\d{1,20}", archivo):
+        abort(404)
+    ruta = os.path.join(datos.DATOS, cuit, "vep", archivo + ".png")
+    if not os.path.isfile(ruta):
+        abort(404)
+    return send_file(ruta, mimetype="image/png", download_name=f"VEP_{cuit}_{archivo}.png")
+
+
 CAMPOS_CLIENTE = {
     "condicion_iva": "Condición frente al IVA", "condicion_ganancias": "Ganancias", "bienes_personales": "Bienes Personales",
     "regimen_iibb": "Régimen de Ingresos Brutos", "jurisdicciones_iibb": "Jurisdicciones de IIBB",

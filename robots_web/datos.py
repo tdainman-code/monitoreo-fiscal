@@ -359,6 +359,27 @@ def _notificaciones(base: str, dfe: dict | None) -> list[dict]:
     return sorted(out, key=clave), arba
 
 
+def veps_deuda(cuit: str) -> dict:
+    """VEPs de deuda generados desde el sistema (20/11/2026): los ya generados (con su captura) y los pedidos en curso o fallidos."""
+    gen = []
+    for r in sorted(glob.glob(os.path.join(DATOS, cuit, "vep", "*_deuda_*.json")), reverse=True):
+        v = _leer(r)
+        if isinstance(v, dict) and v.get("vep"):
+            v["archivo"] = os.path.basename(r)[:-5]
+            v["captura"] = os.path.exists(r[:-5] + ".png")
+            gen.append(v)
+    hechos = {str(v["vep"]) for v in gen}
+    ped = []
+    for p in _leer(os.path.join(PUBLICO, "pedidos_estado.json")) or []:
+        if not isinstance(p, dict) or p.get("cuit") != cuit or p.get("robot") != "vep_deuda":
+            continue
+        m = re.search(r"VEP (\d+)", p.get("detalle") or "")
+        if p.get("estado") == "terminado" and m and m[1] in hechos:
+            continue                                   # ya figura con todo su detalle
+        ped.append(p)
+    return {"generados": gen, "pedidos": ped[:10]}
+
+
 def ficha(cuit: str) -> dict:
     """Situación + todo lo nuevo, y los botones de la ficha (cada uno con un número y un color)."""
     s = situacion(cuit)
@@ -396,6 +417,7 @@ def ficha(cuit: str) -> dict:
     s["deudas_vencidas"] = [d for d in deudas_ if d.get("vencida") and (d.get("total") or 0) > 0]
     s["deudas_por_vencer"] = [d for d in deudas_ if not d.get("vencida") and (d.get("total") or 0) > 0]
     n_obl = len(s["deudas_vencidas"])
+    s["veps_deuda"] = veps_deuda(cuit)
     # 20/11/2026 (Benavidez): si Cuentas Tributarias no se pudo leer, no decir "sin datos" cuando hay deuda conocida
     # por otras consultas (autónomos/monotributo de CCMA, estado de cumplimiento).
     otras = []

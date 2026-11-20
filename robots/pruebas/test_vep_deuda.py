@@ -78,6 +78,7 @@ with sync_playwright() as p:
     pg.set_content(pagina())
     v = rv.generar_en_sct(pg, pg.main_frame, CUIT, [C1, C2], "Pago Mis Cuentas (Banelco)")
     chk(v["vep"] == "1710611439" and v["descripcion"] == "VCON#6", f"VEP consolidado leído ({v['vep']} {v['descripcion']})")
+    chk(isinstance(v.get("_captura"), bytes) and v["_captura"][:4] == b"\x89PNG", "guarda la pantalla final del VEP (para verla en la web)")
     chk(abs(v["importe"] - (890.90 + 230823.55 + 39355.56)) < 0.01 and abs(v["total_confirmacion"] - v["importe"]) < 0.01,
         f"importe del VEP = total de la confirmación ({v['importe']})")
     marcadas = pg.evaluate("[...document.querySelectorAll('#t tbody tr')].map(r=>r.querySelector('input').checked)")

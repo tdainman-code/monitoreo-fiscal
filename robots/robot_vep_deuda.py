@@ -180,12 +180,16 @@ def generar_en_sct(page, fr, cuit: str, conceptos: list[dict], medio: str) -> di
         raise arca.CuitEquivocado(f"VEP {vep}: figura el CUIT {cuit_vep[1]} y no {arca.cuit_fmt(cuit)}")
     desc = re.search(r"Descripci[oó]n\s*:?\s*([^\n]+)", fin)
     m_imp = re.search(r"Importe\s*:?\s*\$\s*[\d.]+,\d{2}", fin)
-    return {"vep": vep, "medio": medio, "importe": _importe(m_imp[0]) if m_imp else None,
+    try:                                   # 20/11/2026: captura de la pantalla final, para verla desde la web
+        captura = page.screenshot(full_page=True)
+    except Exception:
+        captura = None
+    return {"_captura": captura, "vep": vep, "medio": medio, "importe": _importe(m_imp[0]) if m_imp else None,
             "total_confirmacion": total_conf, "descripcion": desc[1].strip() if desc else "", "conceptos": conceptos,
             "creado": datetime.now().isoformat(timespec="seconds"), "vence": date.today().isoformat()}
 
 
-def correr(cuit: str, conceptos: list[dict], medio: str, visible: bool = False) -> dict:
+def correr(cuit: str, conceptos: list[dict], medio: str, visible: bool = False, por: str = "") -> dict:
     """Entra a ARCA con la clave del cliente y genera el VEP consolidado. Guarda DATOS/<cuit>/vep/<fecha>_deuda_<vep>.json."""
     from . import almacen_claves as alm
     from . import robot_situacion_fiscal as rsf
@@ -211,6 +215,12 @@ def correr(cuit: str, conceptos: list[dict], medio: str, visible: bool = False) 
         raise arca.ErrorRobot("No se pudo generar el VEP de deuda")
     carpeta = os.path.join(DATOS, cuit, "vep")
     os.makedirs(carpeta, exist_ok=True)
-    with open(os.path.join(carpeta, f"{date.today().isoformat()}_deuda_{v['vep']}.json"), "w", encoding="utf-8") as f:
+    base = os.path.join(carpeta, f"{date.today().isoformat()}_deuda_{v['vep']}")
+    captura = v.pop("_captura", None)
+    if captura:
+        with open(base + ".png", "wb") as f:
+            f.write(captura)
+    v.update(cuit=cuit, pedido_por=por, captura=bool(captura))
+    with open(base + ".json", "w", encoding="utf-8") as f:
         json.dump(v, f, ensure_ascii=False, indent=1)
     return v

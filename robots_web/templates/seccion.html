@@ -25,7 +25,7 @@
     {% if vep_deuda_listo %}<button>Generar VEP</button>
     {% else %}<button disabled>Generar VEP</button>
     <span class="sutil">Se habilita cuando el robot tenga relevada la pantalla de ARCA donde se genera el VEP de la deuda (Cuentas Tributarias → Deudas → Generar VEP): faltan las capturas.</span>{% endif %}
-    <span class="sutil">ARCA arma <b>un solo VEP</b> con todo lo tildado. Vence a la medianoche del día en que se genera y los intereses se calculan a ese día. El resultado (número de VEP) queda en Más → Robots.</span>
+    <span class="sutil">ARCA arma <b>un solo VEP</b> con todo lo tildado. Vence a la medianoche del día en que se genera y los intereses se calculan a ese día. El VEP generado (número, importe, conceptos y la pantalla de ARCA) aparece abajo, en <b>VEPs generados</b>.</span>
   </div>
   {% endif %}
   </form>
@@ -33,6 +33,30 @@
     document.getElementById('vep-total').textContent='$ '+t.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});document.getElementById('vep-n').textContent=n}</script>
   {% if not s.deudas_vencidas %}<p class="sutil">Sin deuda vencida.</p>{% endif %}
   {% else %}<p class="sutil">Sin datos de Cuentas Tributarias todavía.</p>{% endif %}
+
+  {% set vd = s.veps_deuda or {} %}
+  {% if vd.pedidos or vd.generados %}<h2 id="veps">VEPs generados desde el sistema</h2>{% endif %}
+  {% for p in vd.pedidos %}
+  <div class="pedir">{% if p.estado in ('pendiente', 'en espera', 'corriendo') %}⏳ <b>En proceso</b>{% elif p.estado == 'terminado' %}✔ <b>Generado</b>{% else %}✘ <b>No se generó</b> ({{ p.estado }}){% endif %}
+    · pedido por {{ p.por }} el {{ (p.fecha or '')[:10]|fecha }} {{ (p.fecha or '')[11:16] }}{% if p.medio %} · {{ p.medio }}{% endif %}{% if p.n_conceptos %} · {{ p.n_conceptos }} concepto(s){% endif %}
+    {% if p.detalle %}<div class="sutil">{{ p.detalle }}</div>{% endif %}
+    {% if p.estado in ('pendiente', 'en espera', 'corriendo') %}<div class="sutil">Recargá la página en un par de minutos.</div>{% endif %}</div>
+  {% endfor %}
+  {% if vd.generados %}
+  <table class="tabla"><thead><tr><th>Generado</th><th>N° de VEP</th><th>Medio de pago</th><th class="num">Importe</th><th>Vence</th><th>Pedido por</th><th>Conceptos</th><th></th></tr></thead><tbody>
+  {% for v in vd.generados %}<tr>
+    <td data-l="Generado">{{ (v.creado or '')[:10]|fecha }} {{ (v.creado or '')[11:16] }}</td>
+    <td data-l="N° de VEP"><b>{{ v.vep }}</b>{% if v.descripcion %}<div class="sutil">{{ v.descripcion }}</div>{% endif %}</td>
+    <td data-l="Medio de pago">{{ v.medio }}</td>
+    <td class="num" data-l="Importe"><b>{{ v.importe|pesos }}</b></td>
+    <td data-l="Vence">{{ v.vence|fecha }} a la medianoche{% if v.vence and v.vence < hoy_iso %} <span class="txt-rojo">(vencido)</span>{% endif %}</td>
+    <td data-l="Pedido por">{{ v.pedido_por or '—' }}</td>
+    <td data-l="Conceptos"><details><summary>{{ (v.conceptos or [])|length }} concepto(s)</summary><ul>
+      {% for k in v.conceptos or [] %}<li class="sutil">{{ k.impuesto }} · {{ k.concepto }}{% if k.subconcepto and k.subconcepto != k.concepto %} · {{ k.subconcepto }}{% endif %} · {{ k.periodo }} · {{ k.total|pesos }}</li>{% endfor %}</ul></details></td>
+    <td>{% if v.captura %}<a class="boton" href="{{ url_for('vep_captura', cuit=c.cuit, archivo=v.archivo) }}" target="_blank">Ver pantalla de ARCA</a>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table>
+  <p class="sutil">El VEP se paga desde el home banking del medio elegido (en "Pagos AFIP / VEP"), con el número de arriba.</p>
+  {% endif %}
 
 {% elif sec == 'por_vencer' %}
   {% if s.sct %}
