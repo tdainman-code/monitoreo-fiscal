@@ -502,6 +502,20 @@ with _con:
     _con.execute("UPDATE descartes SET fecha='2026-01-01T00:00:00'")
 _con.close()
 ok(cl.get("/alertas").text.count('class="alta"') == _n_antes, "a los 30 días, si sigue igual, la alerta vuelve")
+# descartar el cliente completo (20/11/2026)
+_al = cl.get("/alertas").text
+ok(_al.count('class="grupo-alertas"') >= 2 and "Descartar <b>todas</b> las alertas de este cliente" in _al, "alertas agrupadas por cliente")
+_n_cli = len([g for g in datos.alertas_del_dia({_ccu}) if g["cuit"] == _ccu][0]["alertas"])
+_r = cl.post("/alertas", data={"csrf": token(_al), "accion": "descartar_cliente", "cuit": _ccu, "motivo": "Alerta sin relevancia"},
+             follow_redirects=True)
+ok(f"{_n_cli} alerta(s) del cliente descartadas" in _r.text and f'value="{_ccu}"><input type="hidden" name="tipo"' not in _r.text.replace("\n", "").replace("  ", ""),
+   "descartar el cliente completo saca todas sus alertas")
+_d = cl.get("/alertas?ver=descartadas").text
+ok("Volver a mostrar todas las del cliente" in _d, "descartadas agrupadas por cliente")
+_r = cl.post("/alertas", data={"csrf": token(_d), "accion": "restaurar_cliente", "cuit": _ccu}, follow_redirects=True)
+ok(f"{_n_cli} alerta(s) del cliente volvieron" in _r.text, "volver a mostrar todas las del cliente")
+ok(cb.post("/alertas", data={"csrf": token(cb.get("/sugerencias").text), "accion": "descartar_cliente", "cuit": C,
+                             "motivo": "Alerta sin relevancia"}).status_code == 403, "no se descarta un cliente ajeno")
 ok(cb.post("/alertas", data={"csrf": token(cb.get("/sugerencias").text), "cuit": C, "tipo": _tipo, "texto": _texto,
                              "motivo": "Alerta sin relevancia"}).status_code == 403, "no se descartan alertas de clientes ajenos")
 ok(cl.get("/actividad").status_code == 403, "colaborador no ve actividad")

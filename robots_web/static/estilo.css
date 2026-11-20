@@ -188,3 +188,7 @@ a.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.10)}
 details.descartar{margin-top:6px;font-size:13px}details.descartar summary{cursor:pointer;color:var(--gris)}
 details.descartar form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
 details.descartar input[type=text]{flex:1 1 220px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px}
+details.grupo-alertas{background:#fff;border:1px solid var(--borde);border-radius:12px;padding:10px 14px;margin:10px 0;box-shadow:var(--sombra)}
+details.grupo-alertas>summary{cursor:pointer;font-size:15px;list-style:none}details.grupo-alertas>summary::-webkit-details-marker{display:none}
+details.grupo-alertas>summary::before{content:"▸ ";color:var(--gris)}details.grupo-alertas[open]>summary::before{content:"▾ "}
+details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px dashed var(--borde)}
