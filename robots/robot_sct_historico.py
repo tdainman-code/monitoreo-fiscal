@@ -29,6 +29,7 @@ from . import arca
 
 DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
 ANIOS = 6                                   # año en curso + 5 anteriores
+ESPERA_CARGA = 90                           # segundos de "CARGANDO" antes de darla por trabada
 F931 = {"28", "301", "302", "312", "351", "352", "360"}
 
 JS_TABLAS = r"""() => {
@@ -125,6 +126,28 @@ def analizar(tablas: list[dict]) -> list[dict]:
 IVA = "30"
 
 
+def analizar_movimientos(tablas: list[dict]) -> list[dict]:
+    """Todas las filas con algún importe (deuda, S.L.D., saldo técnico, otros créditos), por impuesto, período y
+    concepto: para ver el saldo de cada concepto de cargas sociales y no solo la deuda (Gaby 20/11/2026)."""
+    out = []
+    for t in tablas:
+        cab = [c.upper().replace(" ", "") for c in t.get("cab") or []]
+        col = lambda pref, d=None: next((i for i, c in enumerate(cab) if c.startswith(pref)), d)
+        i_p, i_c, i_d, i_s, i_t, i_o = col("PER", 1), col("CONCEPTO", 2), col("DEUDA"), col("S.L.D"), col("SALDOTEC"), col("OTROSCRED")
+        m = re.match(r"(\d+)\s*-\s*(.+)", t.get("titulo") or "")
+        imp, nombre = (m[1], m[2].strip()) if m else ("", t.get("titulo") or "")
+        for f in t.get("filas") or []:
+            c = f["celdas"]
+            if not re.fullmatch(r"\d{8}", c[i_p] if len(c) > i_p else ""):
+                continue
+            v = lambda i: round(_num(c[i]) or 0.0, 2) if i is not None and i < len(c) else 0.0
+            fila = {"impuesto": imp, "nombre": nombre, "periodo": c[i_p], "concepto": c[i_c] if len(c) > i_c else "",
+                    "deuda": v(i_d), "sld": v(i_s), "saldo_tecnico": v(i_t), "otros_creditos": v(i_o)}
+            if any(fila[k] for k in ("deuda", "sld", "saldo_tecnico", "otros_creditos")):
+                out.append(fila)
+    return out
+
+
 def analizar_sld(tablas: list[dict]) -> list[dict]:
     """Filas con S.L.D. > 0 (saldo de libre disponibilidad) de los conceptos que NO son IVA. Pedido de Gaby 19/11/2026:
     cuando el cliente paga mal (dos veces, período equivocado) el saldo queda en la columna S.L.D. del concepto,
@@ -198,43 +221,203 @@ def _esperar_carga(fr, page) -> None:
         page.wait_for_timeout(1000)
 
 
-def leer_anios(page, cuit: str, anios: int = ANIOS) -> dict:
+class Trabada(Exception):
+    """La consulta no terminó de cargar (la SCT se cuelga, sobre todo al pasar de año)."""
+
+
+def _ir_a_parametros(page):
     try:
         _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$", espera_s=15)
     except arca.ErrorRobot:                            # menú plegado: se abre "CUENTA CORRIENTE"
         _clic_texto(page, r"^\s*CUENTA CORRIENTE\s*$")
         _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$")
-    fr = _marco_con(page, r"Ingreso de Par[aá]metros")
+    return _marco_con(page, r"Ingreso de Par[aá]metros")
+
+
+def _campos_periodo(fr):
+    """Campos 'período desde' / 'período hasta' del Ingreso de Parámetros, si se reconocen (por name, id,
+    placeholder o el texto de al lado). Devuelve (desde, hasta) o None. Pantalla a confirmar con captura."""
+    try:
+        info = fr.evaluate("""() => [...document.querySelectorAll('input[type=text], input:not([type]), input[type=number]')]
+            .filter(i => i.offsetParent).map((i, n) => {
+              const lab = (i.labels && i.labels[0] ? i.labels[0].innerText : '') + ' ' + (i.closest('td,div,label') || {}).innerText;
+              i.setAttribute('data-robot-in', String(n));
+              return {n, txt: [i.name, i.id, i.placeholder, lab].join(' ').toLowerCase(), max: i.maxLength};
+            })""")
+    except Exception:
+        return None
+    desde = next((x for x in info if re.search(r"desde|inicio|inicial", x["txt"]) and re.search(r"per", x["txt"])), None)
+    hasta = next((x for x in info if re.search(r"hasta|fin(al)?\b", x["txt"]) and re.search(r"per", x["txt"])), None)
+    if not desde or not hasta:
+        return None
+    return desde, hasta
+
+
+def _elegir_impuesto(fr, impuesto: str) -> bool:
+    sel = fr.locator("select").filter(has=fr.locator("option", has_text=re.compile(rf"^\s*0*{impuesto}\b")))
+    if not sel.count():
+        return False
+    op = next((o for o in sel.first.locator("option").all_inner_texts() if re.match(rf"\s*0*{impuesto}\b", o)), None)
+    sel.first.select_option(label=op)
+    return True
+
+
+def _consultar(page, cuit: str, anio: int, impuesto: str | None = None) -> dict | None:
+    """Consulta NUEVA de un año (y opcionalmente un impuesto) eligiendo el período directo. None = la pantalla de
+    parámetros no tiene campos de período reconocibles (se usa el recorrido con AÑO ANTERIOR)."""
+    fr = _ir_a_parametros(page)
+    campos = _campos_periodo(fr)
+    if not campos:
+        return None
+    for x, mes in ((campos[0], "01"), (campos[1], "12")):
+        valor = f"{anio}{mes}" if x["max"] in (6, -1, 524288) or x["max"] < 8 else f"{anio}{mes}00"
+        fr.locator(f"[data-robot-in='{x['n']}']").fill(valor)
+    if impuesto and not _elegir_impuesto(fr, impuesto):
+        return {"anio": str(anio), "impuesto": impuesto, "estado": "sin ese impuesto en el selector"}
     fr.get_by_text(re.compile(r"^\s*SIGUIENTE\s*$", re.I)).first.click()
-    res = {"anios": []}
-    anterior = None
-    for _ in range(anios):
-        fr = _marco_con(page, r"Per[ií]odo Fiscal consultado")
-        _esperar_carga(fr, page)
-        texto = fr.locator("body").inner_text()
-        tot = leer_totales(texto)
-        if tot["desde"] == anterior:                   # el botón no avanzó: se espera un poco más
-            page.wait_for_timeout(4000)
-            texto = fr.locator("body").inner_text()
-            tot = leer_totales(texto)
-            if tot["desde"] == anterior:
+    return _leer_consulta(page, cuit, str(anio))
+
+
+def _leer_consulta(page, cuit: str, anio_esperado: str | None = None) -> dict:
+    fr = _marco_con(page, r"Per[ií]odo Fiscal consultado", espera_s=90)
+    for _ in range(ESPERA_CARGA):                       # CARGANDO: si no termina, está trabada
+        try:
+            if not fr.get_by_text(re.compile(r"^\s*CARGANDO", re.I)).locator("visible=true").count():
                 break
-        if arca.cuit_fmt(cuit) not in texto:
-            otros = sorted(set(re.findall(r"\d{2}-\d{8}-\d", texto)) - {arca.cuit_fmt(cuit)})
-            raise arca.CuitEquivocado(f"Estado de cumplimiento: muestra {', '.join(otros) or 'otro CUIT'}")
-        tablas = fr.evaluate(JS_TABLAS)
-        res["anios"].append({"anio": tot["desde"][:4], "totales": tot, "deudas": analizar(tablas), "saldos_sld": analizar_sld(tablas),
-                             "impuestos": [t["titulo"] for t in tablas]})
-        anterior = tot["desde"]
+        except Exception:
+            break
+        page.wait_for_timeout(1000)
+    else:
+        raise Trabada("la consulta quedó cargando")
+    texto = fr.locator("body").inner_text()
+    tot = leer_totales(texto)
+    if anio_esperado and tot["desde"][:4] != anio_esperado:
+        raise Trabada(f"se pidió {anio_esperado} y la pantalla muestra {tot['desde'][:4] or 'otro período'}")
+    if arca.cuit_fmt(cuit) not in texto:
+        otros = sorted(set(re.findall(r"\d{2}-\d{8}-\d", texto)) - {arca.cuit_fmt(cuit)})
+        raise arca.CuitEquivocado(f"Estado de cumplimiento: muestra {', '.join(otros) or 'otro CUIT'}")
+    tablas = fr.evaluate(JS_TABLAS)
+    return {"anio": tot["desde"][:4], "totales": tot, "deudas": analizar(tablas), "saldos_sld": analizar_sld(tablas),
+            "movimientos": analizar_movimientos(tablas), "impuestos": [t["titulo"] for t in tablas], "estado": "OK"}
+
+
+def _ruta_parcial(cuit: str) -> str:
+    return os.path.join(DATOS, cuit, "sct_historico", "_parcial.json")
+
+
+def _parcial(cuit: str) -> dict:
+    try:
+        with open(_ruta_parcial(cuit), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _guardar_parcial(cuit: str, p: dict) -> None:
+    os.makedirs(os.path.dirname(_ruta_parcial(cuit)), exist_ok=True)
+    with open(_ruta_parcial(cuit), "w", encoding="utf-8") as f:
+        json.dump(p, f, ensure_ascii=False, indent=1)
+
+
+def leer_anios(page, cuit: str, anios: int = ANIOS, hoy: date | None = None) -> dict:
+    """Pedido de Gaby 20/11/2026 (la SCT se colgaba al pasar de año y el robot terminaba en falla):
+      - cada año es una consulta NUEVA eligiendo el período directo (no el botón AÑO ANTERIOR); si la pantalla de
+        parámetros no tiene campos de período reconocibles, se usa el recorrido con AÑO ANTERIOR como antes;
+      - si un año se traba se recarga la consulta (sin reloguear) y se reintenta; si se traba con todos los
+        impuestos juntos se pide impuesto por impuesto; lo que no sale queda PENDIENTE y se sigue;
+      - cada año se guarda al terminarlo (_parcial.json); la próxima corrida retoma solo lo pendiente
+        (el año en curso se lee siempre de nuevo).
+    Devuelve {"anios": [...], "pendientes": [...], "leidos": [...]}."""
+    hoy = hoy or date.today()
+    actual = hoy.year
+    objetivo = list(range(actual, actual - anios, -1))
+    par = _parcial(cuit)
+    if par.get("fecha", "")[:7] < (hoy.replace(day=1) - __import__("datetime").timedelta(days=40)).isoformat()[:7]:
+        par = {}                                        # lo guardado tiene más de un mes: se lee todo de nuevo
+    hechos = {a: v for a, v in (par.get("anios") or {}).items() if v.get("estado") == "OK" and int(a) != actual}
+    par = {"fecha": hoy.isoformat(), "anios": dict(hechos), "pendientes": []}
+    pendientes = []
+    directo = None                                       # None = todavía no se sabe si hay campos de período
+    for anio in objetivo:
+        if str(anio) in hechos:
+            continue
+        r = None
+        for intento in range(2):
+            try:
+                if directo is not False:
+                    r = _consultar(page, cuit, anio)
+                    if r is None:
+                        directo = False
+                    else:
+                        directo = True
+                if directo is False:
+                    r = _por_anio_anterior(page, cuit, anio)
+                break
+            except Trabada as e:
+                r = {"anio": str(anio), "estado": f"trabada: {e}"}
+                try:
+                    page.reload(wait_until="domcontentloaded")    # recargar sin reloguear
+                    page.wait_for_timeout(3000)
+                except Exception:
+                    pass
+        if r and r.get("estado") != "OK" and directo:          # todos juntos no sale: de a un impuesto
+            imps = sorted({re.match(r"(\d+)", t)[1] for v in par["anios"].values() for t in v.get("impuestos") or []
+                           if re.match(r"\d+", t)} | set(F931))
+            partes, faltan = [], []
+            for imp in imps:
+                try:
+                    x = _consultar(page, cuit, anio, imp)
+                    if x and x.get("estado") == "OK":
+                        partes.append(x)
+                    elif x and "sin ese impuesto" not in x.get("estado", ""):
+                        faltan.append(imp)
+                except Trabada:
+                    faltan.append(imp)
+                    try:
+                        page.reload(wait_until="domcontentloaded")
+                    except Exception:
+                        pass
+            if partes:
+                r = {"anio": str(anio), "totales": partes[0]["totales"], "estado": "OK" if not faltan else "parcial",
+                     "deudas": [d for x in partes for d in x["deudas"]], "saldos_sld": [d for x in partes for d in x["saldos_sld"]],
+                     "movimientos": [d for x in partes for d in x.get("movimientos", [])],
+                     "impuestos": [t for x in partes for t in x["impuestos"]], "impuestos_pendientes": faltan}
+        if not r or r.get("estado") != "OK":
+            pendientes.append({"anio": str(anio), "motivo": (r or {}).get("estado", "sin datos"),
+                               "impuestos": (r or {}).get("impuestos_pendientes", [])})
+        if r and r.get("deudas") is not None:
+            par["anios"][str(anio)] = r
+        par["pendientes"] = pendientes
+        _guardar_parcial(cuit, par)                      # se guarda año por año
+        arca.pausa(1.0, 2.0)
+    anios_ok = [par["anios"][str(a)] for a in objetivo if str(a) in par["anios"]]
+    return {"anios": anios_ok, "pendientes": pendientes,
+            "leidos": [a["anio"] + ("" if a.get("estado") == "OK" else " (parcial)") for a in anios_ok]}
+
+
+def _por_anio_anterior(page, cuit: str, anio: int) -> dict:
+    """Recorrido viejo (sin campos de período): consulta del año en curso y AÑO ANTERIOR hasta llegar al año."""
+    fr = _ir_a_parametros(page)
+    fr.get_by_text(re.compile(r"^\s*SIGUIENTE\s*$", re.I)).first.click()
+    r = _leer_consulta(page, cuit)
+    while int(r["anio"] or 0) > anio:
+        fr = _marco_con(page, r"Per[ií]odo Fiscal consultado")
         boton = fr.get_by_text(re.compile(r"A[ÑN]O ANTERIOR", re.I))
         if not boton.count():
-            break
+            return {"anio": str(anio), "estado": "no hay año anterior"}
+        antes = r["anio"]
         boton.first.click()
         page.wait_for_timeout(2500)
-    return res
+        r = _leer_consulta(page, cuit)
+        if r["anio"] == antes:
+            raise Trabada("el botón AÑO ANTERIOR no avanzó")
+    if r["anio"] != str(anio):
+        return {"anio": str(anio), "estado": "no está ese año"}
+    return r
 
 
 def resumir(res: dict) -> dict:
+    res.setdefault("pendientes", [])
     filas = [dict(f, anio=a["anio"]) for a in res["anios"] for f in a["deudas"]]
     por_imp = {}
     for f in filas:
@@ -260,10 +443,11 @@ def resumir(res: dict) -> dict:
     if sld:
         txt = lambda x: f"$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         det = "; ".join(f"{f['impuesto']} {f['periodo'][4:6]}/{f['periodo'][:4]} {txt(f['sld'])}" for f in res["saldos_recuperar"][:8])
+        otros = "; ".join(f"{k} {txt(v)}" for k, v in sorted(por_imp.items(), key=lambda x: -x[1])[:6] if v)
         al.append({"prioridad": "ALTA", "tipo": "Saldos a recuperar (S.L.D.) — F.399",
-                   "texto": f"{txt(res['saldos_recuperar_total'])} de saldos de libre disponibilidad en {len(sld)} período(s) "
-                            f"({det}{'…' if len(sld) > 8 else ''}). Pagos mal hechos o duplicados: reimputarlos con el F.399 "
-                            "a los períodos que se deben."})
+                   "texto": f"Pago en demasía, reimputable por F.399: {txt(res['saldos_recuperar_total'])} en {len(sld)} "
+                            f"período(s) ({det}{'…' if len(sld) > 8 else ''})."
+                            + (f" Deuda en otros impuestos para imputarlo: {otros}." if otros else " No hay deuda donde imputarlo hoy.")})
     res["alertas"] = al
     return res
 
@@ -285,6 +469,9 @@ def paso(cuit: str, estado: dict, anios: int = ANIOS):
         with open(os.path.join(d, f"{hoy}.json"), "w", encoding="utf-8") as f:
             json.dump(res, f, ensure_ascii=False, indent=1)
         r = f"{len(res['anios'])} años, deuda $ {res['deuda_total']:,.2f}"
+        if res.get("pendientes"):
+            r += " — PENDIENTE: " + ", ".join(p["anio"] + (f" ({', '.join(p['impuestos'])})" if p.get("impuestos") else "")
+                                             for p in res["pendientes"]) + " (se retoma en la próxima corrida)"
         estado.update(resultado=r, alertas=res["alertas"])
         return r
     return fn

@@ -124,8 +124,12 @@ def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None 
         sr = scth["saldos_recuperar"]
         clave = f"sld:{cuit}:{round(scth.get('saldos_recuperar_total') or 0)}:{len(sr)}"
         out.append({"clave": clave, "tema": "Saldos a recuperar (F.399)", "id_sec": "historica",
-                    "texto": f"{len(sr)} saldo(s) de libre disponibilidad fuera del IVA ("
-                             + ", ".join(sorted({x['impuesto'] for x in sr})) + "): reimputar con el F.399 a períodos adeudados",
+                    "texto": "Pago en demasía, reimputable por F.399: "
+                             + "; ".join(f"{x['impuesto']} {x.get('nombre', '')[:22]} {x['periodo'][4:6]}/{x['periodo'][:4]} "
+                                         f"{_pesos_txt(x['sld'])}" for x in sr[:6]) + ("…" if len(sr) > 6 else "")
+                             + (". Deuda en otros impuestos: " + "; ".join(f"{k} {_pesos_txt(v)}" for k, v in
+                                sorted((scth.get("por_impuesto") or {}).items(), key=lambda x: -x[1])[:4] if v)
+                                if any((scth.get("por_impuesto") or {}).values()) else ""),
                     "importe": None, "a_favor": scth.get("saldos_recuperar_total") or 0.0, "visto": vis.get(clave)})
     return out
 

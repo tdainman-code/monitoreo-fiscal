@@ -253,6 +253,9 @@
     <div class="tarjeta"><span class="sutil">Años revisados</span><b>{{ h.anios|length }}</b></div>
   </div>
   <p class="sutil">Cuentas Tributarias → Estado de cumplimiento, año por año, consultado el {{ h.fecha|fecha }}. Importes como los muestra ARCA (sin actualizar).</p>
+  <p class="sutil"><b>Leído:</b> {{ (h.leidos or (h.anios|map(attribute='anio')|list))|join(', ') or '—' }}
+  {% if h.pendientes %} · <b class="txt-rojo">Pendiente:</b> {% for p in h.pendientes %}{{ p.anio }}{% if p.impuestos %} ({{ p.impuestos|join(', ') }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}
+  <span class="sutil">— la página de ARCA se trabó; se retoma en la próxima corrida</span>{% endif %}</p>
   <table class="tabla"><thead><tr><th>Año</th><th class="num">Deuda</th><th class="num">Saldo libre disp.</th><th class="num">Saldo técnico</th><th class="num">Otros créditos</th><th class="num">Multas no firmes</th></tr></thead><tbody>
   {% for a in h.anios %}{% set t = a.totales %}<tr><td>{{ a.anio }}</td><td class="num {{ 'txt-rojo' if t.deuda }}" data-l="Deuda">{{ t.deuda|pesos if t.deuda is not none else '—' }}</td>
     <td class="num" data-l="Saldo libre disp.">{{ t.sld|pesos if t.sld is not none else '—' }}</td><td class="num" data-l="Saldo técnico">{{ t.saldo_tecnico|pesos if t.saldo_tecnico is not none else '—' }}</td>
@@ -275,6 +278,12 @@
   {% else %}<tr><td colspan="5" class="sutil">Sin saldos de libre disponibilidad fuera del IVA en los años leídos.</td></tr>{% endfor %}
   {% if h.saldos_recuperar %}<tr><td colspan="4"><b>Total a recuperar</b></td><td class="num"><b>{{ h.saldos_recuperar_total|pesos }}</b></td></tr>{% endif %}
   </tbody></table>
+  {% set movs = [] %}{% for a in h.anios or [] %}{% for m in a.movimientos or [] %}{% if m.impuesto not in ('30',) and (m.sld or m.saldo_tecnico or m.otros_creditos) %}{% set _ = movs.append(m) %}{% endif %}{% endfor %}{% endfor %}
+  {% if movs %}<details class="plegado"><summary>Saldos por concepto ({{ movs|length }} renglones con saldo a favor, saldo técnico u otros créditos)</summary>
+  <table class="tabla"><thead><tr><th>Código</th><th>Período</th><th>Concepto</th><th class="num">Deuda</th><th class="num">S.L.D.</th><th class="num">Saldo técnico</th><th class="num">Otros créditos</th></tr></thead><tbody>
+  {% for m in movs %}<tr><td>{{ m.impuesto }} {{ m.nombre }}</td><td>{{ m.periodo[4:6] }}/{{ m.periodo[:4] }}</td><td>{{ m.concepto }}</td>
+    <td class="num">{{ m.deuda|pesos if m.deuda }}</td><td class="num">{{ m.sld|pesos if m.sld }}</td><td class="num">{{ m.saldo_tecnico|pesos if m.saldo_tecnico }}</td><td class="num">{{ m.otros_creditos|pesos if m.otros_creditos }}</td></tr>{% endfor %}
+  </tbody></table></details>{% endif %}
   <p class="sutil">Pagos mal hechos o duplicados (sobre todo en cargas sociales): el encargado los reimputa con el <b>F.399</b> a los períodos que se están debiendo. El IVA no figura acá porque se compensa con el procedimiento estándar de la página.</p>
   {% else %}<p class="sutil">Se calcula en la próxima lectura del estado de cumplimiento.</p>{% endif %}
   {% else %}<p class="sutil">Todavía no se leyó el estado de cumplimiento (se lee en la corrida "Todo" o pidiendo "Deuda histórica").</p>{% endif %}

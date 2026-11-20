@@ -58,6 +58,8 @@ def ruteo(route):
     if "consulta" in u:
         if "anio=" in u:
             ANIO["v"] = int(u.split("anio=")[1][:4])
+        else:                                    # consulta nueva desde los parámetros: año en curso
+            ANIO["v"] = 2026
         return route.fulfill(content_type=h, body=consulta())
     if "parametros" in u:
         return route.fulfill(content_type=h, body="<html><body><h2>Ingreso de Parámetros</h2><p>Si no se ingresan valores se tomarán "
@@ -112,6 +114,69 @@ with sync_playwright() as p:
         chk(False, "otro CUIT debe frenar")
     except arca.CuitEquivocado:
         chk(True, "con otro CUIT en pantalla frena")
+    b.close()
+
+# ---- 20/11/2026: parámetros con período e impuesto -> consulta NUEVA por año; un año trabado queda pendiente,
+#      los demás se guardan, y la corrida siguiente retoma solo lo pendiente.
+MODO = {"directo": False, "traba": set(), "consultas": []}
+_ruteo_viejo = ruteo
+
+
+def ruteo2(route):
+    u = route.request.url
+    h = "text/html; charset=utf-8"
+    if not MODO["directo"]:
+        return _ruteo_viejo(route)
+    if "parametros" in u:
+        return route.fulfill(content_type=h, body="""<html><body><h2>Ingreso de Parámetros</h2>
+          <label>Período desde <input name="periodoDesde" maxlength="6"></label>
+          <label>Período hasta <input name="periodoHasta" maxlength="6"></label>
+          <select name="impuesto"><option value="">Todos</option><option>28 - SEGURO DE VIDA COLECTIVO</option>
+          <option>302 - APORTES OBRAS SOCIALES</option><option>312 - ASEG.RIESGO DE TRABAJO</option></select>
+          <a href="#" onclick="location.href='consulta?anio='+document.querySelector('[name=periodoDesde]').value.slice(0,4)
+             +'&imp='+encodeURIComponent(document.querySelector('[name=impuesto]').value)">SIGUIENTE</a></body></html>""")
+    if "consulta" in u:
+        a = int(u.split("anio=")[1][:4])
+        imp = __import__("urllib.parse").parse.unquote(u.split("imp=")[1]) if "imp=" in u else ""
+        MODO["consultas"].append((a, imp[:3].strip()))
+        if (a, "") in MODO["traba"] and not imp or (a, imp[:3].strip()) in MODO["traba"]:
+            return route.fulfill(content_type=h, body=f"<html><body><p>Período Fiscal consultado</p><p>{a}0000 a {a}1200</p>"
+                                                     "<div>PRUEBA JUAN (20-11111111-2)</div><p>CARGANDO...</p></body></html>")
+        ANIO["v"] = a
+        cuerpo = consulta()
+        if imp:                                        # solo la tabla del impuesto pedido
+            cuerpo = re.sub(r"<h4>(?!" + re.escape(imp[:3].strip()) + r" ).*?</table>", "", cuerpo, flags=re.S)
+        return route.fulfill(content_type=h, body=cuerpo)
+    return _ruteo_viejo(route)
+
+
+import re  # noqa: E402
+rh.ESPERA_CARGA = 2
+C2 = "20111111112"
+with sync_playwright() as p:
+    b = p.chromium.launch()
+    ctx = b.new_context(viewport={"width": 1366, "height": 900})
+    ctx.route("https://ctacte.cloud.afip.gob.ar/**", ruteo2)
+    pg = ctx.new_page()
+    MODO.update(directo=True, traba={(2025, ""), (2025, "312")})
+    if os.path.exists(rh._ruta_parcial(C2)):
+        os.remove(rh._ruta_parcial(C2))                 # lo que dejó la prueba anterior (mismo CUIT)
+    pg.goto(B + "externo")
+    r1 = rh.leer_anios(pg, C2, anios=3)
+    chk([a["anio"] for a in r1["anios"]] == ["2026", "2025", "2024"] and r1["anios"][1]["estado"] == "parcial"
+        and r1["pendientes"] and r1["pendientes"][0]["anio"] == "2025" and "312" in r1["pendientes"][0]["impuestos"],
+        f"año trabado: se pide de a un impuesto; lo que no sale queda pendiente ({r1['pendientes']})")
+    chk(not any("AÑO ANTERIOR" in str(x) for x in MODO["consultas"]) and (2024, "") in MODO["consultas"],
+        "cada año es una consulta nueva con el período elegido (sin AÑO ANTERIOR)")
+    import os as _os
+    chk(_os.path.exists(rh._ruta_parcial(C2)), "se guarda año por año (_parcial.json)")
+    MODO.update(traba=set(), consultas=[])
+    pg.goto(B + "externo")
+    r2 = rh.leer_anios(pg, C2, anios=3)
+    chk(not r2["pendientes"] and {a for a, _ in MODO["consultas"]} == {2026, 2025},
+        f"la corrida siguiente retoma solo lo pendiente y el año en curso ({sorted(set(MODO['consultas']))})")
+    res2 = rh.resumir(r2)
+    chk(any(x["impuesto"] == "312" for x in res2["saldos_recuperar"]), "con lo retomado aparecen los saldos del 312")
     b.close()
 
 print("OK" if ok else "FALLÓ")

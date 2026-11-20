@@ -292,9 +292,12 @@ def revisiones(cuit: str) -> list[dict]:
         sr = h["saldos_recuperar"]
         out.append({"clave": f"sld:{cuit}:{round(h.get('saldos_recuperar_total') or 0)}:{len(sr)}",
                     "tema": "Saldos a recuperar (F.399)",
-                    "texto": f"{len(sr)} saldo(s) de libre disponibilidad fuera del IVA por {_pesos(h.get('saldos_recuperar_total'))}: "
+                    "texto": f"Pago en demasía, reimputable por F.399, por {_pesos(h.get('saldos_recuperar_total'))}: "
                              + "; ".join(f"{x['impuesto']} {x['periodo'][4:6]}/{x['periodo'][:4]} {_pesos(x['sld'])}" for x in sr[:8])
-                             + ". Reimputarlos con el F.399 a los períodos que se deben."})
+                             + ". Reimputarlos con el F.399 a los períodos que se deben"
+                             + ("; deuda en otros impuestos: " + "; ".join(f"{k} {_pesos(v)}" for k, v in
+                                sorted((h.get("por_impuesto") or {}).items(), key=lambda x: -x[1])[:4] if v)
+                                if any((h.get("por_impuesto") or {}).values()) else "") + "."})
     if h.get("deudas"):
         out.append({"clave": f"sct:{cuit}:{round(h.get('deuda_total') or 0)}:{len(h['deudas'])}", "tema": "Cuentas Tributarias",
                     "texto": f"Estado de cumplimiento: {len(h['deudas'])} período(s)/concepto(s) con deuda por "
