@@ -125,3 +125,22 @@ def encolar(cuit: str, robot: str, por: str) -> str:
         json.dump(p, f)
     os.replace(tmp, ruta)
     return p["id"]
+
+
+def encolar_vep_deuda(cuit: str, conceptos: list[dict], medio: str, enviar: bool, por: str) -> str:
+    """VEP de conceptos de deuda tildados en la web (20/11/2026). El robot lo procesa cuando esté relevada la pantalla."""
+    if not datos.CUIT_RE.match(cuit or ""):
+        raise ErrorPedido("CUIT inválido")
+    if not listo():
+        raise ErrorPedido("Los pedidos todavía no están habilitados en el servidor")
+    if not conceptos or len(conceptos) > 60:
+        raise ErrorPedido("Cantidad de conceptos inválida")
+    p = {"id": uuid.uuid4().hex, "fecha": dt.datetime.now().isoformat(timespec="seconds"), "por": por, "cuit": cuit,
+         "robot": "vep_deuda", "conceptos": conceptos, "medio": medio, "enviar": bool(enviar)}
+    ruta = os.path.join(PEDIDOS, f"{p['fecha'].replace(':', '')}_{p['id'][:8]}.json")
+    tmp = ruta + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o660)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(p, f, default=str)
+    os.replace(tmp, ruta)
+    return p["id"]

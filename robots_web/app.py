@@ -282,11 +282,14 @@ def cliente_seccion(cuit, seccion):
     usuarios.registrar(session["usuario"], f"consulta {seccion}", cuit, _ip())
     org = request.args.get("org", "")
     graf = analisis.grafico_iva(s.get("iva") or [], s.get("proyeccion")) if seccion == "iva" else ""
+    if seccion == "deuda":
+        s = {**s, "dc": usuarios.datos_cliente(cuit)}
     if seccion == "ventas_bancos":
         s = {**s, "vb": _ventas_bancos(cuit)[0], "vb_periodos": sorted(analisis._meses(cuit, "libro_iva"))}
     return render_template("seccion.html", c=info, s=s, sec=seccion, titulo=SECCIONES[seccion], org=org,
                            notas=usuarios.notas(cuit) if seccion == "notas" else [], grafico=graf,
                            informadas=usuarios.informadas() if seccion == "notificaciones" else {}, pct=analisis.pct,
+                           medios_vep_todos=MEDIOS_VEP, vep_deuda_listo=VEP_DEUDA_LISTO,
                            periodo_txt=analisis.periodo_txt)
 
 
@@ -507,6 +510,43 @@ def pedir_corrida(cuit):
 
 
 MEDIOS_VEP = ["Pago Mis Cuentas (Banelco)", "Pagar (Red Link)", "Interbanking", "XN Group"]
+# VEP de deuda (tildar conceptos + medio de pago, 20/11/2026): la web está lista; se habilita cuando el robot tenga
+# relevada la pantalla de ARCA donde se genera (Cuentas Tributarias -> Deudas -> Generar VEP).
+VEP_DEUDA_LISTO = False
+
+
+@app.route("/cliente/<cuit>/vep_deuda", methods=["POST"])
+@requiere_login
+def vep_deuda(cuit):
+    _controlar_csrf()
+    _cliente_info(cuit)
+    s = datos.ficha(cuit)
+    vencidas = sorted(s.get("deudas_vencidas") or [], key=lambda d: -(d.get("total") or 0))
+    elegidas = []
+    for v in request.form.getlist("deuda"):
+        partes = v.split("|")
+        try:
+            d = vencidas[int(partes[0])]
+        except (ValueError, IndexError):
+            continue
+        if [str(d.get("impuesto")), str(d.get("concepto")), str(d.get("periodo"))] == partes[1:4]:
+            elegidas.append({k: d.get(k) for k in ("impuesto", "concepto", "subconcepto", "periodo", "cuota",
+                                                    "establecimiento", "total")})
+    medio = request.form.get("medio", "")
+    if not elegidas:
+        flash("Tildá al menos un concepto (o la deuda cambió: recargá la página)", "error")
+    elif medio not in MEDIOS_VEP:
+        flash("Elegí el medio de pago", "error")
+    elif not VEP_DEUDA_LISTO:
+        flash("La generación del VEP de deuda todavía no está habilitada: falta relevar la pantalla de ARCA", "error")
+    else:
+        try:
+            pedidos.encolar_vep_deuda(cuit, elegidas, medio, request.form.get("enviar") == "1", session["usuario"])
+            usuarios.registrar(session["usuario"], f"pidió VEP de deuda ({len(elegidas)} conceptos, {medio})", cuit, _ip())
+            flash(f"Pedido: el robot genera el VEP de {len(elegidas)} concepto(s) por {medio} en un minuto.", "ok")
+        except pedidos.ErrorPedido as e:
+            flash(str(e), "error")
+    return redirect(url_for("cliente_seccion", cuit=cuit, seccion="deuda"))
 CAMPOS_CLIENTE = {
     "condicion_iva": "Condición frente al IVA", "condicion_ganancias": "Ganancias", "bienes_personales": "Bienes Personales",
     "regimen_iibb": "Régimen de Ingresos Brutos", "jurisdicciones_iibb": "Jurisdicciones de IIBB",

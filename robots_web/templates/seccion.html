@@ -7,13 +7,30 @@
   {% if s.sct %}
   <p><b>Deuda vencida: {{ s.deuda_vencida|pesos }}</b> <span class="sutil">(capital + intereses, {{ s.deudas_vencidas|length }} obligación(es) vencida(s))</span></p>
   {% if s.deudas_por_vencer %}<p class="sutil">Lo que todavía no venció ({{ s.deudas_por_vencer|length }}) está en <a href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='por_vencer') }}">Por vencer →</a></p>{% endif %}
-  {% if s.deuda_vencida %}<div class="pedir"><b>¿Envío VEP de la deuda al cliente?</b>
-    <button disabled title="Se habilita cuando el robot tenga programado el VEP de obligaciones (esperando las pantallas)">Sí, generar y enviar VEP</button>
-    <span class="sutil">En preparación: falta relevar en ARCA cómo se genera el VEP de obligaciones pendientes.</span></div>{% endif %}
-  <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Vencimiento</th><th class="num">Capital</th><th class="num">Intereses</th><th class="num">Total</th></tr></thead><tbody>
-  {% for d in s.deudas_vencidas|sort(attribute='total', reverse=True) %}<tr class="fila-roja"><td>{{ d.impuesto }}</td><td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td>
+  {% set medios_cli = ((s.dc or {}).get('medios_vep') or '').split(', ') %}
+  <form method="post" action="{{ url_for('vep_deuda', cuit=c.cuit) }}" id="form-vep">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  <table class="tabla"><thead><tr><th><input type="checkbox" title="Tildar todas" onclick="document.querySelectorAll('.tilde-vep').forEach(x=>{x.checked=this.checked});sumarVep()"></th>
+    <th>Impuesto</th><th>Concepto</th><th>Período</th><th>Vencimiento</th><th class="num">Capital</th><th class="num">Intereses</th><th class="num">Total</th></tr></thead><tbody>
+  {% for d in s.deudas_vencidas|sort(attribute='total', reverse=True) %}<tr class="fila-roja">
+  <td><input type="checkbox" class="tilde-vep" name="deuda" value="{{ loop.index0 }}|{{ d.impuesto }}|{{ d.concepto }}|{{ d.periodo }}|{{ d.total }}" data-total="{{ d.total }}" onchange="sumarVep()"></td>
+  <td>{{ d.impuesto }}</td><td data-l="Concepto">{{ d.concepto }}{% if d.subconcepto and d.subconcepto != d.concepto %} · {{ d.subconcepto }}{% endif %}</td><td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td>
   <td class="num" data-l="Capital">{{ d.capital|pesos }}</td><td class="num" data-l="Intereses">{{ (d.int_resarcitorio + d.int_punitorio)|pesos }}</td><td class="num" data-l="Total"><b>{{ d.total|pesos }}</b></td></tr>{% endfor %}
   </tbody></table>
+  {% if s.deudas_vencidas %}
+  <div class="pedir"><b>Generar VEP de los conceptos tildados</b> · seleccionado: <b id="vep-total">$ 0,00</b> (<span id="vep-n">0</span> concepto/s)
+    <div>Medio de pago: {% for m in medios_vep_todos %}<label class="en-linea"><input type="radio" name="medio" value="{{ m }}" {{ 'checked' if m == medios_cli[0] }} required> {{ m }}</label> {% endfor %}
+      {% if not medios_cli[0] %}<span class="sutil">(el cliente no tiene medios cargados en Datos del cliente)</span>{% endif %}</div>
+    <label class="en-linea"><input type="checkbox" name="enviar" value="1" checked> Mandárselo al cliente por mail (con copia al encargado)</label>
+    {% if vep_deuda_listo %}<button>Generar VEP</button>
+    {% else %}<button disabled>Generar VEP</button>
+    <span class="sutil">Se habilita cuando el robot tenga relevada la pantalla de ARCA donde se genera el VEP de la deuda (Cuentas Tributarias → Deudas → Generar VEP): faltan las capturas.</span>{% endif %}
+    <span class="sutil">El VEP vence a la medianoche del día en que se genera; los intereses se calculan a ese día.</span>
+  </div>
+  {% endif %}
+  </form>
+  <script>function sumarVep(){let t=0,n=0;document.querySelectorAll('.tilde-vep:checked').forEach(x=>{t+=parseFloat(x.dataset.total)||0;n++});
+    document.getElementById('vep-total').textContent='$ '+t.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});document.getElementById('vep-n').textContent=n}</script>
   {% if not s.deudas_vencidas %}<p class="sutil">Sin deuda vencida.</p>{% endif %}
   {% else %}<p class="sutil">Sin datos de Cuentas Tributarias todavía.</p>{% endif %}
 

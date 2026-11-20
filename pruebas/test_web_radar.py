@@ -506,6 +506,29 @@ ok(_x.status_code == 200 and _wb.sheetnames == ["Faltas de presentación", "Por 
 _x = cl.get("/cartera/faltas?excel=1&impuesto=NO-EXISTE")
 ok(__import__("openpyxl").load_workbook(__import__("io").BytesIO(_x.data))["Faltas de presentación"]["A5"].value == "Sin faltas de presentación",
    "reporte filtrado por impuesto")
+# deuda: tildar conceptos, elegir medio de pago y pedir el VEP (20/11/2026)
+_dv = cl.get(f"/cliente/{C}/deuda").text
+_vals = re.findall(r'class="tilde-vep" name="deuda" value="([^"]+)"', _dv)
+ok(_vals and "Medio de pago" in _dv and "Generar VEP" in _dv and "disabled>Generar VEP" in _dv,
+   "deuda: tildes por concepto, medio de pago y botón (deshabilitado hasta relevar la pantalla)")
+import html as _html  # noqa: E402
+_vals = [_html.unescape(v) for v in _vals]
+_r = cl.post(f"/cliente/{C}/vep_deuda", data={"csrf": token(_dv), "deuda": _vals[:2], "medio": "Interbanking"}, follow_redirects=True)
+ok("todavía no está habilitada" in _r.text, "sin la pantalla relevada no genera nada")
+import robots_web.app as _app  # noqa: E402
+_app.VEP_DEUDA_LISTO = True
+_r = cl.post(f"/cliente/{C}/vep_deuda", data={"csrf": token(_dv), "deuda": [], "medio": "Interbanking"}, follow_redirects=True)
+ok("Tildá al menos un concepto" in _r.text, "VEP de deuda: pide tildar conceptos")
+_r = cl.post(f"/cliente/{C}/vep_deuda", data={"csrf": token(_dv), "deuda": _vals[:2], "medio": "Interbanking", "enviar": "1"},
+             follow_redirects=True)
+_pv = [json.load(open(os.path.join(BANDEJA, "pedidos", n))) for n in os.listdir(os.path.join(BANDEJA, "pedidos")) if n.endswith(".json")]
+_pv = [x for x in _pv if x.get("robot") == "vep_deuda"]
+ok(_pv and len(_pv[0]["conceptos"]) == min(2, len(_vals)) and _pv[0]["medio"] == "Interbanking" and _pv[0]["enviar"],
+   "VEP de deuda: el pedido lleva los conceptos tildados y el medio de pago")
+for n in os.listdir(os.path.join(BANDEJA, "pedidos")):
+    if n.endswith(".json") and json.load(open(os.path.join(BANDEJA, "pedidos", n))).get("robot") == "vep_deuda":
+        os.remove(os.path.join(BANDEJA, "pedidos", n))
+_app.VEP_DEUDA_LISTO = False
 # reporte de ventas para bancos desde el Portal IVA (20/11/2026)
 _vb = cl.get(f"/cliente/{C}/ventas_bancos").text
 ok("Reporte de ventas para bancos" in _vb and "Promedio mensual neto (12 meses)" in _vb and "⬇ Excel" in _vb, "ventas para bancos: 12 meses por defecto")
