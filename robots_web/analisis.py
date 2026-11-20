@@ -72,12 +72,13 @@ def dia_de_corrida(cuit: str, monotributo: bool = False) -> str:
     if not isinstance(d, dict):
         d = {"dia": int(d), "semana": int(cuit[-1]) % 2}
     dia = DIAS[int(d["dia"])]
+    plural = dia + "s" if dia in ("sábado", "domingo") else dia
     if not monotributo:
-        return f"todos los {dia}"
+        return f"todos los {plural}"
     f = _dt.date.today()
     while not (f.weekday() == int(d["dia"]) and f.isocalendar()[1] % 2 == int(d.get("semana", 0))):
         f += _dt.timedelta(days=1)
-    return f"{dia} por medio (dos veces por mes; próxima: {f.strftime('%d/%m')})"
+    return f"{plural} por medio (dos veces por mes; próxima: {f.strftime('%d/%m')})"
 
 
 def periodo_txt(p: str) -> str:

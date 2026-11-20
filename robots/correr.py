@@ -46,6 +46,7 @@ ROBOTS = {"mis_comprobantes": robot_mis_comprobantes, "situacion_fiscal": robot_
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 
+DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
 GRUPOS = os.path.join(os.environ.get("ROBOTS_PUBLICO", "/var/lib/robots/publico"), "grupos.json")
 
 
@@ -83,6 +84,64 @@ def asignar_grupos(cuits: list[str], grupos: int = 5) -> dict[str, dict]:
         os.chmod(tmp, 0o640)
         os.replace(tmp, GRUPOS)
     return mapa
+
+
+def asignar_finde(cuits: list[str]) -> dict[str, dict]:
+    """Pedido del 20/11/2026: la corrida COMPLETA pasa al fin de semana. Cada cliente queda fijo en sábado (5) o domingo
+    (6), repartidos parejo; los monotributistas siguen semana por medio. Se guarda en publico/grupos.json (la web lo lee)."""
+    try:
+        with open(GRUPOS, encoding="utf-8") as f:
+            crudo = json.load(f)
+    except (OSError, ValueError):
+        crudo = {}
+    mapa: dict[str, dict] = {}
+    for k, v in crudo.items():
+        v = {"dia": int(v), "semana": int(k[-1]) % 2} if isinstance(v, (int, str)) else dict(v)
+        mapa[k] = {"dia": int(v.get("dia", 99)), "semana": int(v.get("semana", 0)) % 2}
+    carga = {5: [0, 0], 6: [0, 0]}
+    for c in cuits:
+        if c in mapa and mapa[c]["dia"] in carga:
+            carga[mapa[c]["dia"]][mapa[c]["semana"]] += 1
+    cambio = False
+    for c in cuits:                     # nuevos, y los que tenían un día de lunes a viernes (esquema anterior)
+        if c in mapa and mapa[c]["dia"] in carga:
+            continue
+        d = min(carga, key=lambda i: sum(carga[i]))
+        sem = mapa[c]["semana"] if c in mapa else (0 if carga[d][0] <= carga[d][1] else 1)
+        mapa[c] = {"dia": d, "semana": sem}
+        carga[d][sem] += 1
+        cambio = True
+    if cambio:
+        os.makedirs(os.path.dirname(GRUPOS), exist_ok=True)
+        tmp = GRUPOS + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(mapa, f, indent=0)
+        os.chmod(tmp, 0o640)
+        os.replace(tmp, GRUPOS)
+    return mapa
+
+
+def urgentes_primero(cuits: list[str]) -> list[str]:
+    """Corrida diaria (20/11/2026): primero los que tenían deuda vencida o DDJJ sin presentar en la última lectura, y
+    dentro de cada grupo los de datos más viejos. Si una noche no alcanza, los que quedaron van primero la siguiente."""
+    import glob
+
+    def clave(c):
+        ult = sorted(glob.glob(os.path.join(DATOS, c, "situacion", "*", "resultado.json")))
+        if not ult:
+            return (0, "")                                   # nunca leído: primero de todo
+        try:
+            with open(ult[-1], encoding="utf-8") as f:
+                r = json.load(f)
+        except (OSError, ValueError):
+            return (0, "")
+        urg = any(a.get("prioridad") == "ALTA" and a.get("tipo") in ("Deuda vencida", "Falta de presentación")
+                  for a in r.get("alertas") or [])
+        return (1 if urg else 2, os.path.basename(os.path.dirname(ult[-1])))
+    return sorted(cuits, key=clave)
+
+
+FRENO_ERRORES_SEGUIDOS = 4      # errores de portal seguidos (no claves inválidas): ARCA está rechazando, se frena la noche
 
 
 def le_toca_hoy(cuit: str, asig: dict, hoy: dt.date | None = None) -> bool:
@@ -293,6 +352,10 @@ def main(argv=None):
                     help="con --todos: solo los clientes a los que les toca HOY (cada cliente tiene un día fijo de lunes a viernes)")
     ap.add_argument("--solo-fallidos", action="store_true",
                     help="con --todos: solo los clientes cuya última corrida de los últimos 7 días terminó en error (repechaje)")
+    ap.add_argument("--fin-de-semana", action="store_true",
+                    help="corrida completa de fin de semana: los clientes que tienen fijo el sábado o el domingo (el de hoy)")
+    ap.add_argument("--urgentes-primero", action="store_true",
+                    help="primero los que tenían deuda vencida o DDJJ sin presentar, después los de datos más viejos")
     ap.add_argument("--grupos", type=int, default=5, help="en cuántos días se reparten los clientes (5 = lunes a viernes)")
     ap.add_argument("--modo", choices=["diaria", "planes", "semanal", "completo"], default="completo",
                     help="todo: diaria (deuda + e-ventanilla), planes (Mis Facilidades), semanal/completo (todo)")
@@ -311,6 +374,17 @@ def main(argv=None):
         cuits = [c for c in cuits if le_toca_hoy(c, mapa[c])]
         print(f"Grupo del {DIAS[hoy]} (semana {'par' if dt.date.today().isocalendar()[1] % 2 == 0 else 'impar'}): "
               f"{len(cuits)} cliente(s) — inscriptos todas las semanas, monotributistas semana por medio")
+    if a.todos and a.fin_de_semana:
+        hoy = dt.date.today()
+        if hoy.weekday() not in (5, 6):
+            print(f"Hoy ({DIAS[hoy.weekday()]}) no es fin de semana.")
+            return 0
+        mapa = asignar_finde(cuits)
+        cuits = [c for c in cuits if le_toca_hoy(c, mapa[c])]
+        print(f"Corrida completa del {DIAS[hoy.weekday()]}: {len(cuits)} cliente(s) — inscriptos todas las semanas, "
+              "monotributistas semana por medio")
+    if a.urgentes_primero:
+        cuits = urgentes_primero(cuits)
     if a.todos and a.solo_fallidos:
         cuits = [c for c in cuits if c in fallidos_recientes()]
         print(f"Repechaje: {len(cuits)} cliente(s) con error en la última corrida")
@@ -321,6 +395,7 @@ def main(argv=None):
         cuits.append(limpio)
     print(f"{a.robot} {a.periodo or ''}{' modo ' + a.modo if a.robot == 'todo' else ''}: {len(cuits)} cliente(s)")
     inicio = time.time()
+    seguidos = 0
     for i, cuit in enumerate(cuits, 1):
         if a.horas and time.time() - inicio > a.horas * 3600:
             pend = cuits[i - 1:]
@@ -328,7 +403,16 @@ def main(argv=None):
             registrar({"robot": a.robot, "modo": a.modo, "estado": "Pendientes por tiempo", "cuits": pend})
             break
         print(f"[{i}/{len(cuits)}] {cuit} ... ", end="", flush=True)
-        print(correr_uno(a.robot, cuit, a.periodo, a.ver, partes, a.meses, a.forzar, a.modo))
+        r = correr_uno(a.robot, cuit, a.periodo, a.ver, partes, a.meses, a.forzar, a.modo)
+        print(r)
+        # freno (20/11/2026): si ARCA empieza a pedir captcha o a rechazar seguido, no insistir esa noche
+        seguidos = seguidos + 1 if r.startswith("ERROR") else 0
+        if "captcha" in r.lower() or seguidos >= FRENO_ERRORES_SEGUIDOS:
+            pend = cuits[i:]
+            motivo = "ARCA pidió captcha" if "captcha" in r.lower() else f"{seguidos} errores seguidos de ARCA"
+            print(f"FRENADA: {motivo}. Quedan {len(pend)} clientes para la próxima corrida.")
+            registrar({"robot": a.robot, "modo": a.modo, "estado": "Frenada", "detalle": motivo, "cuits": pend})
+            break
         if i < len(cuits):
             time.sleep(random.uniform(20, 45))   # espacio entre clientes para no saturar ARCA
 

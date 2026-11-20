@@ -25,7 +25,7 @@
 </section>
 <form class="pedir" method="post" action="{{ url_for('pedir_corrida', cuit=c.cuit) }}">
   <input type="hidden" name="csrf" value="{{ csrf() }}">
-  <span class="sutil">Corrida completa: <b>{{ dia_corrida }}</b> a la noche ·</span>
+  <span class="sutil">Deuda y DDJJ: <b>todas las noches</b> de lunes a viernes · Corrida completa: <b>{{ dia_corrida }}</b> ·</span>
   <b>🤖 Actualizar ahora:</b>
   <select name="robot">{% for k, v in robots_pedir.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
   <button {{ '' if pedir_listo else 'disabled title="Falta habilitar los pedidos en el servidor"' }}>Pedir corrida</button>

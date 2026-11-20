@@ -60,11 +60,12 @@ Le pedís el cambio a **Claude Code** sobre el repositorio `monitoreo-fiscal`. C
 queda anotado en la web: ⚙ Más → **Sistema**. Volver atrás: `sudo bash /opt/monitoreo/repo/nube/actualizar_desde_github.sh --volver`.
 
 ## Qué queda andando en la nube
-- Cada cliente tiene un **día fijo de lunes a viernes** (la cartera se reparte en 5 grupos parejos). Ese día, de 20 a 7 h,
-  recibe la corrida completa: deuda, planes, DFE, Libro IVA, F.931, SIFERE, fiscalizaciones, ARBA y AGIP.
-  **Responsables inscriptos: todas las semanas. Monotributistas (y exentos sin Portal IVA): semana por medio, dos veces
-  por mes.** Un cliente nuevo corre todas las semanas hasta que el robot lo clasifica. La ficha dice cuándo le toca.
-- Sábados 9 h: repechaje de los que dieron error en la semana (cortes de ARCA, portal caído).
+- **Lunes a viernes, 20 a 6 h — corrida diaria liviana de todos los clientes:** Cuentas Tributarias (deuda vencida,
+  DDJJ sin presentar, vencimientos) y e-ventanilla de ARCA. Primero los urgentes y los de datos más viejos (si una noche
+  no alcanza, los que quedaron van primero la siguiente). Si ARCA pide captcha o rechaza 4 veces seguidas, frena esa noche.
+- **Sábado y domingo desde las 6 h — corrida completa:** cada cliente tiene fijo el sábado o el domingo (mitad y mitad;
+  monotributistas semana por medio): deuda, planes, DFE, Libro IVA, F.931, SIFERE, fiscalizaciones, ARBA, AGIP e informes.
+- Domingo 20 h: repechaje de los que dieron error en la semana (cortes de ARCA, portal caído).
 - Un pedido de "Actualizar ahora" hecho durante la corrida nocturna espera a que termine.
 - Cada minuto: corridas pedidas desde la web (botón **Actualizar ahora** en la ficha del cliente).
 - Cada 3 minutos: claves cargadas desde la web.
