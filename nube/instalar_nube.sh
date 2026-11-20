@@ -131,8 +131,9 @@ InaccessiblePaths=/etc/robots
 [Install]
 WantedBy=multi-user.target
 UNIT
+ALT=""; case "$DOMINIO" in *.sslip.io) ALT=", ${DOMINIO%.sslip.io}.nip.io";; esac    # por si una red no resuelve sslip.io
 cat > /etc/caddy/Caddyfile <<CADDY
-$DOMINIO {
+$DOMINIO$ALT {
     encode gzip
     reverse_proxy 127.0.0.1:8000 {
         header_up X-Forwarded-For {remote_host}

@@ -21,6 +21,22 @@ exec 8>/tmp/monitoreo_actualizacion.lock; flock -n 8 || exit 0
 [ -d "$REPO/.git" ] || exit 0
 cd "$REPO" || exit 1
 
+# Dirección alternativa (19/11/2026): algunas redes de celular no resuelven *.sslip.io (ERR_NAME_NOT_RESOLVED).
+# Se suma <ip>.nip.io, que apunta al mismo servidor; Caddy saca su candado solo. Idempotente: se hace una vez.
+CF=/etc/caddy/Caddyfile
+if [ -f "$CF" ] && ! grep -q 'nip\.io' "$CF"; then
+  SS=$(grep -oE '^[0-9-]+\.sslip\.io' "$CF" | head -1)
+  if [ -n "$SS" ]; then
+    cp -a "$CF" "$CF.antes_nipio"
+    sed -i "s/^$SS {/$SS, ${SS%.sslip.io}.nip.io {/" "$CF"
+    if caddy validate --config "$CF" --adapter caddyfile >/dev/null 2>&1; then
+      systemctl reload caddy && echo "$(date) agregada la dirección ${SS%.sslip.io}.nip.io" >> "$LOG"
+    else
+      cp -a "$CF.antes_nipio" "$CF"; echo "$(date) no se pudo agregar nip.io (Caddyfile restaurado)" >> "$LOG"
+    fi
+  fi
+fi
+
 anotar() {   # estado legible para la web (pantalla Sistema, solo administradores)
   python3 - "$@" <<'PY'
 import json, sys, os, datetime as dt
