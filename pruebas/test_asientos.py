@@ -319,7 +319,10 @@ _mc = {"2026-09": {"ventas": 1_300_000.0, "compras": 500_000.0}, "2026-10": {"ve
        "2026-08": {"ventas": 1.0, "compras": 1.0}}
 _co._mc_totales = lambda cuit, per: _mc.get(per)
 escribir(f"{D}/{C2}/libro_iva/2026-10.json", {"periodo": "2026-10", "ventas": {"Neto gravado total": 876_446.28, "Exento": 0.0, "No gravado": 0.0},
-         "compras": {"Neto gravado total": 100_000.0, "Exento": 0.0, "No gravado": 0.0},
+         "compras": {"Neto gravado total": 300_000.0, "Exento": 0.0, "No gravado": 0.0},
+         "comprobantes_compras": [{"tipo": 1, "neto": 100_000.0, "iva": 21_000.0, "total": 121_000.0},
+                                  {"tipo": 66, "neto": 150_000.0, "iva": 31_500.0, "total": 181_500.0},
+                                  {"tipo": 90, "neto": 50_000.0, "iva": 10_500.0, "total": 60_500.0}],
          "comprobantes_ventas": [{"tipo": 11, "punto_venta": 2, "neto": 0.0, "iva": 0.0, "total": 400_000.0},
                                  {"tipo": 83, "punto_venta": 7, "neto": 826_446.28, "iva": 173_553.72, "total": 1_000_000.0},
                                  {"tipo": 60, "punto_venta": 9, "neto": 50_000.0, "iva": 10_500.0, "total": 60_500.0}]})
@@ -331,6 +334,8 @@ ok(_e["2026-09"]["estado"] == "DIFERENCIA" and _e["2026-10"]["estado"] == "OK" a
    and _e["2026-09"]["solo_en_una"], "Libro IVA vs Mis Comprobantes: diferencia > 2 % / $25.000, 'no comparable' si falta una fuente")
 ok(_e["2026-10"]["tiques"] == 876_446.28 and _e["2026-10"]["tiques_pv"] == [7, 9] and _e["2026-10"]["estado"] == "OK",
    "tiques (ticketeadora) y líquido producto se descuentan: no suben a Mis Comprobantes (Goncalves)")
+ok(_e["2026-10"]["compras_fuera_mc"] == 200_000.0 and "Despacho de importación" in _e["2026-10"]["compras_fuera_mc_detalle"]
+   and _e["2026-10"]["dif_compras"] == 0.0, "compras: despachos de importación y liquidaciones (LPART/LMAN) se descuentan")
 r = cg.get(f"/cliente/{C2}/relacion").text
 ok("Revisión cruzada" in r and "DIFERENCIA" in r and "no comparable" in r and "Saldo con Mis Comprobantes" in r,
    "relación D/C: tabla de revisión cruzada y saldo con la segunda fuente")

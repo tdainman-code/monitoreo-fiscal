@@ -436,6 +436,24 @@ TIQUES = {81, 82, 83, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120
 # tampoco figuran como emitidos del cliente en Mis Comprobantes (Gaby 20/11/2026).
 LIQUIDO_PRODUCTO = {33, 58, 59, 60, 61, 63, 64, 331, 332}
 NO_VAN_A_MC = TIQUES | LIQUIDO_PRODUCTO
+# COMPRAS (Gaby 20/11/2026): en el Portal IVA están y en Mis Comprobantes no: despachos de importación, liquidaciones
+# simplificadas (LPART / LMAN), líquido producto, etc. Criterio: todo comprobante de compra que NO sea un tipo
+# electrónico común (facturas, notas de débito y crédito, recibos A/B/C/M y FCE MiPyME) no se busca en Mis Comprobantes.
+ELECTRONICOS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 51, 52, 53, 54, 201, 202, 203, 206, 207, 208, 211, 212, 213}
+
+
+def compras_fuera_mc(d: dict) -> tuple[float, dict]:
+    """Compras del Libro IVA que no figuran en Mis Comprobantes: (importe sin IVA, {tipo: importe})."""
+    tot, por = 0.0, {}
+    for c in d.get("comprobantes_compras") or []:
+        tipo = int(c.get("tipo") or 0)
+        if tipo in ELECTRONICOS:
+            continue
+        v = float(c.get("total") or 0) - float(c.get("iva") or 0)
+        tot += v
+        k = NOMBRES.get(tipo, f"Tipo {tipo}")
+        por[k] = round(por.get(k, 0.0) + v, 2)
+    return round(tot, 2), por
 
 
 def _neto_comp(c: dict) -> float:
@@ -471,12 +489,13 @@ def comparar_fuentes(cuit: str, ventas: dict | None = None, compras: dict | None
     """Mes a mes y por concepto (ventas, compras): Libro IVA (Portal IVA) contra Mis Comprobantes. Diferencia
     relevante = más del 2 % o de $25.000 en el mes (lo que sea mayor). Mes sin alguna de las dos fuentes completa =
     'no comparable'. Guarda DATOS/<cuit>/conciliacion/fuentes.json para la web."""
-    meses, tiques = {}, {}
+    meses, tiques, fuera_c = {}, {}, {}
     pv_mc = _pv_mc(cuit)
     for r in sorted(glob.glob(os.path.join(DATOS, cuit, "libro_iva", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json"))):
         d_ = _leer_json(r)
         meses[os.path.basename(r)[:7]] = _liva_totales(d_)
         tiques[os.path.basename(r)[:7]] = tiques_del_mes(d_, pv_mc)
+        fuera_c[os.path.basename(r)[:7]] = compras_fuera_mc(d_)
     for d in sorted(glob.glob(os.path.join(DATOS, cuit, "[0-9][0-9][0-9][0-9]-[0-9][0-9]"))):
         meses.setdefault(os.path.basename(d), None)
     filas = []
@@ -487,13 +506,15 @@ def comparar_fuentes(cuit: str, ventas: dict | None = None, compras: dict | None
         except Exception:
             mc = None
         tq, tq_pv = tiques.get(per, (0.0, []))
-        f = {"periodo": per, "libro_iva": li, "mis_comprobantes": mc, "tiques": tq, "tiques_pv": tq_pv}
+        fc, fc_det = fuera_c.get(per, (0.0, {}))
+        f = {"periodo": per, "libro_iva": li, "mis_comprobantes": mc, "tiques": tq, "tiques_pv": tq_pv,
+             "compras_fuera_mc": fc, "compras_fuera_mc_detalle": fc_det}
         if li is None or mc is None:
             f["estado"] = "no comparable: falta " + ("el Libro IVA" if li is None else "Mis Comprobantes")
         else:
             f["estado"] = "OK"
             for k in ("ventas", "compras"):
-                base_li = li[k] - (tq if k == "ventas" else 0.0)       # los tiques no están en Mis Comprobantes
+                base_li = li[k] - (tq if k == "ventas" else fc)        # tiques / despachos, LPART, etc. no están en MC
                 dif = round(mc[k] - base_li, 2)
                 umbral = max(0.02 * max(abs(base_li), abs(mc[k])), 25_000.0)
                 f[f"dif_{k}"] = dif
@@ -510,6 +531,8 @@ def comparar_fuentes(cuit: str, ventas: dict | None = None, compras: dict | None
                     re.search(r"tique|l[ií]quido producto|liquidaci", str(x.get("Comprobante") or ""), re.I)
                     or (pv_mc and int(x.get("Pto. venta") or 0) not in pv_mc)):
                 continue                                   # tiques de controlador fiscal: no van a Mis Comprobantes
+            if nombre.startswith("compras del Libro IVA") and not re.search(r"factura|nota de|recibo", str(x.get("Comprobante") or ""), re.I):
+                continue                                   # despachos de importación, LPART/LMAN...: no van a Mis Comprobantes
             per = str(x.get(campo) or x.get("Período") or "")[:7]
             det.setdefault(per, []).append({"que": nombre, **{k: (str(v) if not isinstance(v, (int, float)) else v)
                                                               for k, v in x.items()}})

@@ -241,7 +241,7 @@
   {% set fu = s.fuentes or {} %}
   <h2>Revisión cruzada: Libro IVA contra Mis Comprobantes</h2>
   {% if fu.meses %}
-  <p class="sutil">Misma fórmula con las dos fuentes (ventas y compras sin IVA). Los tiques de controlador fiscal (ticketeadoras) y las cuentas de venta y líquido producto no suben a Mis Comprobantes: se descuentan de las ventas del Libro IVA antes de comparar. Diferencia relevante: más del 2 % o de $ 25.000 en el mes (lo que sea mayor). Comparado el {{ fu.fecha|fecha }}.</p>
+  <p class="sutil">Misma fórmula con las dos fuentes (ventas y compras sin IVA). Lo que está en el Portal IVA y nunca sube a Mis Comprobantes se descuenta antes de comparar: en ventas, tiques de controlador fiscal (ticketeadoras) y líquido producto; en compras, despachos de importación, liquidaciones (LPART / LMAN), servicios públicos y otros comprobantes no electrónicos. Diferencia relevante: más del 2 % o de $ 25.000 en el mes (lo que sea mayor). Comparado el {{ fu.fecha|fecha }}.</p>
   <div class="panel desplazable"><table class="tabla"><thead><tr><th>Mes</th><th class="num">Ventas Libro IVA</th><th class="num">Ventas Mis Comp.</th><th class="num">Dif.</th>
     <th class="num">Compras Libro IVA</th><th class="num">Compras Mis Comp.</th><th class="num">Dif.</th><th>Estado</th></tr></thead><tbody>
   {# 20/11/2026: tiques de controlador fiscal y líquido producto no suben a Mis Comprobantes: se descuentan antes de comparar #}
@@ -250,7 +250,7 @@
     <td>{{ periodo_txt(f.periodo) }}</td>
     {% if f.estado.startswith('no comparable') %}<td colspan="6" class="sutil">{{ f.estado }} (datos incompletos)</td>{% else %}
     <td class="num">{{ li.ventas|pesos }}{% if f.tiques %}<div class="sutil">− {{ f.tiques|pesos }} tiques / líquido producto{% if f.tiques_pv %} (PV {{ f.tiques_pv|join(', ') }}){% endif %}</div>{% endif %}</td><td class="num">{{ mc.ventas|pesos }}</td><td class="num {{ 'txt-rojo' if f.estado == 'DIFERENCIA' }}">{{ f.dif_ventas|pesos }}</td>
-    <td class="num">{{ li.compras|pesos }}</td><td class="num">{{ mc.compras|pesos }}</td><td class="num {{ 'txt-rojo' if f.estado == 'DIFERENCIA' }}">{{ f.dif_compras|pesos }}</td>{% endif %}
+    <td class="num">{{ li.compras|pesos }}{% if f.compras_fuera_mc %}<div class="sutil">− {{ f.compras_fuera_mc|pesos }} que no van a Mis Comp. ({{ (f.compras_fuera_mc_detalle or {}).keys()|list|join(', ') }})</div>{% endif %}</td><td class="num">{{ mc.compras|pesos }}</td><td class="num {{ 'txt-rojo' if f.estado == 'DIFERENCIA' }}">{{ f.dif_compras|pesos }}</td>{% endif %}
     <td>{{ f.estado if not f.estado.startswith('no comparable') else 'no comparable' }}</td></tr>
   {% if f.solo_en_una %}<tr><td></td><td colspan="7"><details class="plegado"><summary>{{ f.solo_en_una|length }} comprobante(s) en una sola fuente</summary>
     <ul>{% for x in f.solo_en_una %}<li class="sutil">{{ x.que }}: {{ x.get('Comprobante', '') }} {{ x.get('Pto. venta', '') }}-{{ x.get('Número', '') }} · {{ x.get('Receptor') or x.get('Emisor') or '' }} · {{ (x.get('Total MC') or x.get('Total') or x.get('Neto gravado') or 0)|pesos }}</li>{% endfor %}</ul></details></td></tr>{% endif %}
