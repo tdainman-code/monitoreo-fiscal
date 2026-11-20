@@ -270,6 +270,30 @@ ok(_rm.get("2026-09", {}).get("sueldos") == 800_000.0, "la relación débito/cr�
 ok(cb.post(f"/asientos/sueldos?cuit={C}", data={"csrf": tok_b, "cuit": C, "accion": "f931_manual", "periodo": "2026-08",
                                                "remuneracion": "1"}).status_code == 403, "el equipo no carga F.931 a mano")
 
+# ------------------------------------------------ AGIP / ARBA: deuda y saldo a favor -> encargado (20/11/2026)
+from robots import robot_agip as _ra, robot_arba_dfe as _rad  # noqa: E402
+_cct = {"saldo_deudor": 2133601.0, "nominal": 2133601.0, "intereses": 885569.26, "saldo_favor": 26303826.11,
+        "faltas_presentacion": 71, "notificaciones_no_leidas": 8,
+        "impuestos": [{"impuesto": "IIBB - Convenio Multilateral", "adeudado": 0.0, "a_favor": 26303826.11},
+                      {"impuesto": "Automotor", "adeudado": 3019167.35, "a_favor": 0.0}]}
+escribir(f"{D}/{C}/agip/2026-11-20/resultado.json", {"fecha": "2026-11-20", "cct": _cct, "servicios": {"cct": "OK"},
+                                                     "comunicaciones": [], "deuda": {"total": None, "tablas": []},
+                                                     "alertas": _ra.alertas_cct(_cct)})
+_cta = _rad.leer_cuenta("Mi cuenta corriente\nDeuda\nSaldo a favor\n1\nIngresos Brutos\n$ 10.613.047,90\nJuicios\n$ 0,00\n"
+                        "4\nSellos\n$ 0,00\n$ 0,00\nTOTALES\n$ 10.613.047,90\n$ 0,00")
+escribir(f"{D}/{C}/arba_dfe/2026-11-20/resultado.json", {"fecha": "2026-11-20", "organismo": "ARBA", "comunicaciones": [],
+                                                         "cuenta": _cta, "alertas": _rad.alertas_cuenta(_cta)})
+r = cg.get("/alertas").text
+ok("AGIP: compensar deuda con saldo a favor" in r and "ARBA: deuda en juicio" in r, "alertas del día: compensar en AGIP y juicio en ARBA")
+r = cg.get(f"/cliente/{C}/historica").text
+ok("AGIP: saldo a favor para recuperar" in r and "Visto, me ocupo" in r, "el encargado lo ve en la ficha y lo marca visto")
+r = cg.get(f"/cliente/{C}/agip").text
+ok("26.303.826,11" in r and "Automotor" in r, "ficha AGIP muestra la Cuenta Corriente Tributaria")
+from robots import avisos as _av  # noqa: E402
+_av.DATOS = D
+ok({x["tema"] for x in _av.revisiones(C)} >= {"AGIP: compensar deuda con saldo a favor", "ARBA: deuda en juicio", "Saldos a recuperar (F.399)"},
+   "mail al encargado: AGIP, ARBA y F.399")
+
 # ------------------------------------------------ asignar clientes uno mismo (19/11/2026)
 C3 = "27169781295"
 escribir(f"{R}/publico/clientes.json", [{"cuit": C, "razon_social": "RAPTOR.MAX SRL"}, {"cuit": C2, "razon_social": "VALGUARNERA HECTOR"},

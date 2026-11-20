@@ -71,7 +71,7 @@
 {% elif sec == 'iibb' %}
   {% for x in s.revisiones if x.id_sec == sec %}
   <div class="aviso {{ 'ok' if x.visto else 'error' }}">
-    <b>{{ x.tema }}:</b> {{ x.texto }} — {% if x.importe is none %}a recuperar {{ x.a_favor|pesos }}{% else %}{{ x.importe|pesos }} <span class="sutil">(capital sin actualizar: no es la deuda de hoy)</span>{% endif %}
+    <b>{{ x.tema }}:</b> {{ x.texto }} — {% if x.importe is none %}{% if x.a_favor %}a recuperar {{ x.a_favor|pesos }}{% endif %}{% else %}{{ x.importe|pesos }} <span class="sutil">(capital sin actualizar: no es la deuda de hoy)</span>{% endif %}
     {% if x.a_favor %}<br><span class="sutil">Saldos a favor del contribuyente en esa jurisdicción: {{ x.a_favor|pesos }} (¿compensa?)</span>{% endif %}
     {% if x.visto %}<br>✔ Vista por <b>{{ x.visto.nombre or x.visto.usuario }}</b> el {{ x.visto.fecha[:10]|fecha }}{% if x.visto.nota %}: {{ x.visto.nota }}{% endif %}
     <form method="post" action="{{ url_for('revision_visto') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
@@ -228,7 +228,7 @@
 {% elif sec == 'historica' %}
   {% for x in s.revisiones if x.id_sec == sec %}
   <div class="aviso {{ 'ok' if x.visto else 'error' }}">
-    <b>{{ x.tema }}:</b> {{ x.texto }} — {% if x.importe is none %}a recuperar {{ x.a_favor|pesos }}{% else %}{{ x.importe|pesos }} <span class="sutil">(capital sin actualizar: no es la deuda de hoy)</span>{% endif %}
+    <b>{{ x.tema }}:</b> {{ x.texto }} — {% if x.importe is none %}{% if x.a_favor %}a recuperar {{ x.a_favor|pesos }}{% endif %}{% else %}{{ x.importe|pesos }} <span class="sutil">(capital sin actualizar: no es la deuda de hoy)</span>{% endif %}
     {% if x.a_favor %}<br><span class="sutil">Saldos a favor del contribuyente en esa jurisdicción: {{ x.a_favor|pesos }} (¿compensa?)</span>{% endif %}
     {% if x.visto %}<br>✔ Vista por <b>{{ x.visto.nombre or x.visto.usuario }}</b> el {{ x.visto.fecha[:10]|fecha }}{% if x.visto.nota %}: {{ x.visto.nota }}{% endif %}
     <form method="post" action="{{ url_for('revision_visto') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
@@ -283,6 +283,20 @@
   {% set ag = s.agip or {} %}
   {% if ag %}
   <p class="sutil">Relevado el {{ ag.fecha|fecha }} · {% for k, v in (ag.servicios or {}).items() %}{{ k }}: {{ v }}{{ ' · ' if not loop.last }}{% endfor %}</p>
+  {% set cc = ag.cct or {} %}
+  {% if cc %}
+  <h2>Cuenta Corriente Tributaria</h2>
+  <div class="tarjetas">
+    <div class="tarjeta"><span class="sutil">Saldo deudor</span><b class="{{ 'txt-rojo' if cc.saldo_deudor }}">{{ cc.saldo_deudor|pesos }}</b><span class="sutil">intereses {{ cc.intereses|pesos }}</span></div>
+    <div class="tarjeta"><span class="sutil">Saldo a favor</span><b>{{ cc.saldo_favor|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Faltas de presentación</span><b class="{{ 'txt-rojo' if cc.faltas_presentacion }}">{{ cc.faltas_presentacion }}</b></div>
+    <div class="tarjeta"><span class="sutil">Notificaciones no leídas</span><b>{{ cc.notificaciones_no_leidas }}</b></div>
+  </div>
+  <table class="tabla"><thead><tr><th>Impuesto</th><th class="num">Total adeudado</th><th class="num">Saldo a favor / disponible</th></tr></thead><tbody>
+  {% for i in cc.impuestos or [] %}<tr><td>{{ i.impuesto }}</td><td class="num {{ 'txt-rojo' if i.adeudado }}" data-l="Adeudado">{{ i.adeudado|pesos }}</td><td class="num" data-l="A favor">{{ i.a_favor|pesos }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% for a in ag.alertas or [] if a.tipo.startswith('AGIP: compensar') or a.tipo.startswith('AGIP: saldo a favor') %}<p class="aviso">⚑ <b>{{ a.tipo }}</b> — {{ a.texto }}</p>{% endfor %}
+  {% endif %}
   <h2>Estado de cuenta: {{ (ag.deuda or {}).total|pesos }}</h2>
   {% for t in (ag.deuda or {}).tablas or [] %}<table class="tabla"><thead><tr>{% for h in t.encabezados %}<th>{{ h }}</th>{% endfor %}</tr></thead><tbody>
   {% for fila in t.filas %}<tr>{% for v in fila %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>{% endfor %}

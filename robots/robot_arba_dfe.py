@@ -197,6 +197,72 @@ def _leer_una(ctx, f: dict, carpeta: str) -> dict:
     return {"detalle": detalle, "texto": texto[:20000], "pdf": pdf}
 
 
+# Autogestión -> "Mi cuenta corriente" (relevado con Gaby el 18/11/2026, GONCALVES 20-33116278-8):
+#   1 Ingresos Brutos  $ 10.613.047,90 [Juicios]  $ 0,00 / 4 Sellos $ 0,00 $ 0,00 / TOTALES $ 10.613.047,90 $ 0,00
+#   (columnas Deuda y Saldo a favor; la marca "Juicios" aparece solo si hay deuda en juicio).
+IMPUESTOS_ARBA = ("Ingresos Brutos", "Sellos", "Inmobiliario", "Automotor", "Embarcaciones", "Planes de pago")
+_PESOS = re.compile(r"\$\s*(-?[\d.]+,\d{2})")
+
+
+def _imp(t: str) -> float:
+    return float(t.replace(".", "").replace(",", "."))
+
+
+def leer_cuenta(texto: str) -> dict:
+    t = texto.replace("\xa0", " ")
+    a = t.find("Mi cuenta corriente")
+    if a < 0:
+        return {}
+    t = t[a:]
+    z = t.find("TOTALES")
+    cuerpo = t[:z] if z > 0 else t
+    lineas = [l.strip() for l in cuerpo.splitlines() if l.strip()]
+    imps = []
+    for i, l in enumerate(lineas):
+        nombre = next((n for n in IMPUESTOS_ARBA if re.fullmatch(rf"(\d+\s*)?{n}\W*", l, re.I)), None)
+        if not nombre or any(x["impuesto"] == nombre for x in imps):
+            continue
+        sig = []
+        for l2 in lineas[i + 1:]:
+            if any(re.fullmatch(rf"(\d+\s*)?{n}\W*", l2, re.I) for n in IMPUESTOS_ARBA):
+                break
+            sig.append(l2)
+        montos = [_imp(m) for x in sig[:8] for m in _PESOS.findall(x)]
+        imps.append({"impuesto": nombre, "deuda": montos[0] if montos else 0.0,
+                     "a_favor": montos[1] if len(montos) > 1 else 0.0,
+                     "juicios": any(re.fullmatch(r"\W*Juicios\W*", x, re.I) for x in sig[:3])})
+    m = re.search(r"TOTALES\s*\$\s*([\d.]+,\d{2})\s*\$\s*([\d.]+,\d{2})", t)
+    tot_d = _imp(m[1]) if m else round(sum(x["deuda"] for x in imps), 2)
+    tot_f = _imp(m[2]) if m else round(sum(x["a_favor"] for x in imps), 2)
+    return {"impuestos": imps, "deuda_total": tot_d, "saldo_favor_total": tot_f, "juicios": any(x["juicios"] for x in imps)}
+
+
+def alertas_cuenta(c: dict, minimo: float = 15_000.0) -> list[dict]:
+    """Avisos al encargado (pedido de Gaby 20/11/2026): deuda, juicios, compensar con saldo a favor, devolución."""
+    if not c:
+        return []
+    txt = lambda x: f"$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    deuda, favor = c.get("deuda_total") or 0.0, c.get("saldo_favor_total") or 0.0
+    deben = ", ".join(x["impuesto"] for x in c["impuestos"] if x["deuda"] >= minimo)
+    tienen = ", ".join(x["impuesto"] for x in c["impuestos"] if x["a_favor"] > 0)
+    al = []
+    if c.get("juicios"):
+        al.append({"prioridad": "ALTA", "tipo": "ARBA: deuda en juicio",
+                   "texto": "Hay deuda en ejecución fiscal (marca 'Juicios' en " + ", ".join(
+                       x["impuesto"] for x in c["impuestos"] if x["juicios"]) + ")"})
+    if deuda >= minimo and favor > 0:
+        al.append({"prioridad": "ALTA", "tipo": "ARBA: compensar deuda con saldo a favor",
+                   "texto": f"Deuda {txt(deuda)} ({deben}) y saldo a favor {txt(favor)} ({tienen})"
+                            + (": el saldo a favor la cubre, compensar." if favor >= deuda else ": compensar lo que alcance.")})
+    elif deuda >= minimo:
+        al.append({"prioridad": "ALTA", "tipo": "ARBA: deuda", "texto": f"Deuda {txt(deuda)} en {deben or 'la cuenta corriente'}"})
+    if favor - (deuda if deuda >= minimo else 0) >= 100_000:
+        al.append({"prioridad": "ALTA", "tipo": "ARBA: saldo a favor para recuperar",
+                   "texto": f"Quedan {txt(favor - (deuda if deuda >= minimo else 0))} a favor ({tienen}): evaluar devolución "
+                            "o revisar los regímenes de retención y percepción."})
+    return al
+
+
 def paso(cuit: str, cit: str, estado: dict):
     carpeta = os.path.join(DATOS, cuit, "arba_dfe")
 
@@ -207,6 +273,12 @@ def paso(cuit: str, cit: str, estado: dict):
         with arca.navegador() as ctx:
             try:
                 page = login(ctx, cuit, cit)
+                try:                                     # Mi cuenta corriente de Autogestión (20/11/2026)
+                    page.wait_for_timeout(3000)
+                    t0 = page.inner_text("body")
+                    cuenta = leer_cuenta(t0) if (cuit in t0 or arca.cuit_fmt(cuit) in t0) else {}
+                except Exception:
+                    cuenta = {}
                 band = _abrir_bandeja(ctx, page, cuit)
                 filas = _listar(band)
                 for f in filas:
@@ -249,7 +321,8 @@ def paso(cuit: str, cit: str, estado: dict):
                                          + (f" RESPONSABLE: {resp}" if r.get("motivo") == "falta de presentación" and resp else "")
                                          + (f" — {r['plazo']}" if r.get("plazo") else "")
                                          + (" — SE NOTIFICÓ HOY AL ABRIRLA: corren plazos" if notif_hoy else "")})
-        res = {"cuit": cuit, "fecha": date.today().isoformat(), "organismo": "ARBA", "comunicaciones": com,
+        alertas += alertas_cuenta(cuenta)
+        res = {"cuit": cuit, "fecha": date.today().isoformat(), "organismo": "ARBA", "comunicaciones": com, "cuenta": cuenta,
                "total": len(com), "sin_abrir": sum(1 for c in com if not c["notificado"]),
                "altas_sin_abrir": sum(1 for c in com if not c["notificado"] and c["importancia"] == "ALTA"),
                "nuevas_leidas": sum(1 for r in reg.values() if r.get("leida_por_robot") == date.today().isoformat()),

@@ -86,7 +86,7 @@ def _pesos_txt(x) -> str:
     return f"$ {x or 0:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def revisiones(cuit: str, cm: dict | None, scth: dict | None) -> list[dict]:
+def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None = None, arba: dict | None = None) -> list[dict]:
     """Deuda histórica que el ENCARGADO tiene que revisar y marcar "visto, me ocupo" (Gaby, 17/11/2026):
     Convenio Multilateral (anticipo con saldo a favor del fisco y sin el pago; capital sin actualizar) y la deuda
     del estado de cumplimiento de Cuentas Tributarias. La clave cambia si aparece deuda nueva: vuelve a pedir revisión."""
@@ -113,6 +113,13 @@ def revisiones(cuit: str, cm: dict | None, scth: dict | None) -> list[dict]:
                     "texto": f"Estado de cumplimiento: {n} período(s)/concepto(s) con deuda en "
                              f"{len(scth.get('por_impuesto') or {})} impuesto(s)",
                     "importe": scth.get("deuda_total") or 0.0, "a_favor": None, "visto": vis.get(clave)})
+    for org, res in (("agip", agip), ("arba", arba)):  # deuda / saldo a favor en AGIP y ARBA (Gaby 20/11/2026)
+        for a in (res or {}).get("alertas") or []:
+            if not re.match(r"(AGIP|ARBA): (compensar|saldo a favor para recuperar|deuda en juicio)", a.get("tipo", "")):
+                continue
+            clave = f"{org}:{cuit}:" + re.sub(r"[^\w.:-]", "", (a["tipo"].split(":")[1] + ":" + "".join(re.findall(r"\d", a["texto"]))[:24]))[:58]
+            out.append({"clave": clave, "tema": a["tipo"], "id_sec": "historica",
+                        "texto": a["texto"], "importe": None, "a_favor": None, "visto": vis.get(clave)})
     if scth and scth.get("saldos_recuperar"):          # pagos mal hechos: reimputar con el F.399 (Gaby 19/11/2026)
         sr = scth["saldos_recuperar"]
         clave = f"sld:{cuit}:{round(scth.get('saldos_recuperar_total') or 0)}:{len(sr)}"
@@ -155,13 +162,16 @@ def situacion(cuit: str) -> dict:
     ccma = _leer(_ultimo(os.path.join(base, "ccma", "*.json")))   # autónomos / monotributo (17/11/2026)
     scth = _leer(_ultimo(os.path.join(base, "sct_historico", "*.json")))   # deuda histórica SCT (17/11/2026)
     r["cm"], r["scth"] = cm, scth
-    r["revisiones"] = revisiones(cuit, cm, scth)
+    r["revisiones"] = revisiones(cuit, cm, scth, agip, arba)
     r["revisar"] = [x for x in r["revisiones"] if not x["visto"]]
     r["ccma"] = ccma
     r["ccma_impagos"] = len((ccma or {}).get("impagos") or [])
     r["ccma_deuda"] = (ccma or {}).get("deuda_impaga") or 0.0
     r["agip_altas"] = (agip or {}).get("altas_sin_abrir") or 0
     r["agip_deuda"] = ((agip or {}).get("deuda") or {}).get("total") or 0.0
+    _cct = (agip or {}).get("cct") or {}                # Nueva Cuenta Corriente Tributaria (20/11/2026)
+    if _cct.get("saldo_deudor") is not None:
+        r["agip_deuda"] = (_cct.get("saldo_deudor") or 0.0) + (_cct.get("intereses") or 0.0 if _cct.get("nominal") is not None else 0.0)
     # Solo filas con estado abierto (mismo criterio que el robot desde el 17/11; corrige datos ya bajados)
     if fisc:
         fisc = {**fisc, **{k: _abiertas(fisc.get(k) or []) for k in ("en_curso", "siace", "fiscalizacion_electronica")}}
@@ -190,7 +200,8 @@ def situacion(cuit: str) -> dict:
                       "texto": x["texto"] + f" — {_pesos_txt(x['importe'])} sin actualizar. El encargado tiene que marcarla vista."}
                      if x["importe"] is not None else
                      {"prioridad": "ALTA", "tipo": x["tema"],
-                      "texto": x["texto"] + f" — {_pesos_txt(x['a_favor'])} a recuperar. El encargado tiene que marcarla vista."}
+                      "texto": x["texto"] + (f" — {_pesos_txt(x['a_favor'])} a recuperar." if x["a_favor"] else "")
+                               + " El encargado tiene que marcarla vista."}
                      for x in r["revisar"]]
     ratio_mal = r["ratio"]["nivel"] if r["ratio"] and r["ratio"]["meses"] >= 6 else ""
     minima = analisis.REGLAS["deuda_minima"]

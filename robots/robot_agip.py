@@ -44,7 +44,94 @@ SERVICIOS = [
     ("dfe", ["Domicilio Fiscal Electrónico", "Domicilio Fiscal Electronico", "DFE"]),
     ("deuda", ["Estado de Cuenta", "Consulta de Deuda", "Estado de deuda", "Deuda"]),
     ("fiscalizacion", ["Fiscalización Electrónica", "Fiscalizacion Electronica"]),
+    # Nueva Cuenta Corriente Tributaria (portal-cct.agip.gob.ar), relevada con Gaby el 18/11/2026 (Dinafer S R L)
+    ("cct", ["Nueva Cuenta Corriente Tributaria", "Cuenta Corriente Tributaria"]),
 ]
+
+
+def _elegir_representado_portal(page, cuit: str) -> None:
+    """Menú principal de Clave Ciudad: 'Seleccione un representado' (opciones 'NOMBRE [30-71103454-0]').
+    Se elige el cliente ANTES de abrir los aplicativos. Si no hay selector, no hace nada."""
+    fmt = arca.cuit_fmt(cuit)
+    try:
+        sel = page.locator("select").filter(has=page.locator(f"option:has-text('{fmt}'), option:has-text('{cuit}')"))
+        if not sel.count():
+            return
+        op = sel.first.locator(f"option:has-text('{fmt}'), option:has-text('{cuit}')").first
+        sel.first.select_option(value=op.get_attribute("value"))
+        arca.pausa(1.5, 2.5)
+    except Exception:
+        pass
+
+
+_NUM_CCT = r"\$\s*(-?[\d.]+,\d{2})"
+
+
+def leer_cct(texto: str) -> dict:
+    """Pantalla de inicio de la Nueva Cuenta Corriente Tributaria (texto). Ejemplo Dinafer 18/11/2026:
+    Saldo deudor $ 2.133.601,00 / Importe Nominal: $ 2.133.601,00 / Intereses: $ 885.569,26 / Saldo a favor
+    $ 26.303.826,11 / 71 Faltas de presentación / Obligaciones al día / 8 Notificaciones no leídas /
+    Mis impuestos: 'IIBB - Convenio Multilateral' Total adeudado $ 0,00 Saldo a favor / Disponible $ 26.303.826,11,
+    'Automotor' Total adeudado $ 3.019.167,35 Saldo a favor / Disponible $ 0,00."""
+    t = texto.replace("\xa0", " ")
+    g = lambda pat: (lambda m: _num(m[1]) if m else None)(re.search(pat, t, re.I))
+    r = {"saldo_deudor": g(r"Saldo deudor\s*" + _NUM_CCT), "nominal": g(r"Importe Nominal:?\s*" + _NUM_CCT),
+         "intereses": g(r"Intereses:?\s*" + _NUM_CCT), "saldo_favor": g(r"Saldo a favor\s*" + _NUM_CCT)}
+    m = re.search(r"(\d+)\s*Faltas? de presentaci", t, re.I)
+    r["faltas_presentacion"] = int(m[1]) if m else 0
+    m = re.search(r"(\d+)\s*Notificaciones? no le[ií]das", t, re.I)
+    r["notificaciones_no_leidas"] = int(m[1]) if m else 0
+    m = re.search(r"(\d+)\s*Obligaciones? vencidas", t, re.I)
+    r["obligaciones_vencidas"] = int(m[1]) if m else 0
+    impuestos = []
+    lineas = [l.strip() for l in t.splitlines() if l.strip()]
+    for i, l in enumerate(lineas):
+        if not re.match(r"Total adeudado", l, re.I):
+            continue
+        nombre = next((x for x in reversed(lineas[max(0, i - 3):i]) if re.search(r"[A-Za-zÁÉÍÓÚáéíóú]{3}", x)
+                       and not re.search(r"Mis impuestos|Saldo a favor|Disponible|Ver|Pagar|Detalle", x, re.I)), "")
+        bloque = " ".join(lineas[i:i + 4])
+        ad = re.search(r"Total adeudado\s*" + _NUM_CCT, bloque, re.I)
+        fa = re.search(r"Saldo a favor\s*/?\s*Disponible\s*" + _NUM_CCT, bloque, re.I)
+        impuestos.append({"impuesto": nombre, "adeudado": _num(ad[1]) if ad else 0.0, "a_favor": _num(fa[1]) if fa else 0.0})
+    r["impuestos"] = impuestos
+    if r["saldo_deudor"] is None and not impuestos:
+        raise arca.ErrorRobot("AGIP: no apareció el Estado de Cuenta Corriente Tributaria")
+    return r
+
+
+def alertas_cct(c: dict, minimo: float = 15_000.0) -> list[dict]:
+    """Avisos al encargado (pedido de Gaby 18/11/2026, caso Dinafer): compensar deuda con saldo a favor,
+    evaluar devolución del remanente, faltas de presentación y notificaciones sin leer."""
+    txt = lambda x: f"$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    al = []
+    deuda = (c.get("saldo_deudor") or 0.0) + (c.get("intereses") or 0.0) if c.get("nominal") is not None else (c.get("saldo_deudor") or 0.0)
+    favor = c.get("saldo_favor") or 0.0
+    deben = [i for i in c.get("impuestos") or [] if (i.get("adeudado") or 0) >= minimo]
+    tienen = [i for i in c.get("impuestos") or [] if (i.get("a_favor") or 0) > 0]
+    if deuda >= minimo and favor > 0:
+        cubre = favor >= deuda
+        al.append({"prioridad": "ALTA", "tipo": "AGIP: compensar deuda con saldo a favor",
+                   "texto": f"Deuda {txt(deuda)} (con intereses)" + (" en " + ", ".join(i["impuesto"] for i in deben) if deben else "")
+                            + f" y saldo a favor {txt(favor)}" + (" en " + ", ".join(i["impuesto"] for i in tienen) if tienen else "")
+                            + (": el saldo a favor la cubre entera, compensar para cancelarla y bajar el riesgo fiscal."
+                               if cubre else ": compensar lo que alcance y pagar el resto.")})
+    elif deuda >= minimo:
+        al.append({"prioridad": "ALTA", "tipo": "AGIP: deuda", "texto": f"Saldo deudor {txt(deuda)} (con intereses)"
+                   + (" en " + ", ".join(i["impuesto"] for i in deben) if deben else "")})
+    rem = favor - (deuda if deuda >= minimo else 0.0)
+    if rem >= 100_000:
+        al.append({"prioridad": "ALTA", "tipo": "AGIP: saldo a favor para recuperar",
+                   "texto": f"Quedan {txt(rem)} a favor" + (" (" + ", ".join(i["impuesto"] for i in tienen) + ")" if tienen else "")
+                            + ": evaluar solicitud de devolución; si crece todos los meses, revisar exclusión o reducción "
+                              "de los regímenes de retención y percepción."})
+    if c.get("faltas_presentacion"):
+        al.append({"prioridad": "ALTA", "tipo": "AGIP: faltas de presentación",
+                   "texto": f"{c['faltas_presentacion']} DDJJ con falta de presentación en la Cuenta Corriente Tributaria"})
+    if c.get("notificaciones_no_leidas"):
+        al.append({"prioridad": "Media", "tipo": "AGIP: notificaciones no leídas",
+                   "texto": f"{c['notificaciones_no_leidas']} notificación(es) no leída(s) en la Cuenta Corriente Tributaria"})
+    return al
 
 
 def _visible(page, selector: str, timeout: int = 1500) -> bool:
@@ -114,6 +201,8 @@ def _abrir(ctx, page, textos: list[str]):
     """Abre un servicio del portal por el texto del enlace. Devuelve la pestaña (nueva o la misma) o None."""
     for t in textos:
         link = page.locator(f"a:has-text('{t}')").filter(visible=True)
+        if not link.count():                             # tarjetas del menú que no son <a> (18/11/2026)
+            link = page.get_by_text(t, exact=True).filter(visible=True)
         if not link.count():
             continue
         destino = link.first.get_attribute("target") or ""
@@ -130,7 +219,11 @@ def _abrir(ctx, page, textos: list[str]):
             antes = set(ctx.pages)
             link.first.click()
             arca.pausa(2.0, 3.0)
-            nuevas = [p for p in ctx.pages if p not in antes]   # por si abre ventana con JavaScript
+            for _ in range(10):                                  # por si abre ventana con JavaScript
+                if [p for p in ctx.pages if p not in antes]:
+                    break
+                page.wait_for_timeout(500)
+            nuevas = [p for p in ctx.pages if p not in antes]
             pag = nuevas[-1] if nuevas else page
         try:
             pag.wait_for_load_state("domcontentloaded")
@@ -221,6 +314,7 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
         with arca.navegador(visible=visible) as ctx:
             try:
                 page = login(ctx, usuario, clave)
+                _elegir_representado_portal(page, cuit)
                 inicio = page.url
                 for clave_srv, textos in SERVICIOS:
                     try:
@@ -238,10 +332,14 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                                 r["dfe_tablas"] = tablas
                             elif clave_srv == "deuda":
                                 r["deuda"] = {"tablas": tablas, "total": deuda_de(tablas)}
+                            elif clave_srv == "cct":
+                                pag.wait_for_timeout(3000)               # la página arma los importes con JavaScript
+                                r["cct"] = leer_cct(pag.inner_text("body"))
                             else:
                                 r["fiscalizacion"] = [f for t in tablas for f in t["filas"]]
                                 r["fiscalizacion_tablas"] = tablas
-                            r["servicios"][clave_srv] = f"OK ({sum(len(t['filas']) for t in tablas)} filas)"
+                            r["servicios"][clave_srv] = ("OK" if clave_srv == "cct"
+                                                         else f"OK ({sum(len(t['filas']) for t in tablas)} filas)")
                         if pag is not page:
                             pag.close()
                         else:
@@ -264,7 +362,9 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
         if r["fiscalizacion"]:
             r["alertas"].append({"prioridad": "ALTA", "tipo": "AGIP: fiscalización electrónica",
                                  "texto": f"{len(r['fiscalizacion'])} registro(s) en Fiscalización Electrónica"})
-        if (r["deuda"]["total"] or 0) >= 15_000:
+        if r.get("cct"):
+            r["alertas"] += alertas_cct(r["cct"])
+        elif (r["deuda"]["total"] or 0) >= 15_000:
             r["alertas"].append({"prioridad": "Media", "tipo": "AGIP: deuda",
                                  "texto": f"Estado de cuenta con saldo {r['deuda']['total']:,.2f}"})
         with open(os.path.join(destino, "resultado.json"), "w", encoding="utf-8") as f:

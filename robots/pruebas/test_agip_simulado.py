@@ -26,7 +26,15 @@ INICIO_ERROR = INICIO.replace('style="display:none"', "").replace('<span class="
 PORTAL = """<html><body><h1>Portal del contribuyente</h1>
 <a href="https://lb.agip.gob.ar/dfe" target="_blank">Domicilio Fiscal Electrónico</a>
 <a href="https://lb.agip.gob.ar/deuda">Estado de Cuenta</a>
-<a href="https://lb.agip.gob.ar/fe" target="_blank">Fiscalización Electrónica</a></body></html>"""
+<a href="https://lb.agip.gob.ar/fe" target="_blank">Fiscalización Electrónica</a>
+<div class="tarjeta" onclick="window.open('https://portal-cct.agip.gob.ar/inicio')"><h3>Nueva Cuenta Corriente Tributaria</h3></div></body></html>"""
+CCT = """<html><body><div>Dinafer S R L {cuit}</div><h1>Estado de Cuenta Corriente Tributaria</h1>
+<div><h4>Saldo deudor</h4><p>$ 2.133.601,00</p><p>Importe Nominal: $ 2.133.601,00</p><p>Intereses: $ 885.569,26</p></div>
+<div><h4>Saldo a favor</h4><p>$ 26.303.826,11</p></div>
+<h2>Mis notificaciones</h2><div><h4>Presentación de DDJJ</h4><span>71</span><span>Faltas de presentación</span></div>
+<div><h4>Bandeja de entrada</h4><span>8</span><span>Notificaciones no leídas</span></div>
+<h2>Mis impuestos</h2><div><h4>IIBB - Convenio Multilateral</h4><p>Total adeudado</p><p>$ 0,00</p><p>Saldo a favor / Disponible</p><p>$ 26.303.826,11</p></div>
+<div><h4>Automotor</h4><p>Total adeudado</p><p>$ 3.019.167,35</p><p>Saldo a favor / Disponible</p><p>$ 0,00</p></div></body></html>"""
 SELECTOR = f"""<select id="contrib"><option value="1">{REPRESENTANTE} - EL CONTADOR</option>
 <option value="2">{CUIT} - BH SOLUCIONES</option></select><button onclick="this.parentNode.dataset.ok=1">Consultar</button>"""
 DFE = """<html><body><div>Contribuyente: BH SOLUCIONES {cuit}</div>{sel}
@@ -61,6 +69,8 @@ def servir(route):
         return route.fulfill(**html(DFE.format(cuit=ver, sel=sel)))
     if url.endswith("/deuda"):
         return route.fulfill(**html(DEUDA.format(cuit=CUIT)))
+    if "portal-cct" in url:
+        return route.fulfill(**html(CCT.format(cuit=arca.cuit_fmt(CUIT))))
     if url.endswith("/fe"):
         return route.fulfill(**html(FE.format(cuit=M.get("cuit_fe", CUIT))))
     return route.fulfill(**html(PORTAL)) if M["entro"] else route.abort()
@@ -102,7 +112,10 @@ caso("ingresa con Clave Ciudad y lee DFE (sin abrir), deuda y fiscalización",
      lambda: (robot_agip.correr(CUIT, None, CUIT, "bien"), leer())[1],
      lambda r: print("   servicios:", r["servicios"]) or len(r["comunicaciones"]) == 2 and r["sin_abrir"] == 1 and r["altas_sin_abrir"] == 1
      and r["comunicaciones"][0]["importancia"] == "ALTA" and abs(r["deuda"]["total"] - 250000.5) < 0.01
-     and r["fiscalizacion"] == [["FE-2026-123", "En curso"]] and len(r["alertas"]) == 3)
+     and r["fiscalizacion"] == [["FE-2026-123", "En curso"]] and r["cct"]["saldo_favor"] == 26303826.11
+     and r["cct"]["faltas_presentacion"] == 71 and {i["impuesto"] for i in r["cct"]["impuestos"]} == {"IIBB - Convenio Multilateral", "Automotor"}
+     and any(a["tipo"] == "AGIP: compensar deuda con saldo a favor" and "Automotor" in a["texto"] for a in r["alertas"])
+     and any(a["tipo"] == "AGIP: saldo a favor para recuperar" for a in r["alertas"]))
 M.update(entro=False, error_previo=False)
 caso("Clave Ciudad incorrecta -> ClaveInvalida (no reintenta)",
      lambda: robot_agip.correr(CUIT, None, CUIT, "mal"),

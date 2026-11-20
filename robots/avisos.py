@@ -280,7 +280,21 @@ def revisiones(cuit: str) -> list[dict]:
                                  f"({imp[0]['anticipo']} a {imp[-1]['anticipo']}), {_pesos(v.get('deuda'))} sin actualizar"
                                  + (f"; saldos a favor del contribuyente: {_pesos(v.get('saldo_contribuyente'))}"
                                     if v.get("saldo_contribuyente") else "")})
+    for org, carpeta in (("agip", "agip"), ("arba", "arba_dfe")):   # deuda y saldo a favor AGIP / ARBA (20/11/2026)
+        rutas = sorted(__import__("glob").glob(os.path.join(DATOS, cuit, carpeta, "[0-9]*", "resultado.json")))
+        res = _leer(rutas[-1]) if rutas else None
+        for a in (res or {}).get("alertas") or []:
+            if re.match(r"(AGIP|ARBA): (compensar|saldo a favor para recuperar|deuda en juicio)", a.get("tipo", "")):
+                clave = f"{org}:{cuit}:" + re.sub(r"[^\w.:-]", "", (a["tipo"].split(":")[1] + ":" + "".join(re.findall(r"\d", a["texto"]))[:24]))[:58]
+                out.append({"clave": clave, "tema": a["tipo"], "texto": a["texto"]})
     h = _ultimo_json(cuit, "sct_historico") or {}
+    if h.get("saldos_recuperar"):                       # pagos mal hechos -> F.399 (19/11/2026)
+        sr = h["saldos_recuperar"]
+        out.append({"clave": f"sld:{cuit}:{round(h.get('saldos_recuperar_total') or 0)}:{len(sr)}",
+                    "tema": "Saldos a recuperar (F.399)",
+                    "texto": f"{len(sr)} saldo(s) de libre disponibilidad fuera del IVA por {_pesos(h.get('saldos_recuperar_total'))}: "
+                             + "; ".join(f"{x['impuesto']} {x['periodo'][4:6]}/{x['periodo'][:4]} {_pesos(x['sld'])}" for x in sr[:8])
+                             + ". Reimputarlos con el F.399 a los períodos que se deben."})
     if h.get("deudas"):
         out.append({"clave": f"sct:{cuit}:{round(h.get('deuda_total') or 0)}:{len(h['deudas'])}", "tema": "Cuentas Tributarias",
                     "texto": f"Estado de cumplimiento: {len(h['deudas'])} período(s)/concepto(s) con deuda por "
@@ -300,12 +314,14 @@ def avisar_revisiones(cont: dict, cuits: list[str], hoy: dt.date) -> int:
             if x["clave"] in hechas:
                 continue
             nombre = info.get("razon_social") or _cuit_fmt(cuit)
-            cuerpo = (f"Hola {info.get('encargado_nombre') or ''}:\n\nEl robot encontró deuda histórica de {nombre} "
-                      f"({_cuit_fmt(cuit)}) que hay que revisar:\n\n{x['tema']}: {x['texto']}\n\n"
-                      "Es capital sin actualizar (no es la deuda de hoy). Fijate si está compensada, en un plan o si hay que "
-                      "pagarla, y marcala \"Visto, me ocupo\" en la ficha del cliente.\n")
+            historica = x["clave"].split(":")[0] in ("cm", "sct")
+            cuerpo = (f"Hola {info.get('encargado_nombre') or ''}:\n\nEl robot encontró en {nombre} "
+                      f"({_cuit_fmt(cuit)}) algo que hay que revisar:\n\n{x['tema']}: {x['texto']}\n\n"
+                      + ("Es capital sin actualizar (no es la deuda de hoy). Fijate si está compensada, en un plan o si hay que "
+                         "pagarla, y marcala \"Visto, me ocupo\" en la ficha del cliente.\n" if historica else
+                         "Ocupate y marcalo \"Visto, me ocupo\" en la ficha del cliente (Deuda histórica).\n"))
             hechas[x["clave"]] = {"fecha": hoy.isoformat(), "cuit": cuit,
-                                  "mail": encolar_mail([info.get("encargado_email", "")], f"Deuda para revisar: {nombre} — {x['tema']}",
+                                  "mail": encolar_mail([info.get("encargado_email", "")], f"Para revisar: {nombre} — {x['tema']}",
                                                        cuerpo, motivo=f"revisión {x['clave']}")}
             n += 1
     _guardar(ruta, hechas)
