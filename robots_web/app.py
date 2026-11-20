@@ -685,10 +685,11 @@ def alertas():
             # todas las alertas del cliente de una vez (pedido del 20/11/2026)
             if accion == "restaurar_cliente":
                 n = 0
-                for clave, d in usuarios.descartes_vigentes().items():
-                    if d["cuit"] == cuit:
-                        usuarios.restaurar_descarte(clave)
-                        n += 1
+                claves = {k for k, d in usuarios.descartes_vigentes().items() if d["cuit"] == cuit}
+                claves |= {d["clave"] for (c_, _t, _i), d in usuarios.items_descartados().items() if c_ == cuit}
+                for clave in claves:
+                    usuarios.restaurar_descarte(clave)
+                    n += 1
                 usuarios.registrar(session["usuario"], "alertas del cliente restauradas", cuit, _ip())
                 flash(f"{n} alerta(s) del cliente volvieron a la lista", "ok")
             else:
@@ -700,14 +701,16 @@ def alertas():
                     flash("Con el motivo 'Otro' escribí una nota", "error")
                 else:
                     for a in actuales:
-                        usuarios.descartar(cuit, a["tipo"], a["texto"], motivo, nota, session["usuario"], session.get("nombre", ""))
+                        usuarios.descartar(cuit, a["tipo"], a["texto"], motivo, nota, session["usuario"], session.get("nombre", ""),
+                                           a.get("items"))
                     usuarios.registrar(session["usuario"], f"cliente descartado en alertas ({motivo})", cuit, _ip())
                     flash(f"{len(actuales)} alerta(s) del cliente descartadas: {motivo}. Las que sigan igual vuelven en "
                           f"{usuarios.DIAS_DESCARTE} días; si aparece una nueva, se muestra enseguida.", "ok")
             return redirect(url_for("alertas", ver=request.args.get("ver", "")))
         if accion == "restaurar":
             clave = request.form.get("clave", "")
-            d = usuarios.descartes_vigentes().get(clave)
+            d = usuarios.descartes_vigentes().get(clave) or next(
+                ({"cuit": c_} for (c_, _t, _i), x in usuarios.items_descartados().items() if x["clave"] == clave), None)
             if d and d["cuit"] == cuit:
                 usuarios.restaurar_descarte(clave)
                 usuarios.registrar(session["usuario"], "alerta restaurada", cuit, _ip())
@@ -718,27 +721,42 @@ def alertas():
             actuales = next((g["alertas"] for g in datos.alertas_del_dia({cuit}) if g["cuit"] == cuit), [])
             if motivo not in usuarios.MOTIVOS_DESCARTE:
                 flash("Elegí el motivo para descartar la alerta", "error")
-            elif not any(a["tipo"] == tipo and a["texto"] == texto for a in actuales):
+            elif not (a_ := next((a for a in actuales if a["tipo"] == tipo and a["texto"] == texto), None)):
                 flash("Esa alerta ya cambió o no está más", "error")
             elif motivo == "Otro" and not request.form.get("nota", "").strip():
                 flash("Con el motivo 'Otro' escribí una nota", "error")
             else:
                 usuarios.descartar(cuit, tipo, texto, motivo, request.form.get("nota", "").strip(), session["usuario"],
-                                   session.get("nombre", ""))
+                                   session.get("nombre", ""), a_.get("items"))
                 usuarios.registrar(session["usuario"], f"alerta descartada ({motivo})", f"{cuit} {tipo}"[:120], _ip())
                 flash(f"Alerta descartada: {motivo}. Si en {usuarios.DIAS_DESCARTE} días sigue igual, vuelve a aparecer.", "ok")
         return redirect(url_for("alertas", ver=request.args.get("ver", "")))
     desc = usuarios.descartes_vigentes()
+    items_d = usuarios.items_descartados()
     grupos, descartadas = [], []
     for g in datos.alertas_del_dia(_solo()):
         quedan = []
         for a in g["alertas"]:
-            d = desc.get(usuarios.clave_alerta(g["cuit"], a["tipo"], a["texto"]))
+            clave = usuarios.clave_alerta(g["cuit"], a["tipo"], a["texto"])
+            d = desc.get(clave)
+            its = [items_d.get((g["cuit"], a["tipo"][:200], str(i)[:300])) for i, _ in a.get("items") or []]
+            viejas = sum(1 for x in its if x and x["permanente"])
+            if not d and its and all(its):
+                # todos sus períodos descartados: los de antes de 2020 para siempre, el resto por 30 días (20/11/2026)
+                ult = max(its, key=lambda x: x["fecha"])
+                d = {**ult, "nota": "", "tipo": a["tipo"], "texto": a["texto"]}
+                clave = ult["clave"]
             if d:
-                descartadas.append({**a, **d, "cuit": g["cuit"], "nombre_cliente": g["nombre"],
-                                    "vuelve": date.fromisoformat(d["fecha"][:10]) + timedelta(days=usuarios.DIAS_DESCARTE),
-                                    "clave": usuarios.clave_alerta(g["cuit"], a["tipo"], a["texto"])})
+                nuevas = [x for x in its if x and not x["permanente"]] if its else None
+                vuelve = (None if its and not nuevas else
+                          date.fromisoformat(max(x["fecha"] for x in nuevas)[:10] if nuevas else d["fecha"][:10])
+                          + timedelta(days=usuarios.DIAS_DESCARTE))
+                descartadas.append({**a, **d, "cuit": g["cuit"], "nombre_cliente": g["nombre"], "vuelve": vuelve,
+                                    "clave": clave})
             else:
+                if viejas:
+                    a = {**a, "nota_viejas": f"{viejas} de antes de {usuarios.ANIO_DESCARTE_PERMANENTE} ya descartada(s): "
+                                            "no vuelven; la alerta sigue por lo demás"}
                 quedan.append(a)
         if quedan:
             grupos.append({**g, "alertas": quedan})
@@ -746,7 +764,7 @@ def alertas():
     for d in descartadas:
         por_cliente.setdefault(d["cuit"], {"cuit": d["cuit"], "nombre": d["nombre_cliente"], "alertas": []})["alertas"].append(d)
     return render_template("alertas.html", grupos=grupos, descartadas=descartadas, desc_grupos=list(por_cliente.values()),
-                           motivos=usuarios.MOTIVOS_DESCARTE,
+                           motivos=usuarios.MOTIVOS_DESCARTE, anio_perm=usuarios.ANIO_DESCARTE_PERMANENTE,
                            dias=usuarios.DIAS_DESCARTE, ver=request.args.get("ver", ""))
 
 

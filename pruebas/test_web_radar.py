@@ -581,6 +581,7 @@ ok(cl.post("/alertas", data={"csrf": token(_al), "cuit": _ccu, "tipo": "x", "tex
 _con = usuarios.conectar()
 with _con:
     _con.execute("UPDATE descartes SET fecha='2026-01-01T00:00:00'")
+    _con.execute("UPDATE descartes_items SET fecha='2026-01-01T00:00:00'")
 _con.close()
 ok(cl.get("/alertas").text.count('class="alta"') == _n_antes, "a los 30 días, si sigue igual, la alerta vuelve")
 # descartar el cliente completo (20/11/2026)
@@ -608,6 +609,48 @@ escribir(f"{R}/publico/actualizaciones.json", [{"fecha": "2026-11-17T13:00:00", 
 ok("cambio de prueba" in cl2.get("/sistema").text and "Sistema" in cl2.get("/mas").text, "el admin ve la pantalla Sistema")
 ok(cl.get("/sistema").status_code == 403, "un colaborador no ve Sistema")
 ok(cl.get(f"/cliente/{C3}").status_code == 200 and cl.get(f"/cliente/{C3}/iva").status_code == 200, "cliente sin datos no rompe")
+# lo descartado de antes de 2020 (deuda / faltas de presentación) no vuelve nunca más (20/11/2026)
+C4 = "20123456786"
+def _sit4(ddjj):
+    escribir(f"{D}/{C4}/situacion/2026-11-20_0900/resultado.json",
+             {"fecha": "2026-11-20", "sct": {"deudas": [], "vencimientos": [], "totales_leidos": {"vencido": 0}, "ddjj_pendientes": ddjj},
+              "alertas": [{"prioridad": "ALTA", "tipo": "Falta de presentación",
+                           "texto": f"{len(ddjj)} DDJJ pendientes: " + "; ".join(f"IVA {d['periodo_txt']}" for d in ddjj)}]})
+_v18 = {"impuesto": "IVA", "concepto": "DDJJ", "periodo": "201803", "periodo_txt": "03/2018"}
+_v24 = {"impuesto": "IVA", "concepto": "DDJJ", "periodo": "202405", "periodo_txt": "05/2024"}
+_sit4([_v18])
+_al = cl2.get("/alertas").text
+ok("IVA 03/2018" in _al and "anteriores a 2020" in _al, "alertas: aparece la falta de presentación de 2018")
+_r = cl2.post("/alertas", data={"csrf": token(_al), "cuit": C4, "tipo": "Falta de presentación", "texto": "1 DDJJ pendientes: IVA 03/2018",
+                                "motivo": "Alerta sin relevancia"}, follow_redirects=True)
+ok("IVA 03/2018" not in _r.text, "descartada la falta de 2018")
+def _envejecer():
+    _con = usuarios.conectar()
+    with _con:
+        _con.execute("UPDATE descartes SET fecha='2026-01-01T00:00:00'")
+        _con.execute("UPDATE descartes_items SET fecha='2026-01-01T00:00:00'")
+    _con.close()
+_envejecer()
+ok("IVA 03/2018" not in cl2.get("/alertas").text, "anterior a 2020: pasados los 30 días NO vuelve")
+_d = cl2.get("/alertas?ver=descartadas").text
+ok("IVA 03/2018" in _d and "no vuelve (períodos anteriores a 2020)" in _d, "descartadas: dice que no vuelve")
+_sit4([_v18, _v24])
+_al = cl2.get("/alertas").text
+ok("IVA 05/2024" in _al and "1 de antes de 2020 ya descartada(s)" in _al, "período nuevo: vuelve la alerta, aclarando lo viejo ya descartado")
+cl2.post("/alertas", data={"csrf": token(_al), "cuit": C4, "tipo": "Falta de presentación",
+                           "texto": "2 DDJJ pendientes: IVA 03/2018; IVA 05/2024", "motivo": "Avisado al cliente"})
+ok("IVA 05/2024" not in cl2.get("/alertas").text, "descartada con el período 2024")
+_envejecer()
+ok("IVA 05/2024" in cl2.get("/alertas").text, "2024: a los 30 días vuelve (solo lo anterior a 2020 es para siempre)")
+_d = cl2.get("/alertas?ver=descartadas").text
+_cl4 = re.search(r'name="cuit" value="' + C4 + r'"><input type="hidden" name="clave" value="([^"]+)"', _d)
+_sit4([_v18])
+_d = cl2.get("/alertas?ver=descartadas").text
+_cl4 = re.search(r'name="cuit" value="' + C4 + r'"><input type="hidden" name="clave" value="([^"]+)"', _d)
+_r = cl2.post("/alertas", data={"csrf": token(_d), "accion": "restaurar", "cuit": C4, "clave": _cl4[1] if _cl4 else ""},
+              follow_redirects=True)
+ok(_cl4 and "La alerta volvió a la lista" in _r.text and "IVA 03/2018" in cl2.get("/alertas").text,
+   "'Volver a mostrar' también trae de vuelta lo de antes de 2020")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

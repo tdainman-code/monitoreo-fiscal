@@ -42,6 +42,8 @@ def conectar():
         tipo TEXT, texto TEXT, estado TEXT NOT NULL DEFAULT 'Nueva', respuesta TEXT);
     CREATE TABLE IF NOT EXISTS descartes (clave TEXT PRIMARY KEY, cuit TEXT, tipo TEXT, texto TEXT, motivo TEXT, nota TEXT,
                                           fecha TEXT, usuario TEXT, nombre TEXT);
+    CREATE TABLE IF NOT EXISTS descartes_items (clave TEXT, cuit TEXT, tipo TEXT, item TEXT, anio INTEGER, fecha TEXT,
+                                                motivo TEXT, usuario TEXT, nombre TEXT, PRIMARY KEY (cuit, tipo, item));
     CREATE TABLE IF NOT EXISTS vistos (clave TEXT PRIMARY KEY, cuit TEXT, fecha TEXT, usuario TEXT, nombre TEXT, nota TEXT);
     CREATE TABLE IF NOT EXISTS informadas (id TEXT PRIMARY KEY, cuit TEXT, fecha TEXT, usuario TEXT, nombre TEXT);
     CREATE TABLE IF NOT EXISTS datos_cliente (cuit TEXT PRIMARY KEY, datos TEXT, actualizado TEXT, usuario TEXT);
@@ -245,6 +247,8 @@ def vistos(cuit=None) -> dict:
 
 MOTIVOS_DESCARTE = ["Avisado al cliente", "Alerta sin relevancia", "Otro"]
 DIAS_DESCARTE = 30
+# 20/11/2026: lo descartado de períodos ANTERIORES a este año (deuda o falta de presentación) no vuelve nunca más.
+ANIO_DESCARTE_PERMANENTE = 2020
 
 
 def clave_alerta(cuit: str, tipo: str, texto: str) -> str:
@@ -253,11 +257,17 @@ def clave_alerta(cuit: str, tipo: str, texto: str) -> str:
     return hashlib.sha1(f"{cuit}|{tipo}|{texto}".encode("utf-8")).hexdigest()[:20]
 
 
-def descartar(cuit, tipo, texto, motivo, nota, usuario, nombre):
+def descartar(cuit, tipo, texto, motivo, nota, usuario, nombre, items=None):
+    """items: [(período/obligación, año), ...] que forman la alerta (deuda, faltas de presentación). Se recuerdan uno por
+    uno: los de antes de ANIO_DESCARTE_PERMANENTE quedan descartados para siempre; los demás, DIAS_DESCARTE días."""
+    clave, f = clave_alerta(cuit, tipo, texto), ahora()
     con = conectar()
     with con:
         con.execute("INSERT OR REPLACE INTO descartes VALUES (?,?,?,?,?,?,?,?,?)",
-                    (clave_alerta(cuit, tipo, texto), cuit, tipo[:200], texto[:1000], motivo, nota[:300], ahora(), usuario, nombre))
+                    (clave, cuit, tipo[:200], texto[:1000], motivo, nota[:300], f, usuario, nombre))
+        for item, anio in items or []:
+            con.execute("INSERT OR REPLACE INTO descartes_items VALUES (?,?,?,?,?,?,?,?,?)",
+                        (clave, cuit, tipo[:200], str(item)[:300], anio, f, motivo, usuario, nombre))
     con.close()
 
 
@@ -265,7 +275,22 @@ def restaurar_descarte(clave):
     con = conectar()
     with con:
         con.execute("DELETE FROM descartes WHERE clave=?", (clave,))
+        con.execute("DELETE FROM descartes_items WHERE clave=?", (clave,))
     con.close()
+
+
+def items_descartados() -> dict:
+    """(cuit, tipo, item) -> descarte vigente: los anteriores a ANIO_DESCARTE_PERMANENTE siempre; el resto, 30 días."""
+    limite = (dt.datetime.now() - dt.timedelta(days=DIAS_DESCARTE)).isoformat(timespec="seconds")
+    con = conectar()
+    r = {}
+    for f in con.execute("SELECT clave, cuit, tipo, item, anio, fecha, motivo, usuario, nombre FROM descartes_items"):
+        permanente = f[4] is not None and f[4] < ANIO_DESCARTE_PERMANENTE
+        if permanente or f[5] >= limite:
+            r[(f[1], f[2], f[3])] = dict(zip(("clave", "anio", "fecha", "motivo", "usuario", "nombre"), (f[0],) + f[4:]),
+                                         permanente=permanente)
+    con.close()
+    return r
 
 
 def descartes_vigentes() -> dict:

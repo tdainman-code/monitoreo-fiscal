@@ -524,6 +524,25 @@ def ficha(cuit: str) -> dict:
     return s
 
 
+def _anio(periodo) -> int | None:
+    m = re.search(r"(?<!\d)(19\d{2}|20\d{2})", str(periodo or ""))
+    return int(m[1]) if m else None
+
+
+def items_alerta(f: dict, tipo: str) -> list[tuple]:
+    """Obligaciones (impuesto|concepto|período, año) que forman una alerta de deuda o de falta de presentación."""
+    if tipo == "Deuda vencida":
+        lista = f.get("deudas_vencidas") or []
+    elif tipo == "Falta de presentación":
+        lista = (f.get("sct") or {}).get("ddjj_pendientes") or []
+    elif tipo.startswith("Deuda en Cuentas Tributarias"):
+        lista = (f.get("scth") or {}).get("deudas") or []
+    else:
+        return []
+    return [(f"{d.get('impuesto')}|{d.get('concepto') or ''}|{d.get('periodo')}", d.get("anio") and int(d["anio"]) or _anio(d.get("periodo")))
+            for d in lista]
+
+
 def alertas_del_dia(solo: set | None = None) -> list[dict]:
     """Lo urgente (ALTA) de todos los clientes, para la pantalla 'Alertas del día'."""
     out = []
@@ -537,6 +556,10 @@ def alertas_del_dia(solo: set | None = None) -> list[dict]:
                        "texto": f"D/C {f['ratio']['ratio']:.2f} en {f['ratio']['meses']} meses (menos de 0,8)".replace(".", ",", 1)})
         al = [{**a, "tipo": a.get("tipo") or a.get("Tipo de alerta", ""), "texto": a.get("texto") or a.get("Acción", "")}
               for a in al]
+        for a in al:                                   # 20/11/2026: qué períodos forman la alerta (descartes por período)
+            it = items_alerta(f, a["tipo"])
+            if it:
+                a["items"] = it
         if al:
             out.append({"cuit": c["cuit"], "nombre": c.get("razon_social") or "", "semaforo": f["semaforo"], "alertas": al})
     out.sort(key=lambda x: ({"rojo": 0, "amarillo": 1, "verde": 2, "gris": 3}[x["semaforo"]], -len(x["alertas"])))

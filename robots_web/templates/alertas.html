@@ -2,7 +2,8 @@
 {% block cuerpo %}
 <h1>Alertas del día</h1>
 <p class="sutil">Lo urgente de tus clientes (prioridad ALTA), agrupado por cliente y primero los clientes en rojo. Tocá un cliente para ver sus alertas.
-Podés descartar una alerta o <b>todas las del cliente</b> indicando el motivo: si a los {{ dias }} días siguen igual, vuelven a aparecer; si cambian antes (otro importe, otro período) o aparece una nueva, se muestran enseguida.</p>
+Podés descartar una alerta o <b>todas las del cliente</b> indicando el motivo: si a los {{ dias }} días siguen igual, vuelven a aparecer; si cambian antes (otro importe, otro período) o aparece una nueva, se muestran enseguida.
+<b>Deuda y faltas de presentación de períodos anteriores a {{ anio_perm }}:</b> una vez descartadas no vuelven nunca más (si aparece un período nuevo, la alerta vuelve solo por ese).</p>
 <div class="filtros">
   <a class="chip {{ 'activo' if ver != 'descartadas' }}" href="{{ url_for('alertas') }}">Pendientes ({{ grupos|length }} cliente(s))</a>
   <a class="chip {{ 'activo' if ver == 'descartadas' }}" href="{{ url_for('alertas', ver='descartadas') }}">Descartadas ({{ descartadas|length }})</a>
@@ -20,7 +21,7 @@ Podés descartar una alerta o <b>todas las del cliente</b> indicando el motivo: 
     <input type="hidden" name="cuit" value="{{ g.cuit }}"><button class="chico">Volver a mostrar todas las del cliente</button></form>
   <table class="tabla"><thead><tr><th>Alerta</th><th>Motivo</th><th>Quién / cuándo</th><th></th></tr></thead><tbody>
   {% for d in g.alertas %}<tr><td><b>{{ d.tipo }}</b> — {{ d.texto }}</td><td data-l="Motivo">{{ d.motivo }}{% if d.nota %}<div class="sutil">{{ d.nota }}</div>{% endif %}</td>
-    <td data-l="Quién">{{ d.nombre or d.usuario }}<div class="sutil">{{ d.fecha[:10]|fecha }} · vuelve el {{ d.vuelve|fecha }} si sigue igual</div></td>
+    <td data-l="Quién">{{ d.nombre or d.usuario }}<div class="sutil">{{ d.fecha[:10]|fecha }} · {% if d.vuelve %}vuelve el {{ d.vuelve|fecha }} si sigue igual{% else %}no vuelve (períodos anteriores a {{ anio_perm }}){% endif %}</div></td>
     <td><form method="post" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="restaurar">
       <input type="hidden" name="cuit" value="{{ d.cuit }}"><input type="hidden" name="clave" value="{{ d.clave }}"><button class="chico">Volver a mostrar</button></form></td></tr>{% endfor %}
   </tbody></table>
@@ -32,7 +33,7 @@ Podés descartar una alerta o <b>todas las del cliente</b> indicando el motivo: 
   <summary><span class="punto {{ g.semaforo }}"></span> <b>{{ g.nombre or cuit_fmt(g.cuit) }}</b>
     <span class="sutil">· {{ cuit_fmt(g.cuit) }} · {{ g.alertas|length }} alerta(s): {{ g.alertas|map(attribute='tipo')|unique|join(', ') }}</span></summary>
   <p><a href="{{ url_for('cliente', cuit=g.cuit) }}">Abrir la ficha del cliente →</a></p>
-  <ul class="alertas">{% for a in g.alertas %}<li class="alta"><b>{{ a.tipo }}</b> — {{ a.texto }}
+  <ul class="alertas">{% for a in g.alertas %}<li class="alta"><b>{{ a.tipo }}</b> — {{ a.texto }}{% if a.nota_viejas %}<div class="sutil">{{ a.nota_viejas }}</div>{% endif %}
     <details class="descartar"><summary>Descartar esta alerta</summary>
       <form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="cuit" value="{{ g.cuit }}">
         <input type="hidden" name="tipo" value="{{ a.tipo }}"><input type="hidden" name="texto" value="{{ a.texto }}">
