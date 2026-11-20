@@ -12,6 +12,7 @@
     <span class="titulo">{{ b.titulo }}</span>
     <span class="numero">{% if b.valor is none %}ver{% elif b.pesos %}{{ b.valor|pesos }}{% else %}{{ b.valor }}{% endif %}{% if b.utilidad is defined and b.utilidad is not none %} <small class="{{ 'txt-rojo' if b.utilidad < 0 }}">· utilidad {{ (b.utilidad + 1)|utilidad }}</small>{% endif %}</span>
     <span class="sub">{{ b.sub }}</span>
+    {% if b.sub2 %}<span class="sub">{{ b.sub2 }}</span>{% endif %}
   </a>
 {% endfor %}
   <a class="boton-ficha gris" href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='notas') }}">

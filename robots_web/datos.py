@@ -382,7 +382,11 @@ def ficha(cuit: str) -> dict:
     sct, mf = s["sct"], s["mf"]
     n_obl = len((sct or {}).get("deudas") or [])
     b.append({"id": "deuda", "titulo": "Deuda ARCA", "valor": s["deuda_vencida"], "pesos": True,
-              "sub": f"{n_obl} obligaciones" if sct else "sin datos", "color": color((s["deuda_vencida"] or 0) > 0, hay=bool(sct))})
+              "sub": f"{n_obl} obligaciones" if sct else "sin datos", "color": color((s["deuda_vencida"] or 0) > 0, hay=bool(sct)),
+              # crédito a recuperar con el F.399 (S.L.D. fuera del IVA), pedido de Gaby 20/11/2026
+              "sub2": (f"crédito a recuperar (F.399): {_pesos_txt((s.get('scth') or {}).get('saldos_recuperar_total') or 0)}"
+                       if "saldos_recuperar" in (s.get("scth") or {}) else
+                       "crédito a recuperar (F.399): se calcula en la próxima corrida de Deuda histórica" if s.get("scth") else "")})
     b.append({"id": "planes", "titulo": "Planes de pago", "valor": s["planes"],
               "sub": (f"{s['cuotas_impagas'] or 0} cuotas impagas · {s['caducos']} caducos · {s['cuotas_15'] or 0} vencen en 15 días"
                       if mf else "sin datos"),

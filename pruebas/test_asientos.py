@@ -250,6 +250,7 @@ r = cg.get(f"/cliente/{C}/historica")
 ok(r.status_code == 200 and "F.399" in r.text and "45.210,50" in r.text and "05/2026" in r.text,
    "deuda histórica muestra los saldos a recuperar con el F.399")
 ok("Saldos a recuperar (F.399)" in cg.get("/alertas").text, "alerta del día para el encargado")
+ok("crédito a recuperar (F.399): $ 45.210,50" in cg.get(f"/cliente/{C}").text, "tablero: renglón 'crédito a recuperar' en Deuda ARCA")
 
 # ------------------------------------------------ F.931 con personal y sin remuneración: lo completa el encargado
 escribir(f"{D}/{C}/f931/_lista.json", {"2026-10": {"empleados": 2, "estado": "OK"},
