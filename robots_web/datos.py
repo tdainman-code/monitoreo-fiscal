@@ -248,9 +248,13 @@ def situacion(cuit: str) -> dict:
 
 
 def informes(cuit: str) -> list[dict]:
-    out = []
+    """Solo el último de cada informe (20/11/2026): si quedó una copia vieja de otra fecha, no se lista."""
+    out, vistos = [], set()
     for ruta in sorted(glob.glob(os.path.join(INFORMES, "*", f"*{cuit}*.xlsx")), reverse=True):
         nombre = os.path.basename(ruta)
+        if nombre in vistos:
+            continue
+        vistos.add(nombre)
         carpeta = os.path.basename(os.path.dirname(ruta))
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", carpeta):
             continue

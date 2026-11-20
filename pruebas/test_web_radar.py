@@ -525,6 +525,12 @@ ok(_pv and len(_pv[0]["conceptos"]) == min(2, len(_vals)) and _pv[0]["medio"] ==
 for n in os.listdir(os.path.join(BANDEJA, "pedidos")):
     if n.endswith(".json") and json.load(open(os.path.join(BANDEJA, "pedidos", n))).get("robot") == "vep_deuda":
         os.remove(os.path.join(BANDEJA, "pedidos", n))
+# informes Excel: solo el último de cada uno (20/11/2026)
+for _f in ("2026-10-01", "2026-11-01"):
+    os.makedirs(f"{R}/informes/{_f}", exist_ok=True)
+    open(f"{R}/informes/{_f}/relacion_dc_{C}.xlsx", "wb").write(b"x")
+_li = [i for i in datos.informes(C) if i["archivo"] == f"relacion_dc_{C}.xlsx"]
+ok(len(_li) == 1, "informes: de cada Excel se lista solo el último")
 # VEPs generados: se ven en Deuda con número, importe, conceptos y la pantalla de ARCA (20/11/2026)
 os.makedirs(f"{R}/datos/{C}/vep", exist_ok=True)
 escribir(f"{R}/datos/{C}/vep/2026-11-20_deuda_1710611439.json",

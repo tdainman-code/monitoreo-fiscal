@@ -309,6 +309,31 @@ def escribir_excel(hojas: dict, grupo: list[str], ruta: str) -> None:
     wb.save(ruta)
 
 
+def dejar_solo_el_ultimo(raiz: str | None = None) -> int:
+    """Pedido del 20/11/2026: de cada informe Excel se guarda solo el último. Borra las copias de fechas anteriores
+    (informes/<AAAA-MM-DD>/<mismo nombre>.xlsx) y las carpetas de fecha que quedan vacías. Devuelve cuántos borró."""
+    import glob
+    raiz = raiz or INFORMES
+    ultimo: dict[str, str] = {}
+    borrados = 0
+    for r in sorted(glob.glob(os.path.join(raiz, "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]", "*.xlsx")), reverse=True):
+        n = os.path.basename(r)
+        if n in ultimo:
+            try:
+                os.remove(r)
+                borrados += 1
+            except OSError:
+                pass
+        else:
+            ultimo[n] = r
+    for d in glob.glob(os.path.join(raiz, "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]")):
+        try:
+            os.rmdir(d)                                        # solo si quedó vacía
+        except OSError:
+            pass
+    return borrados
+
+
 def generar(grupo: list[str], carpeta: str | None = None) -> str:
     hojas = armar(grupo)
     principal = hojas["resumen"][0]
@@ -316,6 +341,8 @@ def generar(grupo: list[str], carpeta: str | None = None) -> str:
     carpeta = carpeta or os.path.join(INFORMES, date.today().isoformat())
     ruta = os.path.join(carpeta, f"consolidado_{principal['CUIT']}{'_' + nom if nom else ''}.xlsx")
     escribir_excel(hojas, grupo, ruta)
+    if carpeta.startswith(INFORMES):
+        dejar_solo_el_ultimo()
     return ruta
 
 
@@ -334,6 +361,8 @@ def generar_cliente(cuit: str, periodos: list[str] | None = None, carpeta: str |
     ic.relacion_dc(cuit, nom, periodos, r1)
     ic.situacion_fiscal(cuit, nom, r2)
     salida = [r1, r2] + ([r3] if hay_conc else [])
+    if carpeta.startswith(INFORMES):
+        dejar_solo_el_ultimo()
     return salida
 
 

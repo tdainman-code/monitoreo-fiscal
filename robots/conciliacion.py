@@ -630,6 +630,8 @@ def main(argv=None):
     from .informe import nombre
     ruta = os.path.join(INFORMES, date.today().isoformat(), f"conciliacion_compras_{a.cuit}.xlsx")
     r = generar(a.cuit, nombre(a.cuit, {}) or a.cuit, ruta)
+    from .informe import dejar_solo_el_ultimo
+    dejar_solo_el_ultimo(INFORMES)
     if r is None:
         print("Sin Libro IVA bajado para este CUIT (monotributista o falta correr el robot libro_iva)")
         return
