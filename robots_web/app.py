@@ -289,7 +289,7 @@ def cliente_seccion(cuit, seccion):
     return render_template("seccion.html", c=info, s=s, sec=seccion, titulo=SECCIONES[seccion], org=org,
                            notas=usuarios.notas(cuit) if seccion == "notas" else [], grafico=graf,
                            informadas=usuarios.informadas() if seccion == "notificaciones" else {}, pct=analisis.pct,
-                           medios_vep_todos=MEDIOS_VEP, vep_deuda_listo=VEP_DEUDA_LISTO,
+                           medios_vep_todos=MEDIOS_VEP_DEUDA, vep_deuda_listo=VEP_DEUDA_LISTO,
                            periodo_txt=analisis.periodo_txt)
 
 
@@ -512,7 +512,8 @@ def pedir_corrida(cuit):
 MEDIOS_VEP = ["Pago Mis Cuentas (Banelco)", "Pagar (Red Link)", "Interbanking", "XN Group"]
 # VEP de deuda (tildar conceptos + medio de pago, 20/11/2026): la web está lista; se habilita cuando el robot tenga
 # relevada la pantalla de ARCA donde se genera (Cuentas Tributarias -> Deudas -> Generar VEP).
-VEP_DEUDA_LISTO = False
+VEP_DEUDA_LISTO = True                       # relevado con Tomás el 20/11/2026 (robots/robot_vep_deuda.py)
+MEDIOS_VEP_DEUDA = MEDIOS_VEP + ["Pago con QR"]
 
 
 @app.route("/cliente/<cuit>/vep_deuda", methods=["POST"])
@@ -535,7 +536,7 @@ def vep_deuda(cuit):
     medio = request.form.get("medio", "")
     if not elegidas:
         flash("Tildá al menos un concepto (o la deuda cambió: recargá la página)", "error")
-    elif medio not in MEDIOS_VEP:
+    elif medio not in MEDIOS_VEP_DEUDA:
         flash("Elegí el medio de pago", "error")
     elif not VEP_DEUDA_LISTO:
         flash("La generación del VEP de deuda todavía no está habilitada: falta relevar la pantalla de ARCA", "error")

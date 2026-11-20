@@ -25,7 +25,7 @@
     {% if vep_deuda_listo %}<button>Generar VEP</button>
     {% else %}<button disabled>Generar VEP</button>
     <span class="sutil">Se habilita cuando el robot tenga relevada la pantalla de ARCA donde se genera el VEP de la deuda (Cuentas Tributarias → Deudas → Generar VEP): faltan las capturas.</span>{% endif %}
-    <span class="sutil">El VEP vence a la medianoche del día en que se genera; los intereses se calculan a ese día.</span>
+    <span class="sutil">ARCA arma <b>un solo VEP</b> con todo lo tildado. Vence a la medianoche del día en que se genera y los intereses se calculan a ese día. El resultado (número de VEP) queda en Más → Robots.</span>
   </div>
   {% endif %}
   </form>

@@ -331,6 +331,24 @@ def avisar_revisiones(cont: dict, cuits: list[str], hoy: dt.date) -> int:
     return n
 
 
+def mail_vep_deuda(cuit: str, v: dict, por: str) -> str:
+    """Mail al cliente con el VEP de deuda generado desde la web (copia al encargado)."""
+    info = contactos().get(cuit) or {}
+    para = info.get("emails_cliente") or []
+    if not para:
+        return "el cliente no tiene mails cargados (no se envió)"
+    nombre = info.get("razon_social") or _cuit_fmt(cuit)
+    renglones = "\n".join(f"  · {c.get('impuesto')} — {c.get('concepto')} — período {c.get('periodo')}"
+                          for c in v.get("conceptos") or [])
+    cuerpo = (f"Estimados {nombre}:\n\nLes enviamos el VEP para pagar la siguiente deuda con ARCA:\n\n{renglones}\n\n"
+              f"Número de VEP: {v['vep']}\nImporte: {_pesos(v.get('importe'))}\nMedio de pago: {v.get('medio')}\n\n"
+              "IMPORTANTE: el VEP vence HOY a las 24 h. Para pagarlo, ingresen a su home banking, sección pagos AFIP/ARCA "
+              "(VEP), y búsquenlo por el número.\n\nSaludos,\nEl estudio")
+    mid = encolar_mail(para, f"VEP ARCA {v['vep']} — {nombre} (vence hoy)", cuerpo,
+                       cc=[info.get("encargado_email", "")], motivo=f"VEP deuda {cuit} por {por}")
+    return f"mail al cliente ({', '.join(para)}): {estado_mail(mid)}"
+
+
 def vep_programado() -> bool:
     try:
         from . import robot_vep_facilidades  # noqa: F401

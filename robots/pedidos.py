@@ -39,6 +39,7 @@ ROBOTS_PERMITIDOS = {
 }
 AVISOS = {"aviso_enviar", "aviso_vep"}
 ROBOTS_PERMITIDOS["mail_dfe"] = "Mail de una comunicación del domicilio fiscal electrónico"
+ROBOTS_PERMITIDOS["vep_deuda"] = "VEP de deuda (conceptos tildados en la web)"
 MAX_ESTADO = 50
 
 
@@ -73,6 +74,11 @@ def _valido(p: dict) -> bool:
           and p.get("robot") in ROBOTS_PERMITIDOS and re.fullmatch(r"[0-9a-f]{8,32}", str(p.get("id", ""))) is not None)
     if ok and p["robot"] == "mail_dfe":
         ok = p.get("a") in ("cliente", "admin") and isinstance(p.get("notif"), dict)
+    if ok and p["robot"] == "vep_deuda":
+        from .robot_vep_deuda import MEDIOS
+        c = p.get("conceptos")
+        ok = (isinstance(c, list) and 0 < len(c) <= 60 and all(isinstance(x, dict) and x.get("impuesto") for x in c)
+              and p.get("medio") in MEDIOS)
     if ok and p["robot"] in AVISOS:
         ok = re.fullmatch(rf"{p['cuit']}:[A-Za-z0-9-]{{1,20}}:\d{{1,3}}", str(p.get("aviso", ""))) is not None
     return ok
@@ -145,6 +151,13 @@ def procesar() -> int:
                 if p["robot"] in AVISOS:                     # aviso + VEP: entra a ARCA a generar el VEP
                     from . import avisos
                     res = avisos.accion_web(p["aviso"], con_vep=True, por=p.get("por") or "?")
+                elif p["robot"] == "vep_deuda":              # VEP de deuda pedido desde la web (20/11/2026)
+                    from . import avisos, robot_vep_deuda
+                    v = robot_vep_deuda.correr(p["cuit"], p["conceptos"], p["medio"])
+                    res = (f"OK VEP {v['vep']} por $ {v.get('importe') or 0:,.2f} ({p['medio']}), vence hoy a la medianoche"
+                           .replace(",", "X").replace(".", ",").replace("X", "."))
+                    if p.get("enviar"):
+                        res += " · " + avisos.mail_vep_deuda(p["cuit"], v, p.get("por") or "?")
                 else:
                     res = correr_uno(p["robot"], p["cuit"], None, visible=False, modo="completo")
                 _anotar(p, "terminado" if res.startswith("OK") else "con problemas", res)

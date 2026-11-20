@@ -92,6 +92,7 @@ SALIDA2=$(cd "$PRUEBA" && timeout 900 sudo -u robot env PYTHONPATH="$PRUEBA" HOM
          /home/robot/venv/bin/python robots/pruebas/test_conciliacion_compras.py 2>&1 && \
          /home/robot/venv/bin/python robots/pruebas/test_ccma.py 2>&1 && \
          /home/robot/venv/bin/python robots/pruebas/test_sct_historico.py 2>&1 && \
+         /home/robot/venv/bin/python robots/pruebas/test_vep_deuda.py 2>&1 && \
          /home/robot/venv/bin/python pruebas/test_asientos.py 2>&1; echo "CODIGO=$?")
 if echo "$SALIDA" | grep -q "CODIGO=0" && echo "$SALIDA2" | grep -q "CODIGO=0"; then
   if instalar_desde "$PRUEBA"; then
