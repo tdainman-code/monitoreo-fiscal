@@ -202,6 +202,16 @@ escribir(f"{D}/{C}/sct_historico/_parcial.json", {"fecha": "2026-11-21", "partes
 _h = cl.get(f"/cliente/{C}/historica").text
 os.remove(f"{D}/{C}/sct_historico/_parcial.json")
 ok("302 APORTES OBRAS SOCIALES" in _h and "F.931" in _h and "22.105.640,35" in _h, "deuda histórica de Cuentas Tributarias por año e impuesto")
+_sct_f = f"{D}/{C}/sct_historico/2026-11-17.json"
+_x = json.load(open(_sct_f, encoding="utf-8"))
+_x.update(saldos_recuperar=[{"impuesto": "312", "nombre": "ASEG.RIESGO DE TRABAJO L 24557", "periodo": "20251100", "concepto": "Pago",
+                             "sld": 512448.17, "anio": "2025"}], saldos_recuperar_total=512448.17)
+escribir(_sct_f, _x)
+_dd = cl.get(f"/cliente/{C}/deuda").text
+ok("Crédito a recuperar con F.399" in _dd and "512.448,17" in _dd and "11/2025" in _dd, "Deuda ARCA: detalle del crédito a recuperar con F.399")
+for _k in ("saldos_recuperar", "saldos_recuperar_total"):
+    _x.pop(_k)
+escribir(_sct_f, _x)
 ok("Deuda histórica para revisar (2)" in cl.get("/avisos?ver=todos").text, "avisos: lista de deudas históricas para revisar")
 _cl = [x["clave"] for x in _s["revisar"]]
 cl.post("/revision/visto", data={"clave": _cl[0], "cuit": C, "marcar": "1", "nota": "compensada con saldo a favor", "csrf": token(_r)})

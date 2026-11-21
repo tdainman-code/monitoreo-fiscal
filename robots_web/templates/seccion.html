@@ -7,6 +7,16 @@
   {% if s.sct %}
   <p><b>Deuda vencida: {{ s.deuda_vencida|pesos }}</b> <span class="sutil">(capital + intereses, {{ s.deudas_vencidas|length }} obligación(es) vencida(s))</span></p>
   {% if s.deudas_por_vencer %}<p class="sutil">Lo que todavía no venció ({{ s.deudas_por_vencer|length }}) está en <a href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='por_vencer') }}">Por vencer →</a></p>{% endif %}
+  {% set sr = (s.scth or {}).get('saldos_recuperar') %}
+  {% if sr %}<details class="caja-amarilla" open><summary><b>Crédito a recuperar con F.399: {{ s.scth.saldos_recuperar_total|pesos }}</b>
+    <span class="sutil">· pagos en demasía (S.L.D.) fuera del IVA, del estado de cumplimiento de Cuentas Tributarias, leído el {{ (s.scth.fecha or '')|fecha }}</span></summary>
+  <table class="tabla"><thead><tr><th>Código</th><th>Concepto</th><th>Período</th><th>Tipo</th><th class="num">Saldo libre disp.</th></tr></thead><tbody>
+  {% for x in sr %}<tr class="fila-amarilla"><td data-l="Código">{{ x.impuesto }}</td><td data-l="Concepto">{{ x.nombre }}</td>
+    <td data-l="Período">{% if x.periodo[4:6] == "00" %}{{ x.periodo[:4] }} (anual){% else %}{{ x.periodo[4:6] }}/{{ x.periodo[:4] }}{% endif %}</td><td data-l="Tipo">{{ x.concepto }}</td><td class="num" data-l="S.L.D."><b>{{ x.sld|pesos }}</b></td></tr>{% endfor %}
+  <tr><td colspan="4"><b>Total a recuperar</b></td><td class="num"><b>{{ s.scth.saldos_recuperar_total|pesos }}</b></td></tr>
+  </tbody></table>
+  <p class="sutil">Se reimputa con el F.399 contra la deuda de abajo. Detalle por año en <a href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='historica') }}">Deuda histórica →</a></p></details>
+  {% endif %}
   {% set medios_cli = ((s.dc or {}).get('medios_vep') or '').split(', ') %}
   <form method="post" action="{{ url_for('vep_deuda', cuit=c.cuit) }}" id="form-vep">
   <input type="hidden" name="csrf" value="{{ csrf() }}">
@@ -348,7 +358,7 @@
   {% if h.saldos_recuperar is defined %}
   <table class="tabla"><thead><tr><th>Código</th><th>Concepto</th><th>Período</th><th>Tipo</th><th class="num">Saldo libre disp.</th></tr></thead><tbody>
   {% for x in h.saldos_recuperar %}<tr class="fila-amarilla"><td data-l="Código">{{ x.impuesto }}</td><td data-l="Concepto">{{ x.nombre }}</td>
-    <td data-l="Período">{{ x.periodo[4:6] }}/{{ x.periodo[:4] }}</td><td data-l="Tipo">{{ x.concepto }}</td><td class="num" data-l="S.L.D."><b>{{ x.sld|pesos }}</b></td></tr>
+    <td data-l="Período">{% if x.periodo[4:6] == "00" %}{{ x.periodo[:4] }} (anual){% else %}{{ x.periodo[4:6] }}/{{ x.periodo[:4] }}{% endif %}</td><td data-l="Tipo">{{ x.concepto }}</td><td class="num" data-l="S.L.D."><b>{{ x.sld|pesos }}</b></td></tr>
   {% else %}<tr><td colspan="5" class="sutil">Sin saldos de libre disponibilidad fuera del IVA en los años leídos.</td></tr>{% endfor %}
   {% if h.saldos_recuperar %}<tr><td colspan="4"><b>Total a recuperar</b></td><td class="num"><b>{{ h.saldos_recuperar_total|pesos }}</b></td></tr>{% endif %}
   </tbody></table>

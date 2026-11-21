@@ -229,3 +229,7 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .fila-filtro .temas,.fila-filtro .segmentos{flex:0 1 auto}.fila-filtro .temas{flex:1;min-width:0}
 .tablero-filtros,.tablero-filtros>*,.fila-filtro>*{min-width:0;max-width:100%}
 .boton-ficha.vacia .numero{font-size:17px;color:var(--rojo);line-height:1.3}
+/* crédito a recuperar con F.399 (21/11/2026) */
+.fila-amarilla td{background:#fffbeb}
+.caja-amarilla{background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;margin:0 0 16px}
+.caja-amarilla summary{cursor:pointer;margin-bottom:6px}
