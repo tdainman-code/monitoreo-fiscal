@@ -43,8 +43,12 @@ import json, sys, os, datetime as dt
 pub = "/var/lib/robots/publico"; ruta = os.path.join(pub, "actualizaciones.json")
 try: lista = json.load(open(ruta))
 except Exception: lista = []
-lista.insert(0, {"fecha": dt.datetime.now().isoformat(timespec="seconds"), "estado": sys.argv[1],
-                 "commit": sys.argv[2], "mensaje": sys.argv[3], "detalle": sys.argv[4][-3000:]})
+nuevo = {"fecha": dt.datetime.now().isoformat(timespec="seconds"), "estado": sys.argv[1],
+         "commit": sys.argv[2], "mensaje": sys.argv[3], "detalle": sys.argv[4][-3000:]}
+if lista and lista[0].get("estado", "").startswith("esperando") and lista[0].get("commit") == sys.argv[2]:
+    lista[0] = nuevo          # la espera de esta misma versión se reemplaza (no se repite cada 5 minutos)
+else:
+    lista.insert(0, nuevo)
 json.dump(lista[:40], open(ruta + ".tmp", "w"), ensure_ascii=False, indent=1); os.replace(ruta + ".tmp", ruta)
 if sys.argv[1] == "instalada":
     json.dump({"commit": sys.argv[2], "mensaje": sys.argv[3], "fecha": lista[0]["fecha"]},
@@ -57,7 +61,10 @@ instalar_desde() {   # $1 = carpeta con robots/ y robots_web/
   # /tmp tiene protected_regular: root no puede ABRIR PARA ESCRIBIR un archivo de otro usuario en /tmp.
   # El candado lo crea el usuario robot; se abre solo para lectura (flock funciona igual).
   if [ -e /tmp/robots_todo.lock ]; then exec 9</tmp/robots_todo.lock; else exec 9>/tmp/robots_todo.lock; fi
-  flock -w 7200 9 || { echo "corrida muy larga, se reintenta"; return 1; }
+  if ! flock -n 9; then       # 21/11/2026: que la pantalla Sistema muestre que la versión espera a la corrida en curso
+    anotar "esperando: hay una corrida de robots en curso; se instala apenas termine" "${CORTO:-}" "${MSJ:-}" ""
+    flock -w 7200 9 || { echo "corrida muy larga, se reintenta"; return 1; }
+  fi
   rm -rf "$ANT"; mkdir -p "$ANT"
   cp -a /home/robot/app/robots "$ANT/robots"; cp -a /opt/robots-web/robots_web "$ANT/robots_web"
   rsync -a --delete --exclude '__pycache__' "$1/robots/" /home/robot/app/robots/
