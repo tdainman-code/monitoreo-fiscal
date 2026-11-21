@@ -142,6 +142,16 @@ def ruteo2(route):
           <div><span>Período Fiscal Hasta</span></div><div><input></div>
           <a href="#" onclick="var i=document.querySelectorAll('input');location.href='consulta?anio='+i[0].value+'&hasta='+i[1].value
              +'&imp='+window.imp">SIGUIENTE</a></body></html>""")
+    if "parametros" in u and MODO.get("aviso"):   # 21/11: ARCA no acepta AAAA1200 y avisa en la misma pantalla
+        return route.fulfill(content_type=h, body="""<html><body><h2>Ingreso de Parámetros</h2>
+          <div><label>Impuesto</label><select name="impuesto" style="display:none"><option value="">Todos</option>
+          <option value="28">28 - SEGURO DE VIDA COLECTIVO</option><option value="312">312 - ASEG.RIESGO DE TRABAJO L 24557</option></select></div>
+          <p>Formato: AAAAMMDD o AAAAMM00 o AAAA0000</p>
+          <div><label>Período Fiscal Desde</label><input id="d" maxlength="8"></div>
+          <div><label>Período Fiscal Hasta</label><input id="h" maxlength="8"></div><p id="m"></p>
+          <button onclick="var h=document.getElementById('h').value; if(h.slice(4)=='1200'){document.getElementById('m').textContent='Período Hasta inválido';return;}
+             location.href='consulta?anio='+document.getElementById('d').value+'&hasta='+h
+             +'&imp='+encodeURIComponent(document.querySelector('[name=impuesto]').value)">SIGUIENTE</button></body></html>""")
     if "parametros" in u:                         # como la captura de Gaby del 20/11/2026
         return route.fulfill(content_type=h, body="""<html><body><h2>Ingreso de Parámetros</h2>
           <div><label>Impuesto</label><select name="impuesto" style="display:none"><option value="">Todos</option>
@@ -158,6 +168,9 @@ def ruteo2(route):
         a = int(_q["anio"][0][:4])
         imp = (_q.get("imp") or [""])[0]
         MODO["consultas"].append((a, imp))
+        if imp in MODO.get("vacio", ()):
+            return route.fulfill(content_type=h, body="<html><body><p>No se encontraron datos para la consulta realizada</p>"
+                                                     "<a href='parametros'>VOLVER</a></body></html>")
         if (a, imp) in MODO["traba"]:
             return route.fulfill(content_type=h, body=f"<html><body><p>Período Fiscal consultado</p><p>{a}0000 a {a}1200</p>"
                                                      "<div>PRUEBA JUAN (20-11111111-2)</div><p>CARGANDO...</p></body></html>")
@@ -220,6 +233,27 @@ with sync_playwright() as p:
     r3 = rh.leer_anios(pg, C2, anios=1)
     chk(set(MODO["consultas"]) == {(2026, "28"), (2026, "312")} and ("20260000", "20261200") in MODO["rangos"] and not r3["pendientes"],
         f"combo con buscador: lee los impuestos y consulta cada uno, sin AÑO ANTERIOR ({sorted(set(MODO['consultas']))})")
+    # 21/11/2026 (Goncalves): tras SIGUIENTE no aparece la consulta -> se lee el aviso de ARCA y se prueba 0101-1231;
+    # un impuesto sin datos no es error
+    rh.ESPERA_SIGUIENTE = 4
+    MODO.update(combo=False, aviso=True, vacio={"28"}, traba=set(), consultas=[], rangos=[])
+    if os.path.exists(rh._ruta_parcial(C2)):
+        os.remove(rh._ruta_parcial(C2))
+    pg.goto(B + "externo")
+    r4 = rh.leer_anios(pg, C2, anios=1)
+    chk(("20260101", "20261231") in MODO["rangos"] and not r4["pendientes"] and r4["anios"] and r4["anios"][0]["estado"] == "OK",
+        f"si ARCA no toma AAAA1200 prueba 01/01-31/12 y un impuesto sin datos no queda pendiente ({MODO['rangos']}, {r4['pendientes']})")
+    # nada responde: queda pendiente con el motivo y NO corta la corrida
+    MODO.update(vacio=set(), traba={(2026, "312")}, consultas=[], rangos=[])
+    os.remove(rh._ruta_parcial(C2))
+    _orig = rh._rangos
+    rh._rangos = lambda anio, hoy: [(f"{anio}0000", f"{anio}1200")]
+    pg.goto(B + "externo")
+    r5 = rh.leer_anios(pg, C2, anios=1)
+    rh._rangos = _orig
+    chk(r5["pendientes"] and "inválido" in r5["pendientes"][0]["motivo"],
+        f"sin respuesta: pendiente con el aviso de ARCA, la corrida sigue ({r5['pendientes']})")
+    MODO.update(aviso=False)
     b.close()
 
 print("OK" if ok else "FALLÓ")

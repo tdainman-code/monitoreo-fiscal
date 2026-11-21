@@ -142,7 +142,8 @@ def generar_en_sct(page, fr, cuit: str, conceptos: list[dict], medio: str) -> di
     from .robot_situacion_fiscal import _solapa
     _solapa(fr, r"Deudas").click()
     arca.pausa(1.0, 2.0)
-    fr.get_by_text(re.compile(r"Fecha de consulta", re.I)).first.wait_for(state="visible", timeout=60_000)
+    # 21/11/2026: hay varios "Fecha de consulta" (uno por solapa) y el primero está oculto: se espera el visible
+    fr.get_by_text(re.compile(r"Fecha de consulta", re.I)).locator("visible=true").first.wait_for(state="visible", timeout=60_000)
     sel = fr.locator(".tab-pane.active select")
     if sel.count() and sel.first.is_enabled():           # "Mostrar: Todos" para ver todas las filas
         try:

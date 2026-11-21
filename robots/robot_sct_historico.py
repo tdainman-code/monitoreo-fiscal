@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from datetime import date
 
 from . import arca
@@ -364,30 +365,135 @@ def _elegir_impuesto(fr, impuesto: str) -> bool:
         return False
 
 
+_RE_SIN_DATOS = re.compile(r"no (se encontraron|se encontr[oó]|existen|hay|registra)[^.\n]{0,60}"
+                           r"(datos|movimientos|informaci[oó]n|resultados|deudas?|registros)", re.I)
+_RE_AVISO = re.compile(r"[^\n]{0,60}(inv[aá]lid|incorrect|obligatori|debe ingresar|debe ser|no puede ser|no es v[aá]lid|"
+                       r"posterior|anterior al|mayor que|menor que|error)[^\n]{0,120}", re.I)
+
+
+def _texto_visible(fr) -> str:
+    try:
+        return fr.locator("body").inner_text(timeout=3000)
+    except Exception:
+        return ""
+
+
+ESPERA_SIGUIENTE = 60
+
+
+def _esperar_resultado(page, fr_par, base: set, espera_s: int | None = None):
+    """Después de SIGUIENTE: ('ok', None) si apareció la consulta; ('vacio', texto) si ARCA dice que no hay datos;
+    ('aviso', texto) si quedó en Ingreso de Parámetros con un mensaje (formato de período, etc.); ('nada', texto) si
+    no pasó nada. Error 21/11/2026 (Goncalves): "no aparece 'Período Fiscal consultado'" -> antes el robot esperaba 90 s
+    solo esa pantalla y cortaba toda la corrida."""
+    limite = time.time() + (espera_s or ESPERA_SIGUIENTE)
+    ultimo = ""
+    while time.time() < limite:
+        if _hay_marco(page, r"Per[ií]odo Fiscal consultado"):
+            return "ok", None
+        for f in page.frames:
+            m = _RE_SIN_DATOS.search(_texto_visible(f))
+            if m:
+                return "vacio", m.group(0)
+        txt = _texto_visible(fr_par)
+        avisos = [m.group(0).strip() for m in _RE_AVISO.finditer(txt) if m.group(0).strip() not in base]
+        try:                                            # cartel modal (SweetAlert / bootstrap) en cualquier marco
+            for f in page.frames:
+                d = f.locator("[role=dialog], [role=alertdialog], .modal.show, .swal2-popup, .alert-danger, .ui-dialog")
+                d = d.locator("visible=true")
+                if d.count():
+                    avisos.append(d.first.inner_text(timeout=2000).strip())
+        except Exception:
+            pass
+        if avisos:
+            return "aviso", " / ".join(a for a in avisos if a)[:200]
+        ultimo = txt
+        page.wait_for_timeout(1000)
+    return "nada", ultimo[-200:]
+
+
+def _cargar_campo(fr, x: dict, valor: str) -> None:
+    """El campo de ARCA tiene máscara: se escribe tecla por tecla y se controla que haya quedado el valor."""
+    loc = fr.locator(f"[data-robot-in='{x['n']}']")
+    loc.click()
+    loc.fill("")
+    loc.press_sequentially(valor, delay=40)
+    try:
+        loc.press("Tab")
+    except Exception:
+        pass
+    if re.sub(r"\D", "", loc.input_value()) != valor:
+        loc.evaluate("(i, v) => { i.value = v; ['input','change','blur'].forEach(t => i.dispatchEvent(new Event(t, {bubbles: true}))); }",
+                     valor)
+
+
+def _clic_siguiente(fr) -> None:
+    for loc in (fr.get_by_role("button", name=re.compile(r"SIGUIENTE", re.I)),
+                fr.get_by_text(re.compile(r"^\s*SIGUIENTE\s*$", re.I)),
+                fr.locator("input[type=button][value*=SIGUIENTE i], input[type=submit][value*=SIGUIENTE i]")):
+        v = loc.locator("visible=true")
+        if v.count():
+            v.first.click()
+            return
+    fr.get_by_text(re.compile(r"^\s*SIGUIENTE\s*$", re.I)).first.click()
+
+
+def _rangos(anio: int, hoy: date) -> list[tuple[str, str]]:
+    """Formatos a probar (la pantalla acepta 'AAAAMMDD o AAAAMM00 o AAAA0000'): primero el del año entero que usa ARCA;
+    si no lo toma, 01/01 a 31/12; para el año en curso, hasta el mes actual."""
+    r = [(f"{anio}0000", f"{anio}1200"), (f"{anio}0101", f"{anio}1231")]
+    if anio == hoy.year:
+        r.append((f"{anio}0000", f"{anio}{hoy.month:02d}00"))
+    return r
+
+
+def _guardar_pantalla(page, fr, cuit: str, nombre: str) -> None:
+    try:
+        d = os.path.join(DATOS, cuit, "capturas")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, nombre + ".html"), "w", encoding="utf-8") as f:
+            f.write(fr.content())
+        page.screenshot(path=os.path.join(d, nombre + ".png"), full_page=True)
+    except Exception:
+        pass
+
+
 def _consultar(page, cuit: str, anio: int, impuesto: str | None = None) -> dict | None:
     """Consulta NUEVA de un año y un impuesto: Período Fiscal Desde AAAA0000 / Hasta AAAA1200 (formato AAAAMMDD, el
     mismo rango que usa ARCA para el año: 'Período Fiscal consultado 20260000 a 20261200'). Pedido de Gaby 20/11/2026:
-    por año y por impuesto no se cuelga y es más rápido. None = la pantalla no tiene esos campos."""
-    arca.verificar_sesion(page, "cuentas_tributarias")    # cada consulta: que la sesión siga abierta (Gaby 20/11)
-    fr = _ir_a_parametros(page)
-    campos = _campos_periodo(fr)
-    if not campos:
-        return None
-    for x, valor in ((campos[0], f"{anio}0000"), (campos[1], f"{anio}1200")):
-        loc = fr.locator(f"[data-robot-in='{x['n']}']")
-        loc.fill("")
-        loc.fill(valor)
-    if impuesto and not _elegir_impuesto(fr, impuesto):
-        return {"anio": str(anio), "impuesto": impuesto, "estado": "sin ese impuesto en el selector"}
-    fr.get_by_text(re.compile(r"^\s*SIGUIENTE\s*$", re.I)).first.click()
-    arca.verificar_sesion(page, "cuentas_tributarias")
-    r = _leer_consulta(page, cuit, str(anio))          # controla año y CUIT (mismo contribuyente)
-    r["fecha_lectura"] = date.today().isoformat()
-    if impuesto:                                         # cada vez: que la consulta sea del impuesto pedido
-        otros = [t for t in r["impuestos"] if not re.match(rf"\s*0*{impuesto}\s*-", t)]
-        if otros:
-            raise Trabada(f"se pidió el impuesto {impuesto} y la pantalla muestra {', '.join(otros)[:80]}")
-    return r
+    por año y por impuesto no se cuelga y es más rápido. None = la pantalla no tiene esos campos.
+    21/11/2026: si tras SIGUIENTE no aparece la consulta se lee el mensaje de ARCA, se prueban los otros formatos de
+    período y, si nada anda, queda PENDIENTE con el motivo (no corta la corrida) y se guarda la pantalla."""
+    motivo = ""
+    for desde, hasta in _rangos(anio, date.today()):
+        arca.verificar_sesion(page, "cuentas_tributarias")    # cada consulta: que la sesión siga abierta (Gaby 20/11)
+        fr = _ir_a_parametros(page)
+        campos = _campos_periodo(fr)
+        if not campos:
+            return None
+        _cargar_campo(fr, campos[0], desde)
+        _cargar_campo(fr, campos[1], hasta)
+        if impuesto and not _elegir_impuesto(fr, impuesto):
+            return {"anio": str(anio), "impuesto": impuesto, "estado": "sin ese impuesto en el selector"}
+        base = {m.group(0).strip() for m in _RE_AVISO.finditer(_texto_visible(fr))}   # textos que ya estaban
+        _clic_siguiente(fr)
+        estado, texto = _esperar_resultado(page, fr, base)
+        arca.verificar_sesion(page, "cuentas_tributarias")
+        if estado == "vacio":
+            return {"anio": str(anio), "impuesto": impuesto, "estado": "OK", "sin_datos": texto,
+                    "fecha_lectura": date.today().isoformat(), "totales": {}, "deudas": [], "saldos_sld": [],
+                    "movimientos": [], "impuestos": []}
+        if estado == "ok":
+            r = _leer_consulta(page, cuit, str(anio))      # controla año y CUIT (mismo contribuyente)
+            r["fecha_lectura"] = date.today().isoformat()
+            if impuesto:                                     # cada vez: que la consulta sea del impuesto pedido
+                otros = [t for t in r["impuestos"] if not re.match(rf"\s*0*{impuesto}\s*-", t)]
+                if otros:
+                    raise Trabada(f"se pidió el impuesto {impuesto} y la pantalla muestra {', '.join(otros)[:80]}")
+            return r
+        motivo = f"{desde}-{hasta}: " + (f"ARCA dice «{texto}»" if estado == "aviso" else "no respondió a SIGUIENTE")
+        _guardar_pantalla(page, fr, cuit, f"sct_siguiente_{anio}_{impuesto or 'todos'}")
+    raise Trabada(f"no apareció la consulta ({motivo})")
 
 
 def _leer_consulta(page, cuit: str, anio_esperado: str | None = None) -> dict:
@@ -465,7 +571,9 @@ def leer_anios(page, cuit: str, anios: int = ANIOS, hoy: date | None = None) -> 
         for _ in range(2):
             try:
                 return fn()
-            except Trabada as e:
+            except (arca.SesionPerdida, arca.ClaveInvalida, arca.RequiereIntervencion):
+                raise
+            except (Trabada, arca.ErrorRobot) as e:
                 r = {"estado": f"trabada: {e}"}
                 try:
                     page.reload(wait_until="domcontentloaded")    # recargar sin reloguear
