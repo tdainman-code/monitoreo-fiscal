@@ -34,7 +34,7 @@ PRIORIDAD = {"ALTA": 0, "Media": 1, "Baja": 2}
 
 # ---------------------------------------------------------------- datos
 def _ultimo(patron: str) -> str | None:
-    rutas = sorted(glob.glob(patron))
+    rutas = sorted(x for x in glob.glob(patron) if not os.path.basename(x).startswith("_"))
     return rutas[-1] if rutas else None
 
 

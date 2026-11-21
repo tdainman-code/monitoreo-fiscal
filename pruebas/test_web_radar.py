@@ -198,7 +198,9 @@ _s = datos.situacion(C)
 ok(len(_s["revisar"]) == 2 and _s["semaforo"] == "rojo", "deuda histórica (Convenio y SCT) queda para revisar por el encargado")
 _r = cl.get(f"/cliente/{C}/iibb").text
 ok("Visto, me ocupo" in _r and "74.849,80" in _r, "Convenio: botón 'Visto, me ocupo' y saldo a favor que puede compensar")
+escribir(f"{D}/{C}/sct_historico/_parcial.json", {"fecha": "2026-11-21", "partes": {}, "pendientes": [{"anio": "2025", "impuesto": "312", "motivo": "trabada"}]})
 _h = cl.get(f"/cliente/{C}/historica").text
+os.remove(f"{D}/{C}/sct_historico/_parcial.json")
 ok("302 APORTES OBRAS SOCIALES" in _h and "F.931" in _h and "22.105.640,35" in _h, "deuda histórica de Cuentas Tributarias por año e impuesto")
 ok("Deuda histórica para revisar (2)" in cl.get("/avisos?ver=todos").text, "avisos: lista de deudas históricas para revisar")
 _cl = [x["clave"] for x in _s["revisar"]]

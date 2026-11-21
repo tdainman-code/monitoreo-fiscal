@@ -26,7 +26,9 @@ def _leer(ruta):
 
 
 def _ultimo(patron):
-    r = sorted(glob.glob(patron))
+    # 21/11/2026: los archivos de trabajo del robot empiezan con "_" (_parcial.json, _lista.json) y NO son una lectura:
+    # "_" ordena después de los dígitos y se tomaba _parcial.json como la última deuda histórica (error 500 en la ficha)
+    r = sorted(x for x in glob.glob(patron) if not os.path.basename(x).startswith("_"))
     return r[-1] if r else None
 
 

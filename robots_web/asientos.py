@@ -329,7 +329,7 @@ def asientos_iibb(cuit: str, eq: dict | None = None, rev: dict | None = None) ->
 
 
 def _ultimo_pagos(cuit: str) -> dict:
-    r = sorted(glob.glob(os.path.join(datos.DATOS, cuit, "sifere_pagos", "*.json")))
+    r = sorted(x for x in glob.glob(os.path.join(datos.DATOS, cuit, "sifere_pagos", "*.json")) if not os.path.basename(x).startswith("_"))
     return (_leer(r[-1]) or {}) if r else {}
 
 

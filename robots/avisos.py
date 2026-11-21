@@ -268,7 +268,7 @@ def evaluar(hoy: dt.date | None = None) -> dict:
 
 def _ultimo_json(cuit: str, carpeta: str) -> dict | None:
     import glob
-    rutas = sorted(glob.glob(os.path.join(DATOS, cuit, carpeta, "*.json")))
+    rutas = sorted(x for x in glob.glob(os.path.join(DATOS, cuit, carpeta, "*.json")) if not os.path.basename(x).startswith("_"))
     return _leer(rutas[-1]) if rutas else None
 
 

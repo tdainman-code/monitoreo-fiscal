@@ -44,7 +44,7 @@ def _leer(ruta):
 
 
 def _ultimo(patron):
-    r = sorted(glob.glob(patron))
+    r = sorted(x for x in glob.glob(patron) if not os.path.basename(x).startswith("_"))
     return r[-1] if r else None
 
 
