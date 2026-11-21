@@ -1001,7 +1001,15 @@ def robots():
     ok_ = lambda x: _puede(str(x.get("cuit") or ""))
     return render_template("robots.html", filas=[x for x in datos.ultimas_corridas() if ok_(x)],
                            pend=[x for x in pedidos.pendientes() if ok_(x)],
-                           estado=[x for x in pedidos.estado() if ok_(x)], nombres=pedidos.ROBOTS)
+                           estado=[x for x in pedidos.estado() if ok_(x)], nombres=pedidos.ROBOTS,
+                           en_curso=_en_curso_visible())
+
+
+def _en_curso_visible():
+    d = datos.corrida_en_curso()
+    if d and d.get("cuit") and not _puede(str(d["cuit"])):
+        d["cuit"] = ""                               # el CUIT de un cliente ajeno no se muestra
+    return d
 
 
 # ---------------------------------------------------------------- avisos de cuotas impagas (17/11/2026)

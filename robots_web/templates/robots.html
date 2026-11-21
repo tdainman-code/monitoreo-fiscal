@@ -1,5 +1,10 @@
 {% extends "base.html" %}{% block titulo %}Robots{% endblock %}
 {% block cuerpo %}
+{% if en_curso %}<div class="aviso"><b>⚙ {{ en_curso.nombre }} en curso</b> · empezó {{ en_curso.inicio[:16]|replace('T', ' ') }}
+ · va por el cliente {{ en_curso.i }} de {{ en_curso.total }}{% if en_curso.cuit %} ({{ cuit_fmt(en_curso.cuit) }}){% endif %}
+ {% if en_curso.termina_a_mas_tardar %}· termina a más tardar {{ en_curso.termina_a_mas_tardar[11:16] }}{% endif %}.
+ <span class="sutil">Mientras corre, los pedidos desde la web quedan en espera y las versiones nuevas del sistema se instalan al terminar.</span></div>
+{% else %}<p class="sutil">No hay ninguna corrida programada en curso.</p>{% endif %}
 <h1>Pedidos desde la web</h1>
 <table class="tabla"><thead><tr><th>Pedido</th><th>Cliente</th><th>Robot</th><th>Por</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>
 {% for p in pend %}<tr><td>{{ p.fecha[:16]|replace('T', ' ') }}</td><td data-l="Cliente"><a href="{{ url_for('cliente', cuit=p.cuit) }}">{{ cuit_fmt(p.cuit) }}</a></td>

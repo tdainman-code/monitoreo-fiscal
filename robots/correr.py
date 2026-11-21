@@ -396,6 +396,37 @@ def main(argv=None):
     print(f"{a.robot} {a.periodo or ''}{' modo ' + a.modo if a.robot == 'todo' else ''}: {len(cuits)} cliente(s)")
     inicio = time.time()
     seguidos = 0
+    if a.todos:
+        _progreso({"robot": a.robot, "modo": a.modo, "fin_de_semana": bool(getattr(a, "fin_de_semana", False)),
+                   "solo_fallidos": bool(getattr(a, "solo_fallidos", False)), "horas": a.horas, "total": len(cuits),
+                   "inicio": dt.datetime.now().isoformat(timespec="seconds"), "i": 0, "cuit": "", "pid": os.getpid()})
+    try:
+        _recorrer(a, cuits, partes, inicio, seguidos)
+    finally:
+        if a.todos:
+            _progreso(None)
+
+
+def _progreso(d: dict | None) -> None:
+    """21/11/2026 (Gaby): la web muestra la corrida programada en curso (Más -> Robots); antes solo se veían los pedidos
+    desde la web y no se entendía por qué una versión nueva esperaba para instalarse."""
+    ruta = os.path.join(os.environ.get("ROBOTS_PUBLICO", "/var/lib/robots/publico"), "corrida_en_curso.json")
+    try:
+        if d is None:
+            if os.path.exists(ruta):
+                os.remove(ruta)
+            return
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        with open(ruta + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+        os.chmod(ruta + ".tmp", 0o644)
+        os.replace(ruta + ".tmp", ruta)
+    except Exception as e:                      # la web es secundaria: nunca frena a los robots
+        print(f"(aviso: no se pudo publicar el avance: {e})")
+
+
+
+def _recorrer(a, cuits, partes, inicio, seguidos):
     for i, cuit in enumerate(cuits, 1):
         if a.horas and time.time() - inicio > a.horas * 3600:
             pend = cuits[i - 1:]
@@ -403,6 +434,15 @@ def main(argv=None):
             registrar({"robot": a.robot, "modo": a.modo, "estado": "Pendientes por tiempo", "cuits": pend})
             break
         print(f"[{i}/{len(cuits)}] {cuit} ... ", end="", flush=True)
+        if a.todos:
+            try:
+                with open(os.path.join(os.environ.get("ROBOTS_PUBLICO", "/var/lib/robots/publico"), "corrida_en_curso.json"),
+                          encoding="utf-8") as f:
+                    d = json.load(f)
+                d.update(i=i, cuit=cuit, cliente_desde=dt.datetime.now().isoformat(timespec="seconds"))
+                _progreso(d)
+            except Exception:
+                pass
         r = correr_uno(a.robot, cuit, a.periodo, a.ver, partes, a.meses, a.forzar, a.modo)
         print(r)
         # freno (20/11/2026): si ARCA empieza a pedir captcha o a rechazar seguido, no insistir esa noche

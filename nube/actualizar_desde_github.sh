@@ -61,6 +61,15 @@ instalar_desde() {   # $1 = carpeta con robots/ y robots_web/
   # /tmp tiene protected_regular: root no puede ABRIR PARA ESCRIBIR un archivo de otro usuario en /tmp.
   # El candado lo crea el usuario robot; se abre solo para lectura (flock funciona igual).
   if [ -e /tmp/robots_todo.lock ]; then exec 9</tmp/robots_todo.lock; else exec 9>/tmp/robots_todo.lock; fi
+  if [ "${SOLO_WEB:-no}" = "si" ] && ! flock -n 9; then
+    # 21/11/2026: el cambio no toca los robots (solo la web, pruebas o textos): la web se instala sin esperar la corrida
+    rm -rf "$ANT"; mkdir -p "$ANT"
+    cp -a /home/robot/app/robots "$ANT/robots"; cp -a /opt/robots-web/robots_web "$ANT/robots_web"
+    rsync -a --delete --exclude '__pycache__' "$1/robots_web/" /opt/robots-web/robots_web/
+    chown -R root:root /opt/robots-web; chmod -R go-w /opt/robots-web
+    systemctl restart robots-web
+    return 0
+  fi
   if ! flock -n 9; then       # 21/11/2026: que la pantalla Sistema muestre que la versión espera a la corrida en curso
     anotar "esperando: hay una corrida de robots en curso; se instala apenas termine" "${CORTO:-}" "${MSJ:-}" ""
     flock -w 7200 9 || { echo "corrida muy larga, se reintenta"; return 1; }
@@ -102,6 +111,12 @@ SALIDA2=$(cd "$PRUEBA" && timeout 900 sudo -u robot env PYTHONPATH="$PRUEBA" HOM
          /home/robot/venv/bin/python robots/pruebas/test_vep_deuda.py 2>&1 && \
          /home/robot/venv/bin/python robots/pruebas/test_corridas.py 2>&1 && \
          /home/robot/venv/bin/python pruebas/test_asientos.py 2>&1; echo "CODIGO=$?")
+# solo cambia la web (no robots/ ni nube/): se puede instalar aunque haya una corrida de robots en curso
+SOLO_WEB=no
+if [ "$ACTUAL" != "ninguno" ] && git cat-file -e "$ACTUAL^{commit}" 2>/dev/null; then
+  OTROS=$(git diff --name-only "$ACTUAL" "$NUEVO" | grep -vE '^(robots_web/|pruebas/|docs/)|\.md$' || true)
+  [ -z "$OTROS" ] && SOLO_WEB=si
+fi
 if echo "$SALIDA" | grep -q "CODIGO=0" && echo "$SALIDA2" | grep -q "CODIGO=0"; then
   if instalar_desde "$PRUEBA"; then
     echo "$NUEVO" > /opt/monitoreo/instalado; git checkout -q --detach "$NUEVO"

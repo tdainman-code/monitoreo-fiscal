@@ -408,6 +408,17 @@ with open(rp.CANDADO, "a") as f:
     fcntl.flock(f, fcntl.LOCK_EX)
     ok(rp.procesar() == 0 and len([n for n in os.listdir(rp.PEDIDOS) if n.endswith(".json")]) == 1, "con una corrida en curso el pedido espera")
 ok("en espera" in cl.get("/robots").text, "estado 'en espera' visible")
+# corrida programada en curso visible en Robots (21/11/2026)
+ok("No hay ninguna corrida programada en curso" in cl.get("/robots").text, "sin corrida programada: lo dice")
+escribir(os.path.join(datos.PUBLICO, "corrida_en_curso.json"), {"robot": "todo", "modo": "completo", "fin_de_semana": True, "horas": 14,
+         "total": 40, "inicio": "2026-11-21T06:00:01", "i": 3, "cuit": C, "pid": os.getpid()})
+_rb = cl.get("/robots").text
+ok("Corrida completa de fin de semana en curso" in _rb and "va por el cliente 3 de 40" in _rb and "20:00" in _rb,
+   "Robots muestra la corrida programada en curso, cliente y hora límite")
+escribir(os.path.join(datos.PUBLICO, "corrida_en_curso.json"), {"robot": "todo", "modo": "completo", "total": 40, "i": 3,
+         "inicio": "2026-11-21T06:00:01", "pid": 999999999})
+ok("No hay ninguna corrida programada en curso" in cl.get("/robots").text, "archivo de una corrida cortada: no se muestra")
+os.remove(os.path.join(datos.PUBLICO, "corrida_en_curso.json"))
 open(os.path.join(BANDEJA, "pedidos", "y_mal.json"), "w").write(json.dumps({"cuit": "1; rm", "robot": "todo", "id": "zz"}))
 rp.procesar()
 ok(os.path.exists(os.path.join(BANDEJA, "pedidos", "y_mal.json.mal")), "pedido mal formado se descarta")

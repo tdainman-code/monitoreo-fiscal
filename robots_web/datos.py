@@ -5,7 +5,7 @@ import glob
 import json
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 RAIZ = os.environ.get("ROBOTS_RAIZ", "/var/lib/robots")
 DATOS = os.path.join(RAIZ, "datos")
@@ -629,3 +629,31 @@ def cartera(solo: set | None = None) -> list[dict]:
             continue
         out.append({"cuit": c["cuit"], "nombre": c.get("razon_social") or cuit_fmt(c["cuit"]), "f": f})
     return out
+
+
+def corrida_en_curso() -> dict | None:
+    """Corrida programada de todos los clientes que está corriendo ahora (la publica robots/correr.py). 21/11/2026."""
+    d = _leer(os.path.join(PUBLICO, "corrida_en_curso.json"))
+    if not isinstance(d, dict):
+        return None
+    try:
+        os.kill(int(d.get("pid") or 0), 0)
+    except ProcessLookupError:
+        return None                                 # el proceso ya no existe: quedó el archivo de una corrida cortada
+    except (PermissionError, ValueError, OSError):
+        pass                                        # existe pero es de otro usuario (robot): está corriendo
+    if d.get("solo_fallidos"):
+        d["nombre"] = "Repechaje (clientes con error en la semana)"
+    elif d.get("fin_de_semana") or d.get("modo") == "completo":
+        d["nombre"] = "Corrida completa de fin de semana"
+    elif d.get("modo") == "diaria":
+        d["nombre"] = "Corrida diaria liviana"
+    else:
+        d["nombre"] = f"Corrida de todos los clientes ({d.get('modo') or d.get('robot')})"
+    try:
+        ini = datetime.fromisoformat(d["inicio"])
+        if d.get("horas"):
+            d["termina_a_mas_tardar"] = (ini + timedelta(hours=float(d["horas"]))).isoformat(timespec="minutes")
+    except Exception:
+        pass
+    return d
