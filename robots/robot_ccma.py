@@ -205,7 +205,8 @@ def leer(page, cuit: str, hoy: date) -> dict:
     except Exception:
         pass
     texto = page.inner_text("body")
-    if arca.cuit_fmt(cuit) not in texto:
+    # 22/11/2026: la CCMA puede mostrar el CUIT sin guiones (20205744283): se acepta en los dos formatos
+    if arca.cuit_fmt(cuit) not in texto and cuit not in re.sub(r"[\s-]", "", texto):
         otros = sorted(set(re.findall(r"\d{2}-\d{8}-\d", texto)) - {arca.cuit_fmt(cuit)})
         raise arca.CuitEquivocado(f"CCMA muestra {', '.join(otros) or 'otro CUIT'} en lugar de {arca.cuit_fmt(cuit)}")
     filas, vistos = [], set()

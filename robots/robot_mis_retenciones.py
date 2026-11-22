@@ -166,18 +166,53 @@ def _formulario(page, cuit: str, impuesto: str, desde: date, hasta: date) -> Non
     page.wait_for_load_state("domcontentloaded")
 
 
-def _resultados(page, cuit: str) -> list[dict]:
-    """Lee todas las páginas de resultados. [] si ARCA no encontró movimientos."""
-    for _ in range(60):
+AVISOS: list[str] = []                         # carteles (alert) de la página: errores de validación del formulario
+
+
+def _escuchar_avisos(page) -> None:
+    if getattr(page, "_robot_avisos", False):
+        return
+
+    def _d(d):
+        AVISOS.append(d.message)
+        try:
+            d.accept()
+        except Exception:
+            pass
+    page.on("dialog", _d)
+    page._robot_avisos = True
+
+
+def _resultados(page, cuit: str, que: str = "") -> list[dict]:
+    """Lee todas las páginas de resultados. [] si ARCA no encontró movimientos.
+    22/11/2026: si no aparecen, el error dice lo que mostró la página (cartel o mensaje) y se guarda la pantalla."""
+    for _ in range(45):
         crudas = page.evaluate(JS_TABLA)
         if crudas:
             break
         texto = page.inner_text("body")
-        if re.search(r"no (se encontraron|existen|hay)|sin resultados|no posee", texto, re.I):
+        if re.search(r"no (se encontraron|existen|hay|posee|registra)|sin (resultados|datos|movimientos)|"
+                     r"no hay (datos|registros)|0 registros", texto, re.I):
             return []
+        if AVISOS:
+            break
         page.wait_for_timeout(1000)
-    else:
-        raise arca.ErrorRobot("Mis Retenciones: no aparecieron los resultados de la consulta")
+    if not crudas:
+        msg = AVISOS[-1] if AVISOS else ""
+        if not msg:
+            t = re.sub(r"\s+", " ", page.inner_text("body"))
+            m = re.search(r"[^.]{0,80}(error|inv[aá]lid|debe|obligatori|incorrect|no se pudo|intente)[^.]{0,100}", t, re.I)
+            msg = m[0].strip() if m else f"la página quedó en: {t[:160]}"
+        try:
+            d = os.path.join(DATOS, cuit, "capturas")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, f"mis_retenciones_{que or 'consulta'}.html"), "w", encoding="utf-8") as fh:
+                fh.write(page.content())
+            page.screenshot(path=os.path.join(d, f"mis_retenciones_{que or 'consulta'}.png"), full_page=True)
+        except Exception:
+            pass
+        AVISOS.clear()
+        raise arca.ErrorRobot(f"Mis Retenciones {que}: no aparecieron los resultados ({msg[:200]})")
     texto = page.inner_text("body")
     if not re.search(rf"{cuit}|{re.escape(arca.cuit_fmt(cuit))}", texto):
         otros = sorted(set(re.findall(r"\b(?:20|23|24|27|30|33|34)\d{9}\b", texto[:600])) - {cuit})
@@ -230,8 +265,10 @@ def leer(ctx, page, cuit: str, hoy: date) -> dict:
         for imp in impuestos:
             for d, h in tramos(hoy):
                 _menu(page, menu)
+                _escuchar_avisos(page)
+                AVISOS.clear()
                 _formulario(page, cuit, imp, d, h)
-                r = _resultados(page, cuit)
+                r = _resultados(page, cuit, f"{menu.lower()}_{imp}")
                 for x in r:
                     x["aduana"] = menu == "Aduaneras"
                 consultas.append({"menu": menu, "impuesto": imp, "desde": d.isoformat(), "hasta": h.isoformat(),

@@ -136,6 +136,16 @@ with sync_playwright() as p:
         chk(False, "un CUIT que no está en 'CUIT del retenido' debe frenar")
     except arca.SinRepresentado:
         chk(True, "si el cliente no figura en 'CUIT del retenido', avisa")
+    # 22/11/2026: si ARCA no muestra resultados, el error dice qué cartel o mensaje mostró la página
+    pg.set_content("<p>Consulta de Retenciones Impositivas</p><button onclick=\"alert('Debe ingresar el Impuesto retenido')\">CONSULTAR</button>")
+    rm._escuchar_avisos(pg)
+    rm.AVISOS.clear()
+    pg.locator("button").click()
+    try:
+        rm._resultados(pg, CUIT, "impositivas_767")
+        chk(False, "sin resultados debe dar error")
+    except arca.ErrorRobot as e:
+        chk("Debe ingresar el Impuesto retenido" in str(e), f"sin resultados: el error trae el cartel de ARCA ({e})")
     b.close()
 
 # ---------------------------------------------------------------- cruce con el Libro IVA
