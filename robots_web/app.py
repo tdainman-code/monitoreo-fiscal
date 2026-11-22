@@ -610,6 +610,19 @@ def vep_captura(cuit, archivo):
     return send_file(ruta, mimetype="image/png", download_name=f"VEP_{cuit}_{archivo}.png")
 
 
+@app.route("/cliente/<cuit>/captura/<archivo>")
+@requiere_login
+def captura_robot(cuit, archivo):
+    """Pantalla que guardó el robot al fallar (22/11/2026: para ver qué mostró el organismo)."""
+    _cliente_info(cuit)
+    if not re.fullmatch(r"[\w.-]{1,120}\.png", archivo):
+        abort(404)
+    ruta = os.path.join(datos.DATOS, cuit, "capturas", archivo)
+    if not os.path.isfile(ruta):
+        abort(404)
+    return send_file(ruta, mimetype="image/png")
+
+
 CAMPOS_CLIENTE = {
     "condicion_iva": "Condición frente al IVA", "condicion_ganancias": "Ganancias", "bienes_personales": "Bienes Personales",
     "regimen_iibb": "Régimen de Ingresos Brutos", "jurisdicciones_iibb": "Jurisdicciones de IIBB",

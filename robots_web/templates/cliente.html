@@ -13,14 +13,14 @@
     <span class="numero">{% if b.valor is none %}ver{% elif b.pesos %}{{ b.valor|pesos }}{% else %}{{ b.valor }}{% endif %}{% if b.utilidad is defined and b.utilidad is not none %} <small class="{{ 'txt-rojo' if b.utilidad < 0 }}">· utilidad {{ (b.utilidad + 1)|utilidad }}</small>{% endif %}</span>
     <span class="sub">{{ b.sub }}</span>
     {% if b.sub2 %}<span class="sub">{{ b.sub2 }}</span>{% endif %}
-    {% for f in b.fallas or [] %}<span class="sub falla">⚠ {{ f.nombre }}: {{ f.texto[:70] }} → {{ f.que_hacer }}</span>{% endfor %}
+    {% for f in b.fallas or [] %}<span class="sub falla" title="{{ f.texto }}">⚠ {{ f.nombre }}: {{ f.texto[:110] }} → {{ f.que_hacer }}</span>{% endfor %}
   </a>
 {% endfor %}
   <a class="boton-ficha gris" href="{{ url_for('cliente_seccion', cuit=c.cuit, seccion='notas') }}">
     <span class="titulo">📝 Notas del equipo</span><span class="numero">{{ n_notas }}</span><span class="sub">notas</span></a>
   <a class="boton-ficha {{ 'rojo' if claves_mal or s.fallas_claves else 'gris' }}" href="{{ url_for('cliente_claves', cuit=c.cuit) }}">
     <span class="titulo">🔐 Claves</span><span class="numero">{{ 'Actualizar' if claves_mal else 'Cambiar' }}</span><span class="sub">{{ 'Clave inválida, actualizar' if claves_mal else 'cargar o cambiar una clave' }}</span>
-    {% for f in s.fallas_claves or [] %}<span class="sub falla">⚠ {{ f.nombre }}: {{ f.texto[:70] }} → {{ f.que_hacer }}</span>{% endfor %}</a>
+    {% for f in s.fallas_claves or [] %}<span class="sub falla" title="{{ f.texto }}">⚠ {{ f.nombre }}: {{ f.texto[:110] }} → {{ f.que_hacer }}</span>{% endfor %}</a>
   <a class="boton-ficha gris" href="{{ url_for('datos_del_cliente', cuit=c.cuit) }}">
     <span class="titulo">🗂 Datos del cliente</span><span class="numero">{{ dc.condicion_iva or 'Completar' }}</span>
     <span class="sub">{{ dc.contadores or 'condiciones, contadores, mails' }}</span></a>

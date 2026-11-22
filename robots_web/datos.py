@@ -750,12 +750,20 @@ def fallas(cuit: str) -> list[dict]:
     except OSError:
         pass
     out = []
+    capt = sorted(glob.glob(os.path.join(base, "capturas", "*.png")), key=os.path.getmtime, reverse=True)
     for k, v in estado.items():
         if not v:
             continue
         boton = "claves" if re.search(r"rechaz|clave inv|sin CIT|sin Clave Ciudad", v[1], re.I) else PARTE_BOTON.get(k, "informes")
+        texto = re.sub(r"\s+", " ", v[1])
+        # la causa entre paréntesis al final ("no aparecieron los resultados (Debe ingresar...)") va adelante
+        m = re.search(r"\(([^()]{8,})\)\s*$", texto)
+        corto = (m[1] + " — " + texto[:m.start()]) if m else texto
+        pref = {"mis_retenciones": "mis_retenciones", "arba": "error_arba", "arba_dfe": "error_arba_dfe", "agip": "error_agip"}.get(k, f"error_{k}")
+        cap = next((os.path.basename(c) for c in capt if os.path.basename(c).startswith(pref)
+                    and date.fromtimestamp(os.path.getmtime(c)).isoformat() >= (v[0] or "")[:10]), None)
         out.append({"parte": k, "nombre": NOMBRE_PARTE.get(k, k), "boton": boton, "fecha": v[0],
-                    "texto": re.sub(r"\s+", " ", v[1])[:160], "que_hacer": que_hacer(v[1])})
+                    "texto": corto[:300], "que_hacer": que_hacer(v[1]), "captura": cap})
     return sorted(out, key=lambda x: x["nombre"])
 
 

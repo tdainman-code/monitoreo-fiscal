@@ -455,8 +455,12 @@ ok(set(_fl) == {"libro_iva", "arba", "agip"} and _fl["libro_iva"]["boton"] == "i
    f"fallas: lo que salió bien después ya no figura; cada una en su botón con qué hacer ({sorted(_fl)})")
 _fc = cl.get(f"/cliente/{C2}").text
 ok("⚠ Libro IVA:" in _fc and "cargar la CIT de ARBA" in _fc and "sub falla" in _fc, "ficha: la falla en letra chica en el botón")
+os.makedirs(f"{D}/{C2}/capturas", exist_ok=True)
+open(f"{D}/{C2}/capturas/error_libro_iva_20261122-101010_0.png", "wb").write(b"\x89PNG\r\n\x1a\n")
 _rb0 = cl.get("/robots").text
-ok("Para corregir" in _rb0 and "cargar la Clave Ciudad de AGIP" in _rb0, "Más -> Robots: lista para corregir")
+ok("Para corregir" in _rb0 and "cargar la Clave Ciudad de AGIP" in _rb0 and "ver pantalla" in _rb0, "Más -> Robots: lista para corregir con la pantalla")
+ok(cl.get(f"/cliente/{C2}/captura/error_libro_iva_20261122-101010_0.png").status_code == 200
+   and cl.get(f"/cliente/{C2}/captura/..%2Fx.png").status_code == 404, "captura del robot: se ve y no se sale de la carpeta")
 for _f in ("2026-11-15", "2026-11-22"):
     os.remove(f"{D}/{C2}/corrida_todo_{_f}_completo.json")
 # corrida programada en curso visible en Robots (21/11/2026)

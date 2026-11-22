@@ -9,7 +9,7 @@
 <p class="sutil">Lo que falló o falta en las últimas corridas de cada cliente (las que después salieron bien ya no figuran). También aparece en letra chica en el botón de la ficha.</p>
 {% if fallas %}<table class="tabla chica"><thead><tr><th>Cliente</th><th>Qué</th><th>Problema</th><th>Qué hacer</th></tr></thead><tbody>
 {% for f in fallas %}<tr><td data-l="Cliente"><a href="{{ url_for('cliente', cuit=f.cuit) }}">{{ f.razon_social or cuit_fmt(f.cuit) }}</a></td>
-<td data-l="Qué">{{ f.nombre }} <span class="sutil">{{ f.fecha|fecha }}</span></td><td data-l="Problema" class="sutil">{{ f.texto }}</td><td data-l="Qué hacer">{{ f.que_hacer }}</td></tr>{% endfor %}
+<td data-l="Qué">{{ f.nombre }} <span class="sutil">{{ f.fecha|fecha }}</span></td><td data-l="Problema" class="sutil">{{ f.texto }}{% if f.captura %} · <a href="{{ url_for('captura_robot', cuit=f.cuit, archivo=f.captura) }}" target="_blank">ver pantalla</a>{% endif %}</td><td data-l="Qué hacer">{{ f.que_hacer }}</td></tr>{% endfor %}
 </tbody></table>{% else %}<p class="sutil">Nada para corregir en las últimas corridas.</p>{% endif %}
 <h1>Pedidos desde la web</h1>
 <table class="tabla"><thead><tr><th>Pedido</th><th>Cliente</th><th>Robot</th><th>Por</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>
