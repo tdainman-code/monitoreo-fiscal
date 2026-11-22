@@ -367,14 +367,21 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
 
     def _leer_periodos(page, http_comarb):
         os.makedirs(carpeta, exist_ok=True)
-        _buscar(page, periodos[0], periodos[-1], http_comarb)
-        lista = _lista(page)
         for per in periodos:
             if per in estado:
                 continue
             ruta = os.path.join(carpeta, f"{per}.json")
+            # 22/11/2026 (Humaitá: meses presentados y pagos figuraban "No presentada"): la búsqueda de los 12 meses
+            # juntos trae una lista larga (con rectificativas) que SIFERE pagina, y solo se leía la primera página.
+            # Ahora se busca MES POR MES: la lista es corta y la fila queda en la misma pantalla para abrirla.
+            _buscar(page, per, per, http_comarb)
+            lista = _lista(page)
             if per not in lista:
-                estado[per] = "no presentada"
+                txt = _texto(page)
+                if not re.search(r"Anticipo", txt, re.I) and not re.search(r"no (se encontraron|existen|hay)|sin resultados", txt, re.I):
+                    estado[per] = "sin dato (SIFERE no mostró la lista)"
+                else:
+                    estado[per] = "no presentada"
                 continue
             rect, _ = lista[per]
             previo = {}
@@ -392,7 +399,7 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
             texto_ant = f"{per[5:]}/{per[:4]} - {rect}"
             fila = page.locator("tr", has_text=texto_ant).filter(has=page.locator("a"))
             if not fila.count():
-                _buscar(page, periodos[0], periodos[-1], http_comarb)
+                _buscar(page, per, per, http_comarb)
                 fila = page.locator("tr", has_text=texto_ant).filter(has=page.locator("a"))
             _navegar(page, lambda: fila.first.locator("a").first.click(), http_comarb)
             _controlar_cuit(page, cuit)
