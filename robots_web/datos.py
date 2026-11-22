@@ -580,6 +580,12 @@ def ficha(cuit: str) -> dict:
              "agip": ("AGIP (Ciudad)", "falta cargar la Clave Ciudad de AGIP"),
              "ventas_bancos": ("Ventas para bancos", "falta el Libro IVA del Portal IVA")}
     hay = {x["id"] for x in b}
+    try:
+        from . import usuarios as _u
+        if "AGIP" in ((_u.datos_cliente(cuit) or {}).get("no_corresponde") or "").upper():
+            falta.pop("agip", None)                    # local de ARBA: no se muestra AGIP "pendiente de configurar"
+    except Exception:
+        pass
     for id_, (tit, sub) in falta.items():
         if id_ not in hay:
             # pedido 20/11/2026: lo que no está configurado va en ROJO y dice "Pendiente de configurar"
@@ -749,6 +755,13 @@ def fallas(cuit: str) -> list[dict]:
             estado["clave"] = ((ult.get("fecha") or "")[:10], f"{ult['estado']}: {ult.get('detalle') or ''}")
     except OSError:
         pass
+    try:                                               # organismos que no le corresponden (22/11/2026)
+        from . import usuarios as _u
+        nc = {x.strip().upper() for x in ((_u.datos_cliente(cuit) or {}).get("no_corresponde") or "").split(",") if x.strip()}
+    except Exception:
+        nc = set()
+    for k in [k for k in estado if (k in ("arba", "arba_dfe") and "ARBA" in nc) or (k == "agip" and "AGIP" in nc)]:
+        estado.pop(k)
     out = []
     capt = sorted(glob.glob(os.path.join(base, "capturas", "*.png")), key=os.path.getmtime, reverse=True)
     for k, v in estado.items():

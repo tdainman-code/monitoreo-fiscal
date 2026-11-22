@@ -12,10 +12,13 @@
   {% else %}<b>{{ c.razon_social or '—' }}</b> <span class="sutil">La corrige un administrador.</span>{% endif %}</label>
   <label class="ancho">CUIT <b>{{ cuit_fmt(c.cuit) }}</b> <span class="sutil">El CUIT no se cambia: si está mal, hay que dar de alta el cliente con el CUIT correcto.</span></label>
   {% for k, titulo in campos.items() %}
-    <label class="{{ 'ancho' if k in ('observaciones', 'emails', 'medios_vep', 'equipo', 'agente', 'jurisdicciones_iibb', 'convenios') }}">{{ titulo }}
+    <label class="{{ 'ancho' if k in ('observaciones', 'emails', 'medios_vep', 'no_corresponde', 'equipo', 'agente', 'jurisdicciones_iibb', 'convenios') }}">{{ titulo }}
     {% if k == 'medios_vep' %}<span class="sutil">Depende del convenio de cada banco del cliente; si tiene varios bancos, marcá todos: se genera un VEP por medio.</span>
       {% set elegidos = (d.get('medios_vep') or '').split(', ') %}
       <span>{% for m in medios_vep %}<label class="en-linea"><input type="checkbox" name="medios_vep" value="{{ m }}" {{ 'checked' if m in elegidos }}> {{ m }}</label> {% endfor %}</span>
+    {% elif k == 'no_corresponde' %}{% set nc = (d.get('no_corresponde') or '').split(', ') %}
+      <span class="sutil">Ej.: contribuyente local de ARBA que nunca va a tener AGIP. No se piden esas claves ni aparecen en "Para corregir".</span>
+      <span>{% for o in organismos %}<label class="en-linea"><input type="checkbox" name="no_corresponde" value="{{ o }}" {{ 'checked' if o in nc }}> {{ o }}</label> {% endfor %}</span>
     {% elif k == 'encargado' and not es_admin %}<b>{{ (encargados|selectattr(0, 'equalto', d.get('encargado'))|map(attribute=1)|first) or d.get('encargado') or '—' }}</b>
       <span class="sutil">Lo asigna un administrador.</span>
     {% elif k == 'encargado' %}<select name="encargado"><option value="">—</option>{% for u, n in encargados %}<option value="{{ u }}" {{ 'selected' if d.get('encargado') == u }}>{{ n or u }}</option>{% endfor %}</select>

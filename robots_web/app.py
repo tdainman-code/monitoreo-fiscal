@@ -610,6 +610,30 @@ def vep_captura(cuit, archivo):
     return send_file(ruta, mimetype="image/png", download_name=f"VEP_{cuit}_{archivo}.png")
 
 
+ORGANISMOS_OPCIONALES = ("ARBA", "AGIP")
+
+
+@app.route("/cliente/<cuit>/no_corresponde", methods=["POST"])
+@requiere_login
+def marcar_no_corresponde(cuit):
+    """22/11/2026 (Gaby, Acuña Ana María: local de ARBA, nunca va a tener AGIP): marcar que un organismo no le
+    corresponde al cliente, desde 'Para corregir'. Se puede desmarcar en Datos del cliente."""
+    _controlar_csrf()
+    _cliente_info(cuit)
+    org = request.form.get("organismo", "")
+    if org not in ORGANISMOS_OPCIONALES:
+        abort(400)
+    d = {k: v for k, v in (usuarios.datos_cliente(cuit) or {}).items() if not k.startswith("_")}
+    actual = [x for x in (d.get("no_corresponde") or "").split(", ") if x]
+    if org not in actual:
+        actual.append(org)
+    d["no_corresponde"] = ", ".join(sorted(actual))
+    usuarios.guardar_datos_cliente(cuit, d, session["usuario"])
+    usuarios.registrar(session["usuario"], f"{org} no corresponde", cuit, _ip())
+    flash(f"{org} marcado como 'no corresponde' para este cliente", "ok")
+    return redirect(request.form.get("volver") if (request.form.get("volver") or "").startswith("/") else url_for("robots"))
+
+
 @app.route("/cliente/<cuit>/captura/<archivo>")
 @requiere_login
 def captura_robot(cuit, archivo):
@@ -631,6 +655,7 @@ CAMPOS_CLIENTE = {
     "equipo": "También lo llevan (ven este cliente)",
     "contadores": "Contador/es a cargo", "emails": "Mails del cliente",
     "medios_vep": "Medios de pago del VEP (según sus bancos)",
+    "no_corresponde": "Organismos que no le corresponden (no se reclaman claves ni se marcan fallas)",
     "telefonos": "Teléfonos", "whatsapp": "WhatsApp", "observaciones": "Observaciones",
 }
 OPCIONES_CLIENTE = {
@@ -662,6 +687,7 @@ def datos_del_cliente(cuit):
             antes = usuarios.datos_cliente(cuit) or {}
             nuevos["encargado"], nuevos["equipo"] = antes.get("encargado", ""), antes.get("equipo", "")
         nuevos["medios_vep"] = ", ".join(m for m in MEDIOS_VEP if m in request.form.getlist("medios_vep"))
+        nuevos["no_corresponde"] = ", ".join(o for o in ORGANISMOS_OPCIONALES if o in request.form.getlist("no_corresponde"))
         antes_d = usuarios.datos_cliente(cuit) or {}
         nuevos["razon_social_corregida"] = antes_d.get("razon_social_corregida", "")
         rz = re.sub(r"[\x00-\x1f<>]", "", request.form.get("razon_social", "")).strip()[:120]
@@ -677,7 +703,7 @@ def datos_del_cliente(cuit):
         flash("Datos del cliente guardados", "ok")
         return redirect(url_for("cliente", cuit=cuit))
     return render_template("datos_cliente.html", c=info, d=usuarios.datos_cliente(cuit), campos=CAMPOS_CLIENTE,
-                           opciones=OPCIONES_CLIENTE, medios_vep=MEDIOS_VEP, encargados=[(u[0], u[1]) for u in usuarios.listar() if u[3]],
+                           opciones=OPCIONES_CLIENTE, medios_vep=MEDIOS_VEP, organismos=ORGANISMOS_OPCIONALES, encargados=[(u[0], u[1]) for u in usuarios.listar() if u[3]],
                            es_admin=session.get("rol") == "admin")
 
 

@@ -461,6 +461,17 @@ _rb0 = cl.get("/robots").text
 ok("Para corregir" in _rb0 and "cargar la Clave Ciudad de AGIP" in _rb0 and "ver pantalla" in _rb0, "Más -> Robots: lista para corregir con la pantalla")
 ok(cl.get(f"/cliente/{C2}/captura/error_libro_iva_20261122-101010_0.png").status_code == 200
    and cl.get(f"/cliente/{C2}/captura/..%2Fx.png").status_code == 404, "captura del robot: se ve y no se sale de la carpeta")
+cl.post(f"/cliente/{C2}/no_corresponde", data={"organismo": "AGIP", "csrf": token(_rb0)})
+_fl2 = {f["parte"] for f in datos.fallas(C2)}
+ok("agip" not in _fl2 and "arba" in _fl2 and "Clave Ciudad" not in cl.get("/robots").text,
+   "AGIP 'no corresponde': sale de Para corregir (local de ARBA)")
+_dc3 = {k: v for k, v in (usuarios.datos_cliente(C3) or {}).items() if not k.startswith("_")}
+usuarios.guardar_datos_cliente(C3, {**_dc3, "no_corresponde": "AGIP"}, "test")
+ok("falta cargar la Clave Ciudad" not in cl.get(f"/cliente/{C3}").text, "sin datos de AGIP y 'no corresponde': la ficha no muestra AGIP pendiente")
+usuarios.guardar_datos_cliente(C3, _dc3, "test")
+ok(cl.post(f"/cliente/{C2}/no_corresponde", data={"organismo": "XYZ", "csrf": token(_rb0)}).status_code == 400, "no corresponde: solo ARBA o AGIP")
+_dc = usuarios.datos_cliente(C2)
+usuarios.guardar_datos_cliente(C2, {k: v for k, v in _dc.items() if not k.startswith("_") and k != "no_corresponde"}, "test")
 for _f in ("2026-11-15", "2026-11-22"):
     os.remove(f"{D}/{C2}/corrida_todo_{_f}_completo.json")
 # corrida programada en curso visible en Robots (21/11/2026)
