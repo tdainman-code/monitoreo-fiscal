@@ -380,6 +380,9 @@ escribir(f"{R}/publico/grupos.json", {C2: {"dia": 2, "semana": 1}, C3: {"dia": 4
 ok("<b>todos los miércoles</b>" in cl.get(f"/cliente/{C2}").text, "inscripto (o sin clasificar): todas las semanas")
 escribir(f"{D}/{C3}/categoria.json", {"categoria": "sin Portal IVA (monotributo/exento)"})
 ok("viernes por medio (dos veces por mes" in cl.get(f"/cliente/{C3}").text, "monotributista: semana por medio")
+_f3 = cl.get(f"/cliente/{C3}").text
+ok("monotributo / exento: no tiene Libro IVA" in _f3 and "falta el Libro IVA (monotributo o sin presentar)" not in _f3,
+   "monotributista: IVA, Relación D/C y ventas para bancos dicen 'No corresponde' (no 'pendiente de configurar')")
 r = cl.get(f"/cliente/{C2}/iva")
 ok("<svg" in r.text and "Crítico" in r.text and "0,50" in r.text, "sección débito/crédito con gráfico")
 r = cl.get(f"/cliente/{C2}/resultado")

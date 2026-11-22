@@ -163,10 +163,16 @@ def _ir_a_lista(page) -> None:
     _boton_en_tarjeta(page, "Libro IVA").click()
     arca.pausa(1.0, 2.0)
     limite = time.time() + 60
+    inicio = time.time()
     while time.time() < limite:
         if _hay_rectificar(page):
             return
         if arca._hay_texto(page, r"no (hay|se encontraron|existen|registra)"):
+            return
+        # 22/11/2026 (Acuña Ana María): sin ningún Libro IVA presentado la pantalla muestra el título "Libro IVA" con
+        # la lista VACÍA y sin mensaje. Pasados 20 s con el título y sin filas, es lista vacía (no una falla).
+        if time.time() - inicio > 20 and arca._hay_texto(page, r"Declaraciones juradas presentadas") \
+                and arca._hay_texto(page, r"Libro IVA") and not page.locator("table tr td, .card .row, li.list-group-item").count():
             return
         page.wait_for_timeout(1000)
     raise arca.ErrorRobot("Portal IVA: no apareció la lista de Libros IVA presentados")
@@ -314,8 +320,16 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
                 page.close()
                 return dict(estado)
             raise
-        guardar_categoria(cuit, "Responsable inscripto")
         lista = _lista(page)
+        if not lista and _es_monotributista(cuit):
+            estado["_servicio"] = "sin Libro IVA (monotributista)"
+            guardar_categoria(cuit, "sin Portal IVA (monotributo/exento)")
+            page.close()
+            return dict(estado)
+        if not lista:
+            estado["_servicio"] = "Portal IVA sin ningún Libro IVA presentado"
+        else:
+            guardar_categoria(cuit, "Responsable inscripto")
         os.makedirs(carpeta, exist_ok=True)
         mas_viejo = min(lista) if lista else None
         for per in periodos:

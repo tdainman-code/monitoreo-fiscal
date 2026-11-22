@@ -586,7 +586,13 @@ def ficha(cuit: str) -> dict:
             falta.pop("agip", None)                    # local de ARBA: no se muestra AGIP "pendiente de configurar"
     except Exception:
         pass
+    mono = (s.get("categoria") or "").startswith("sin Portal IVA")
     for id_, (tit, sub) in falta.items():
+        if id_ not in hay and mono and id_ in ("iva", "relacion", "ventas_bancos"):
+            # 22/11/2026 (Gándara, monotributista): sin Libro IVA no es "pendiente de configurar"
+            b.append({"id": id_, "titulo": tit, "valor": "No corresponde", "sub": "monotributo / exento: no tiene Libro IVA",
+                      "color": "gris", "vacia": True})
+            continue
         if id_ not in hay:
             # pedido 20/11/2026: lo que no está configurado va en ROJO y dice "Pendiente de configurar"
             b.append({"id": id_, "titulo": tit, "valor": "Pendiente de configurar", "sub": sub, "color": "rojo", "vacia": True})
