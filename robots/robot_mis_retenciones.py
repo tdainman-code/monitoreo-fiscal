@@ -123,47 +123,85 @@ def _version_anterior(ctx, page):
     return destino
 
 
+FORM: dict = {}                                 # lo que quedó cargado en el formulario (para el mensaje de error)
+
+
+def _navegando(page, accion, espera_ms: int = 8000) -> None:
+    """Hace la acción y, si la página se recarga (el selector de CUIT y CONSULTAR recargan la página), espera."""
+    try:
+        with page.expect_navigation(timeout=espera_ms, wait_until="domcontentloaded"):
+            accion()
+    except Exception:
+        pass
+    page.wait_for_timeout(800)
+
+
 def _formulario(page, cuit: str, impuesto: str, desde: date, hasta: date) -> None:
+    """22/11/2026: en ARCA real el formulario quedaba sin consultar. Al elegir el CUIT del retenido la página se
+    RECARGA (busca el nombre); lo cargado antes de que termine se pierde. Ahora se espera la recarga, los campos se
+    escriben como un usuario (tecla por tecla) y se controla lo cargado antes de CONSULTAR."""
     sel_cuit = page.locator("select").filter(has=page.locator(f"option[value='{cuit}']"))
     if not sel_cuit.count():
         sel_cuit = page.locator("select").filter(has=page.locator("option", has_text=cuit))
     if not sel_cuit.count():
         raise arca.SinRepresentado(f"Mis Retenciones: {arca.cuit_fmt(cuit)} no figura en 'CUIT del retenido'")
     s = sel_cuit.first
-    op = next((o for o in s.locator("option").all_inner_texts() if cuit in o.replace("-", "")), cuit)
-    s.select_option(label=op)
-    s.dispatch_event("change")
-    page.wait_for_load_state("domcontentloaded")
-    page.wait_for_timeout(1200)
+    actual = s.evaluate("x => (x.options[x.selectedIndex] || {}).text || ''")
+    if cuit not in actual.replace("-", ""):
+        op = next((o for o in s.locator("option").all_inner_texts() if cuit in o.replace("-", "")), cuit)
+        _navegando(page, lambda: s.select_option(label=op))
+    # impuesto: código en la caja chica (como un usuario: escribir y salir del campo) y el selector
     sel_imp = page.locator("select").filter(has=page.locator("option", has_text=re.compile(rf"^\s*{impuesto}\s*-")))
     if not sel_imp.count():
         raise arca.ErrorRobot(f"Mis Retenciones: no está el impuesto {impuesto} en el selector")
+    n_cod = page.evaluate("""(imp) => { const s = [...document.querySelectorAll('select')].find(x =>
+        [...x.options].some(o => o.text.trim().startsWith(imp + ' -'))); if (!s) return -1;
+        const ins = [...document.querySelectorAll('input[type=text], input:not([type])')];
+        const prev = ins.filter(i => i.offsetParent !== null && !i.disabled && !i.readOnly
+                                && (i.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING)).pop();
+        if (!prev) return -1; ins.forEach((i, n) => i.setAttribute('data-robot-mr', String(n)));
+        return Number(prev.getAttribute('data-robot-mr')); }""", impuesto)
+    if n_cod >= 0:
+        cod = page.locator(f"[data-robot-mr='{n_cod}']")
+        cod.fill("")
+        cod.press_sequentially(impuesto, delay=60)
+        cod.press("Tab")
+        page.wait_for_timeout(600)
     op = next(o for o in sel_imp.first.locator("option").all_inner_texts() if re.match(rf"\s*{impuesto}\s*-", o))
-    sel_imp.first.select_option(label=op)
-    sel_imp.first.dispatch_event("change")
-    # código del impuesto (la caja chica al lado del selector), si está vacía
-    page.evaluate("""(imp) => { const s = [...document.querySelectorAll('select')].find(x =>
-        [...x.options].some(o => o.text.trim().startsWith(imp + ' -'))); if (!s) return;
-        const prev = [...document.querySelectorAll('input[type=text]')].filter(i =>
-        i.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-        if (prev && !prev.value) { prev.value = imp; prev.dispatchEvent(new Event('change', {bubbles: true})); } }""", impuesto)
-    radio = page.locator("input[type=radio]")
+    if not re.match(rf"\s*{impuesto}\s*-", sel_imp.first.evaluate("x => (x.options[x.selectedIndex] || {}).text || ''")):
+        sel_imp.first.select_option(label=op)
+    radio = page.locator("input[type=radio]").locator("visible=true")
     if radio.count():
         radio.last.check()                              # "Retención y/o Percepción"
     # Fecha Ret./Perc. Desde / Hasta: los dos primeros campos de texto después de ese rótulo
-    n = page.evaluate("""(v) => {
+    idx = page.evaluate("""() => {
       const vis = e => e.offsetParent !== null;
-      const rot = [...document.querySelectorAll('td, span, label, div')].find(e => vis(e) && e.children.length === 0
+      const rot = [...document.querySelectorAll('td, span, label, div, b')].find(e => vis(e) && e.children.length === 0
                    && /Fecha.{0,20}ret/i.test(e.textContent));
-      if (!rot) return 0;
-      const ins = [...document.querySelectorAll('input[type=text], input:not([type])')].filter(i => vis(i)
-                   && (rot.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING)).slice(0, 2);
-      ins.forEach((i, k) => { i.value = v[k]; i.dispatchEvent(new Event('change', {bubbles: true})); });
-      return ins.length; }""", [desde.strftime("%d%m%Y"), hasta.strftime("%d%m%Y")])
-    if n != 2:
+      if (!rot) return [];
+      const ins = [...document.querySelectorAll('input[type=text], input:not([type])')];
+      ins.forEach((i, n) => i.setAttribute('data-robot-mrf', String(n)));
+      return ins.filter(i => vis(i) && (rot.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING))
+                .slice(0, 2).map(i => Number(i.getAttribute('data-robot-mrf'))); }""")
+    if len(idx) != 2:
         raise arca.ErrorRobot("Mis Retenciones: no se encontraron los campos de Fecha Ret./Perc.")
-    page.locator("input[value='CONSULTAR' i], button:has-text('CONSULTAR'), a:has-text('CONSULTAR')").first.click()
-    page.wait_for_load_state("domcontentloaded")
+    for n, v in zip(idx, (desde.strftime("%d%m%Y"), hasta.strftime("%d%m%Y"))):
+        c = page.locator(f"[data-robot-mrf='{n}']")
+        c.click()
+        c.fill("")
+        c.press_sequentially(v, delay=40)
+        c.press("Tab")
+        if re.sub(r"\D", "", c.input_value()) != v:      # con máscara: si no quedó, se fuerza el valor
+            c.evaluate("(i, v) => { i.value = v; ['input','change','blur'].forEach(t => i.dispatchEvent(new Event(t, {bubbles: true}))); }", v)
+    FORM.clear()
+    FORM.update(page.evaluate("""() => { const sel = [...document.querySelectorAll('select')].map(x =>
+        (x.options[x.selectedIndex] || {}).text || '').filter(t => t.trim());
+        const ins = [...document.querySelectorAll('input[type=text], input:not([type])')].filter(i => i.offsetParent !== null)
+        .map(i => i.value).filter(v => v); return {selectores: sel.join(' | '), campos: ins.join(' | ')}; }"""))
+    boton = page.locator("input[value='CONSULTAR' i], button:has-text('CONSULTAR'), a:has-text('CONSULTAR')").locator("visible=true")
+    if not boton.count():
+        raise arca.ErrorRobot("Mis Retenciones: no aparece el botón CONSULTAR")
+    _navegando(page, lambda: boton.first.click(), espera_ms=60_000)
 
 
 AVISOS: list[str] = []                         # carteles (alert) de la página: errores de validación del formulario
@@ -202,7 +240,9 @@ def _resultados(page, cuit: str, que: str = "") -> list[dict]:
         if not msg:
             t = re.sub(r"\s+", " ", page.inner_text("body"))
             m = re.search(r"[^.]{0,80}(error|inv[aá]lid|debe|obligatori|incorrect|no se pudo|intente)[^.]{0,100}", t, re.I)
-            msg = m[0].strip() if m else f"la página quedó en: {t[:160]}"
+            i = t.find("Consulta de Retenciones")
+            msg = m[0].strip() if m else (f"quedó en el formulario sin consultar; cargado: {FORM.get('selectores', '')} / "
+                                          f"{FORM.get('campos', '')}" if i >= 0 else f"la página quedó en: {t[:160]}")
         try:
             d = os.path.join(DATOS, cuit, "capturas")
             os.makedirs(d, exist_ok=True)
