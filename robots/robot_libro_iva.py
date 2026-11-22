@@ -273,6 +273,20 @@ def prioridad(cuit: str) -> int:
     return 1 if cat.startswith("Responsable") else 3
 
 
+def _es_monotributista(cuit: str) -> bool:
+    """Según la última lectura de la CCMA: 'MONOTRIBUTISTA' sin 'AUTONOMO' (el autónomo es inscripto en IVA)."""
+    import glob as _g
+    rutas = sorted(x for x in _g.glob(os.path.join(DATOS, cuit, "ccma", "*.json")) if not os.path.basename(x).startswith("_"))
+    if not rutas:
+        return False
+    try:
+        with open(rutas[-1], encoding="utf-8") as f:
+            tipo = ((json.load(f).get("totales") or {}).get("tipo") or "").upper()
+    except (OSError, ValueError):
+        return False
+    return "MONOTRIBUT" in tipo and "AUTONOMO" not in tipo
+
+
 def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
     carpeta = os.path.join(DATOS, cuit, "libro_iva")
 
@@ -287,7 +301,19 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
         base = page.url.split("#")[0]
         elegir_representado(page, cuit)
         _controlar_cuit(page, cuit, "Portal IVA")
-        _ir_a_lista(page)
+        try:
+            _ir_a_lista(page)
+        except arca.ErrorRobot:
+            # 22/11/2026 (Gándara): si el cliente no es responsable inscripto el Portal IVA no tiene Libro IVA;
+            # no es una falla del robot. Se reconoce por el texto de la pantalla o por la CCMA (monotributista).
+            texto = page.inner_text("body")
+            if re.search(r"monotribut|no (se encuentra|est[aá]) inscript|no posee (el impuesto|IVA)|exento", texto, re.I) \
+                    or _es_monotributista(cuit):
+                estado["_servicio"] = "sin Libro IVA (no es responsable inscripto: monotributo o exento)"
+                guardar_categoria(cuit, "sin Portal IVA (monotributo/exento)")
+                page.close()
+                return dict(estado)
+            raise
         guardar_categoria(cuit, "Responsable inscripto")
         lista = _lista(page)
         os.makedirs(carpeta, exist_ok=True)
