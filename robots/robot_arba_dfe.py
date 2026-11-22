@@ -263,6 +263,101 @@ def alertas_cuenta(c: dict, minimo: float = 15_000.0) -> list[dict]:
     return al
 
 
+# ---------------------------------------------------------------- deducciones (percepciones de IIBB)
+# Relevado con Gaby el 21/11/2026 (Nabajuma): Autogestión -> Mis accesos frecuentes -> Agentes de Recaudación ->
+# "Deducciones informadas por los Agentes de Recaudación" -> "Seleccione un rol": Contribuyente de Ingresos Brutos ->
+# dfe.arba.gov.ar/DomicilioElectronico (Régimen de Retenciones y Percepciones) -> Deducciones -> Descarga para Importar
+# (preDescargarRetenciones.do): Período año + mes, Tipo de Contribuyente -> Consultar -> "Total de Deducciones"
+# (PERCEPCION, RETENCIONES BANCARIAS/PSP) -> Descargar: zip RP-<cuit>-<AAAAMM>C.zip con <cuit>CP<MMAAAA>....txt
+# (percepciones) y <cuit>CB....txt (bancarias). Línea CP (ancho fijo):
+#   0290230-70956507-507/11/20250010600000000000011084585FA000000000333,15
+#   ... CUIT agente 30-70956507-5 | fecha 07/11/2025 | ... número 11084585 | tipo F | letra A | importe 333,15
+URL_DEDUCCIONES = "https://dfe.arba.gov.ar/DomicilioElectronico/preDescargarRetenciones.do"
+MESES_DEDUCCIONES = 13
+_RE_CP = re.compile(r"(\d{2}-\d{8}-\d)(\d{2}/\d{2}/\d{4})(\d*?)(\d{8})([A-Z])([A-Z ])(-?\d+,\d{2})\s*$")
+
+
+def leer_cp(texto: str) -> list[dict]:
+    """Archivo CP (percepciones) de la descarga para importar de ARBA."""
+    out = []
+    for l in texto.splitlines():
+        m = _RE_CP.search(l.strip())
+        if not m:
+            continue
+        out.append({"agente": re.sub(r"\D", "", m[1]), "fecha": m[2], "fecha_comprobante": m[2],
+                    "comprobante": m[4], "tipo": m[5], "letra": m[6].strip(),
+                    "importe": float(m[7].replace(",", ".")), "operacion": "PERCEPCION"})
+    return out
+
+
+def leer_zip_deducciones(crudo: bytes) -> list[dict]:
+    import io
+    import zipfile
+    out = []
+    with zipfile.ZipFile(io.BytesIO(crudo)) as z:
+        for n in z.namelist():
+            if re.search(r"\d{11}CP\d", os.path.basename(n), re.I):
+                out += leer_cp(z.read(n).decode("latin-1"))
+    return out
+
+
+def leer_deducciones(ctx, page, cuit: str, hoy: date) -> list[dict]:
+    """Percepciones de IIBB (Buenos Aires) de los últimos 13 meses, mes por mes."""
+    link = page.get_by_text(re.compile(r"Deducciones informadas por los Agentes", re.I)).locator("visible=true")
+    if not link.count():
+        for t in (r"Mis accesos frecuentes", r"^\s*Agentes de Recaudaci[oó]n\s*$"):
+            x = page.get_by_text(re.compile(t, re.I)).locator("visible=true")
+            if x.count():
+                x.last.click()
+                page.wait_for_timeout(1000)
+        link = page.get_by_text(re.compile(r"Deducciones informadas por los Agentes", re.I)).locator("visible=true")
+    if not link.count():
+        raise arca.ErrorRobot("ARBA: no aparece 'Deducciones informadas por los Agentes de Recaudación'")
+    antes = set(ctx.pages)
+    link.first.click()
+    page.wait_for_timeout(3000)
+    nuevas = [p for p in ctx.pages if p not in antes]
+    ded = nuevas[-1] if nuevas else page
+    ded.wait_for_load_state("domcontentloaded")
+    rol = ded.locator("select").filter(has=ded.locator("option", has_text=re.compile(r"Contribuyente de Ingresos Brutos", re.I)))
+    if rol.count():
+        rol.first.select_option(label=next(o for o in rol.first.locator("option").all_inner_texts()
+                                           if re.search(r"Contribuyente de Ingresos Brutos", o, re.I)).strip())
+        ded.locator("button, input[type=submit], a").filter(has_text=re.compile(r"^\s*Continuar\s*$", re.I)).first.click()
+        ded.wait_for_load_state("domcontentloaded")
+        ded.wait_for_timeout(2000)
+    out = []
+    a, m = hoy.year, hoy.month
+    for _ in range(MESES_DEDUCCIONES):
+        ded.goto(URL_DEDUCCIONES, wait_until="domcontentloaded")
+        texto = ded.inner_text("body")
+        if arca.cuit_fmt(cuit) not in texto and cuit not in texto:
+            raise arca.CuitEquivocado(f"ARBA Deducciones: no muestra el CUIT {arca.cuit_fmt(cuit)}")
+        campos = ded.locator("input[type=text], input:not([type])").filter(visible=True)
+        if campos.count() < 2:
+            raise arca.ErrorRobot("ARBA Deducciones: no aparecen los campos del período (año y mes)")
+        campos.nth(0).fill(str(a))
+        campos.nth(1).fill(f"{m:02d}")
+        ded.locator("button, input[type=submit], input[type=button], a").filter(
+            has_text=re.compile(r"^\s*Consultar\s*$", re.I)).first.click()
+        ded.wait_for_load_state("domcontentloaded")
+        ded.wait_for_timeout(1500)
+        t = ded.inner_text("body")
+        if re.search(r"PERCEPCI[OÓ]N", t, re.I) and re.search(r"Total de Deducciones", t, re.I):
+            boton = ded.locator("button, input[type=submit], input[type=button], a").filter(
+                has_text=re.compile(r"^\s*Descargar\s*$", re.I))
+            if boton.count():
+                with ded.expect_download(timeout=90_000) as dl:
+                    boton.first.click()
+                with open(dl.value.path(), "rb") as fh:
+                    out += leer_zip_deducciones(fh.read())
+        a, m = (a, m - 1) if m > 1 else (a - 1, 12)
+        arca.pausa(0.8, 1.6)
+    if ded is not page:
+        ded.close()
+    return out
+
+
 def paso(cuit: str, cit: str, estado: dict):
     carpeta = os.path.join(DATOS, cuit, "arba_dfe")
 
@@ -279,6 +374,7 @@ def paso(cuit: str, cit: str, estado: dict):
                     cuenta = leer_cuenta(t0) if (cuit in t0 or arca.cuit_fmt(cuit) in t0) else {}
                 except Exception:
                     cuenta = {}
+                inicio_autogestion = page.url
                 band = _abrir_bandeja(ctx, page, cuit)
                 filas = _listar(band)
                 for f in filas:
@@ -295,6 +391,17 @@ def paso(cuit: str, cit: str, estado: dict):
                     with open(ruta_reg, "w", encoding="utf-8") as fh:      # se guarda de a una (cortes de sesión)
                         json.dump(reg, fh, ensure_ascii=False, indent=1)
                     arca.pausa(1.0, 2.0)
+                try:                                     # percepciones de IIBB informadas por los agentes (21/11/2026)
+                    page.bring_to_front()
+                    if page.url != inicio_autogestion:
+                        page.goto(inicio_autogestion, wait_until="domcontentloaded")
+                    percep = leer_deducciones(ctx, page, cuit, date.today())
+                except arca.CuitEquivocado:
+                    raise
+                except Exception as e:
+                    percep = None
+                    estado["deducciones"] = f"error: {str(e).splitlines()[0][:160]}"
+                    arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), "arba_deducciones")
             except Exception:
                 arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), "arba_dfe")
                 with open(ruta_reg, "w", encoding="utf-8") as fh:
@@ -323,6 +430,7 @@ def paso(cuit: str, cit: str, estado: dict):
                                          + (" — SE NOTIFICÓ HOY AL ABRIRLA: corren plazos" if notif_hoy else "")})
         alertas += alertas_cuenta(cuenta)
         res = {"cuit": cuit, "fecha": date.today().isoformat(), "organismo": "ARBA", "comunicaciones": com, "cuenta": cuenta,
+               "percepciones": percep,
                "total": len(com), "sin_abrir": sum(1 for c in com if not c["notificado"]),
                "altas_sin_abrir": sum(1 for c in com if not c["notificado"] and c["importancia"] == "ALTA"),
                "nuevas_leidas": sum(1 for r in reg.values() if r.get("leida_por_robot") == date.today().isoformat()),
@@ -331,7 +439,14 @@ def paso(cuit: str, cit: str, estado: dict):
         os.makedirs(destino, exist_ok=True)
         with open(os.path.join(destino, "resultado.json"), "w", encoding="utf-8") as fh:
             json.dump(res, fh, ensure_ascii=False, indent=1)
-        estado.update({"total": res["total"], "nuevas_leidas": res["nuevas_leidas"], "alertas": len(alertas)})
+        if percep is not None:
+            try:
+                from . import percepciones
+                percepciones.cruzar(cuit)
+            except Exception:
+                pass
+        estado.update({"total": res["total"], "nuevas_leidas": res["nuevas_leidas"], "alertas": len(alertas),
+                       "deducciones": estado.get("deducciones") or (f"OK ({len(percep)} percepciones)" if percep is not None else "")})
         return res
     return fn
 

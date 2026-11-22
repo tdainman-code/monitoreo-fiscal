@@ -46,7 +46,91 @@ SERVICIOS = [
     ("fiscalizacion", ["Fiscalización Electrónica AGIP", "Fiscalización Electrónica", "Fiscalizacion Electronica"]),
     # Nueva Cuenta Corriente Tributaria (portal-cct.agip.gob.ar), relevada con Gaby el 18/11/2026 (Dinafer S R L)
     ("cct", ["Nueva Cuenta Corriente Tributaria", "Cuenta Corriente Tributaria"]),
+    # Gestión-AR (lb.agip.gob.ar/gestionArciba/?url=cc), relevado con Gaby el 21/11/2026 (Nabajuma): "Consulta de
+    # Retenciones / Percepciones" -> CUIT, Mes/Año desde/hasta, Régimen (Todas, Retenciones, Percepciones, Retenciones
+    # Bancarias, Retenciones SIRTAC, Percepciones Aduaneras) -> Buscar -> solapas con tabla y "Descargar Excel" (CSV)
+    ("percepciones", ["Gestion-AR Agtes. de Recaudacion", "Gestión-AR Agtes. de Recaudación", "Gestion-AR"]),
 ]
+MESES_PERCEPCIONES = 13
+
+
+def leer_csv_percepciones(texto: str) -> list[dict]:
+    """CSV de 'Descargar Excel' de la solapa Percepciones (sep=, ; primera línea 'sep=,'):
+    CUIT,N° Ader,Razon Social,N° Certificado,Norma,Fecha Percepcion,Tipo Comprobante,N° Comprobante,Fecha Comprobante,
+    Monto Percibido,Base Calculo   (importes 1234.56; comprobante 'A0   1000000053499')."""
+    import csv
+    import io
+    lineas = [l for l in texto.splitlines() if l.strip() and not l.lower().startswith("sep=")]
+    out = []
+    for f in csv.DictReader(io.StringIO("\n".join(lineas))):
+        f = {re.sub(r"[^a-z]", "", k.lower()): (v or "").strip() for k, v in f.items() if k and isinstance(v, str)}
+        cuit_ag = re.sub(r"\D", "", f.get("cuit", ""))
+        if len(cuit_ag) != 11:
+            continue
+        try:
+            imp = float((f.get("montopercibido") or f.get("importepercibido") or "0").replace(",", ""))
+        except ValueError:
+            imp = 0.0
+        out.append({"agente": cuit_ag, "nombre": f.get("razonsocial", ""), "fecha": f.get("fechapercepcion", ""),
+                    "tipo": f.get("tipocomprobante", ""), "comprobante": re.sub(r"\s+", "", f.get("ncomprobante", "")),
+                    "fecha_comprobante": f.get("fechacomprobante", ""), "importe": imp, "norma": f.get("norma", ""),
+                    "operacion": "PERCEPCION"})
+    return out
+
+
+def leer_percepciones(pag, cuit: str, hoy: date) -> list[dict]:
+    """Gestión-AR: Régimen 'Percepciones' de los últimos 13 meses -> Descargar Excel (CSV). Si la descarga falla, lee
+    la tabla de la pantalla."""
+    a, m = hoy.year, hoy.month - MESES_PERCEPCIONES
+    while m <= 0:
+        a, m = a - 1, m + 12
+    campos = pag.locator("input[type=text], input:not([type])").filter(visible=True)
+    vals = {}
+    for i in range(campos.count()):
+        c = campos.nth(i)
+        etiqueta = c.evaluate("e => { const l = e.closest('div, td'); return l ? l.innerText : ''; }") or ""
+        if re.search(r"desde", etiqueta, re.I):
+            vals["desde"] = c
+        elif re.search(r"hasta", etiqueta, re.I):
+            vals["hasta"] = c
+    if "desde" not in vals or "hasta" not in vals:
+        raise arca.ErrorRobot("AGIP Gestión-AR: no se encontraron los campos Mes/Año desde/hasta")
+    vals["desde"].fill(f"{m:02d}/{a}")
+    vals["hasta"].fill(f"{hoy.month:02d}/{hoy.year}")
+    sel = pag.locator("select").filter(has=pag.locator("option", has_text=re.compile(r"^\s*Percepciones\s*$", re.I)))
+    if sel.count():
+        sel.first.select_option(label=next(o for o in sel.first.locator("option").all_inner_texts()
+                                           if re.fullmatch(r"\s*Percepciones\s*", o, re.I)).strip())
+    pag.locator("button, input[type=submit], a").filter(has_text=re.compile(r"^\s*Buscar\s*$", re.I)).first.click()
+    pag.wait_for_load_state("domcontentloaded")
+    pag.wait_for_timeout(3000)
+    solapa = pag.locator("a, li, button").filter(has_text=re.compile(r"^\s*Percepciones\s*$", re.I)).filter(visible=True)
+    if solapa.count():
+        solapa.first.click()
+        pag.wait_for_timeout(2000)
+    boton = pag.locator("a, button").filter(has_text=re.compile(r"Descargar\s+Excel", re.I)).filter(visible=True)
+    if boton.count():
+        try:
+            with pag.expect_download(timeout=60_000) as dl:
+                boton.first.click()
+            ruta = dl.value.path()
+            crudo = open(ruta, "rb").read()
+            return leer_csv_percepciones(crudo.decode("latin-1"))
+        except Exception:
+            pass
+    filas = []                                               # respaldo: la tabla de la pantalla
+    for t in _tablas(pag):
+        enc = [e.lower() for e in t.get("encabezados") or []]
+        if not any("percib" in e for e in enc):
+            continue
+        for f in t["filas"]:
+            d = dict(zip(enc, f))
+            g = lambda pat: next((v for k, v in d.items() if re.search(pat, k)), "")
+            filas.append({"agente": re.sub(r"\D", "", g(r"^cuit")), "nombre": g(r"raz"), "fecha": g(r"fecha perc"),
+                          "tipo": g(r"tipo"), "comprobante": re.sub(r"\s+", "", g(r"de cpte|comprob")),
+                          "fecha_comprobante": g(r"fecha cpte|fecha comp"), "importe": _num(g(r"percib")) or 0.0,
+                          "norma": g(r"norma"), "operacion": "PERCEPCION"})
+    return [f for f in filas if len(f["agente"]) == 11]
 
 
 def _elegir_representado_portal(page, cuit: str) -> None:
@@ -338,10 +422,13 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                             elif clave_srv == "cct":
                                 pag.wait_for_timeout(3000)               # la página arma los importes con JavaScript
                                 r["cct"] = leer_cct(pag.inner_text("body"))
+                            elif clave_srv == "percepciones":
+                                r["percepciones"] = leer_percepciones(pag, cuit, date.today())
                             else:
                                 r["fiscalizacion"] = [f for t in tablas for f in t["filas"]]
                                 r["fiscalizacion_tablas"] = tablas
                             r["servicios"][clave_srv] = ("OK" if clave_srv == "cct"
+                                                         else f"OK ({len(r['percepciones'])} percepciones)" if clave_srv == "percepciones"
                                                          else f"OK ({sum(len(t['filas']) for t in tablas)} filas)")
                         if pag is not page:
                             pag.close()
@@ -372,6 +459,12 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                                  "texto": f"Estado de cuenta con saldo {r['deuda']['total']:,.2f}"})
         with open(os.path.join(destino, "resultado.json"), "w", encoding="utf-8") as f:
             json.dump(r, f, ensure_ascii=False, indent=1)
+        if r.get("percepciones") is not None:            # percepciones de IIBB CABA vs Libro IVA (21/11/2026)
+            try:
+                from . import percepciones
+                percepciones.cruzar(cuit)
+            except Exception:
+                pass
         estado.update({k: r[k] for k in ("servicios", "sin_abrir", "altas_sin_abrir", "alertas")})
         if not any(str(v).startswith("OK") for v in r["servicios"].values()):
             raise arca.ErrorRobot(f"AGIP: no se pudo leer ningún servicio {r['servicios']}")

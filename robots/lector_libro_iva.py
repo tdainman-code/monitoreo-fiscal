@@ -45,6 +45,15 @@ def _num(x) -> float:
     return float(x.replace(".", "").replace(",", ".")) if "," in x else float(x)
 
 
+def _numero(x) -> int:
+    """Número de comprobante; los despachos de importación son alfanuméricos y no deben romper la lectura."""
+    try:
+        return int(_num(x))
+    except ValueError:
+        d = re.sub(r"\D", "", x or "")
+        return int(d[-8:]) if d else 0
+
+
 def _decodificar(crudo: bytes) -> str:
     for enc in ("utf-8-sig", "cp1252", "latin-1"):
         try:
@@ -100,7 +109,9 @@ def _comprobante(f: dict, lado: str) -> dict:
     c = {
         "fecha": f.get("Fecha de Emisión") or f.get("Fecha de Emision") or "",
         "tipo": tipo, "punto_venta": int(_num(f.get("Punto de Venta"))),
-        "numero": int(_num(f.get("Número de Comprobante") or f.get("Numero de Comprobante"))),
+        "numero": _numero(f.get("Número de Comprobante") or f.get("Numero de Comprobante")),
+        # despachos de importación: número alfanumérico (26001IC04212899D); se guarda tal cual (21/11/2026)
+        "numero_txt": re.sub(r"[^\w]", "", f.get("Número de Comprobante") or f.get("Numero de Comprobante") or "").upper(),
         "cuit": re.sub(r"\D", "", f.get(f"Nro. Doc. {lado}", "")),
         "nombre": f.get(f"Denominación {lado}", ""),
         "moneda": moneda, "tipo_cambio": tc,
@@ -226,7 +237,7 @@ def leer_zip(ruta_o_bytes) -> dict:
         "codigo": str(xml.get("info_presentacion/codigo", "")),
         "ventas": _resumir(ventas, periodo, compras=False),
         "compras": _resumir(compras, periodo, compras=True),
-        "comprobantes_compras": [{k: c[k] for k in ("fecha", "tipo", "punto_venta", "numero", "cuit", "nombre",
+        "comprobantes_compras": [{k: c[k] for k in ("fecha", "tipo", "punto_venta", "numero", "numero_txt", "cuit", "nombre",
                                                     "neto", "iva", "total", "b_c")} for c in compras],
         "comprobantes_ventas": [{k: c[k] for k in ("fecha", "tipo", "punto_venta", "numero", "cuit", "nombre",
                                                    "neto", "iva", "total", "no_gravado", "exento")} for c in ventas],

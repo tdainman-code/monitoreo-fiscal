@@ -291,6 +291,14 @@ def revisiones(cuit: str) -> list[dict]:
             if re.match(r"(AGIP|ARBA): (compensar|saldo a favor para recuperar|deuda en juicio)", a.get("tipo", "")):
                 clave = f"{org}:{cuit}:" + re.sub(r"[^\w.:-]", "", (a["tipo"].split(":")[1] + ":" + "".join(re.findall(r"\d", a["texto"]))[:24]))[:58]
                 out.append({"clave": clave, "tema": a["tipo"], "texto": a["texto"]})
+    pc = _leer(os.path.join(DATOS, cuit, "conciliacion", "percepciones.json")) or {}
+    if pc.get("sin_comprobante"):                       # percepciones sin factura en el Libro IVA (21/11/2026)
+        sc = pc["sin_comprobante"]
+        out.append({"clave": f"perc:{cuit}:{round(pc.get('total_sin_comprobante') or 0)}:{len(sc)}",
+                    "tema": "Percepciones sin factura en el Libro IVA",
+                    "texto": f"{len(sc)} percepción(es) por {_pesos(pc.get('total_sin_comprobante'))} sin el comprobante en el "
+                             f"Libro IVA (ni el gasto ni el crédito fiscal se computaron): buscar las facturas. Detalle en "
+                             f"Relación débito crédito."})
     h = _ultimo_json(cuit, "sct_historico") or {}
     if h.get("saldos_recuperar"):                       # pagos mal hechos -> F.399 (19/11/2026)
         sr = h["saldos_recuperar"]

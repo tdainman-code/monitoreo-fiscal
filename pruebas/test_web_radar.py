@@ -350,6 +350,24 @@ ok(abs(_m["erogaciones_ajustadas"] - (_m["erogaciones"] - 60_000)) < 1 and abs(_
 r2 = cl.get(f"/cliente/{C2}/relacion")
 ok("con ajustes" not in r2.text, "relación D/C sin la conciliación (va en la planilla de conciliación aparte)")
 os.remove(f"{D}/{C2}/conciliacion/ajustes_conciliacion.json")
+# percepciones sin factura en el Libro IVA (21/11/2026): en la Relación débito crédito, con "Visto, me ocupo"
+escribir(f"{D}/{C2}/conciliacion/percepciones.json", {"fecha": "2026-11-21", "fecha_mis_retenciones": "2026-11-21", "desde": "2025-11-01",
+         "hasta": "2026-11-21", "en_libro": 40, "no_comparables": 2, "meses_sin_libro": ["2026-03"], "total_sin_comprobante": 3298790.12,
+         "sin_comprobante": [{"impuesto": "IVA", "fuente": "ARCA · Mis Retenciones", "agente": "30500001735", "regimen": "493",
+                              "fecha_comprobante": "26/10/2026", "comprobante": "0000000070256604", "desc_comprobante": "OTRO COMPROBANTE",
+                              "importe": 600.0, "mes": "2026-10"},
+                             {"impuesto": "Ganancias + IVA", "fuente": "ARCA · Aduana (despacho de importación)", "agente": "33693450239",
+                              "regimen": "700", "fecha_comprobante": "19/10/2026", "comprobante": "26001IC04212899D",
+                              "desc_comprobante": "Despacho", "importe": 3298190.12, "mes": "2026-10"}]})
+_rp = cl.get(f"/cliente/{C2}/relacion").text
+ok("Percepciones sin factura en el Libro IVA" in _rp and "26001IC04212899D" in _rp and "3.298.790,12" in _rp
+   and "Visto, me ocupo" in _rp and "03/2026" in _rp, "Relación D/C: percepciones sin factura en el Libro IVA, para el encargado")
+ok("2 percepción(es) sin factura en el Libro IVA" in cl.get(f"/cliente/{C2}").text, "tarjeta Relación D/C: renglón de percepciones")
+_sp = datos.situacion(C2)
+_k = next(x["clave"] for x in _sp["revisiones"] if x["clave"].startswith("perc:"))
+cl.post("/revision/visto", data={"clave": _k, "cuit": C2, "marcar": "1", "nota": "pedidas al proveedor", "csrf": token(_rp)})
+ok(not any(x["clave"] == _k for x in datos.situacion(C2)["revisar"]), "percepciones: el encargado las marca vistas")
+os.remove(f"{D}/{C2}/conciliacion/percepciones.json")
 ok("IVA: débito / crédito fiscal" in r.text and "Relación débito crédito" in r.text and "Fiscalizaciones" in r.text
    and "AGIP (Ciudad)" in r.text and "Pedir corrida" in r.text, "ficha con botones nuevos y pedir corrida")
 escribir(f"{R}/publico/grupos.json", {C2: {"dia": 2, "semana": 1}, C3: {"dia": 4, "semana": 0}})

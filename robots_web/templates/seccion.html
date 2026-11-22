@@ -268,6 +268,40 @@
   {% else %}<p class="sutil">Todavía no se comparó (se arma en la próxima corrida completa, con el informe de conciliación).</p>{% endif %}
   <p class="sutil">Mismas fórmulas que la planilla "Relación DC": ventas y compras del Libro IVA (Portal IVA, DJ presentadas), más las facturas C de compra que están en Mis Comprobantes y no se cargaron en el Libro IVA (no dan crédito, pero son gasto; las facturas B no se toman nunca); remuneraciones y cargas sociales del F.931; IIBB determinado de SIFERE y ARBA. Las celdas en amarillo son meses con alguna fuente faltante (pasá el mouse para ver cuál).</p>
   {% else %}<p class="sutil">Todavía no hay meses del Libro IVA ni del F.931 bajados.</p>{% endif %}
+  {% if sec == 'relacion' %}
+  <h2>Percepciones sin factura en el Libro IVA</h2>
+    {% for x in s.revisiones if x.id_sec == sec %}
+  <div class="aviso {{ 'ok' if x.visto else 'error' }}">
+    <b>{{ x.tema }}:</b> {{ x.texto }} — {% if x.importe is none %}{% if x.a_favor %}a recuperar {{ x.a_favor|pesos }}{% endif %}{% else %}{{ x.importe|pesos }} <span class="sutil">(capital sin actualizar: no es la deuda de hoy)</span>{% endif %}
+    {% if x.a_favor %}<br><span class="sutil">Saldos a favor del contribuyente en esa jurisdicción: {{ x.a_favor|pesos }} (¿compensa?)</span>{% endif %}
+    {% if x.visto %}<br>✔ Vista por <b>{{ x.visto.nombre or x.visto.usuario }}</b> el {{ x.visto.fecha[:10]|fecha }}{% if x.visto.nota %}: {{ x.visto.nota }}{% endif %}
+    <form method="post" action="{{ url_for('revision_visto') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="clave" value="{{ x.clave }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="0">
+      <input type="hidden" name="volver" value="{{ request.path }}"><button class="boton chico">Desmarcar</button></form>
+    {% else %}
+    <form method="post" action="{{ url_for('revision_visto') }}"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="clave" value="{{ x.clave }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="1">
+      <input type="hidden" name="volver" value="{{ request.path }}">
+      <input type="text" name="nota" maxlength="300" placeholder="Nota (opcional): p. ej. compensada con saldo a favor, en plan, se paga el…">
+      <button class="boton">✔ Visto, me ocupo</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% set pc = s.percepciones %}
+  {% if pc %}
+  <p class="sutil">Percepciones que informaron los agentes: ARCA (Mis Retenciones, impositivas y aduaneras{% if pc.fecha_mis_retenciones %}, leído el {{ pc.fecha_mis_retenciones|fecha }}{% endif %}), AGIP (Gestión-AR{% if pc.fecha_agip %}, leído el {{ pc.fecha_agip|fecha }}{% else %}, todavía no leído{% endif %}) y ARBA (Deducciones{% if pc.fecha_arba %}, leído el {{ pc.fecha_arba|fecha }}{% else %}, todavía no leído{% endif %}).
+   Entran solas en la DDJJ de IVA, pero si la factura no está en el Libro IVA <b>ni el gasto ni el crédito fiscal se computaron</b>: hay que buscarla.
+   {{ pc.en_libro }} con su comprobante en el Libro IVA{% if pc.no_comparables %} · {{ pc.no_comparables }} sin comparar (falta el Libro IVA de {% for m in pc.meses_sin_libro %}{{ m[5:] }}/{{ m[:4] }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}.</p>
+  <table class="tabla"><thead><tr><th>Impuesto</th><th>Agente</th><th>Régimen</th><th>Comprobante</th><th>Fecha</th><th>Mes del Libro IVA</th><th class="num">Percepción</th></tr></thead><tbody>
+  {% for x in pc.sin_comprobante %}<tr class="fila-amarilla"><td data-l="Impuesto">{{ x.impuesto }}<div class="sutil">{{ x.fuente }}</div></td>
+    <td data-l="Agente">{{ cuit_fmt(x.agente) }}</td><td data-l="Régimen">{{ x.regimen or '' }}</td>
+    <td data-l="Comprobante">{{ x.desc_comprobante or '' }} {{ x.comprobante }}</td><td data-l="Fecha">{{ x.fecha_comprobante }}</td>
+    <td data-l="Mes">{{ (x.mes or '')[5:] }}/{{ (x.mes or '')[:4] }}</td><td class="num" data-l="Percepción"><b>{{ x.importe|pesos }}</b></td></tr>
+  {% else %}<tr><td colspan="7" class="sutil">Todas las percepciones comparadas tienen su comprobante en el Libro IVA.</td></tr>{% endfor %}
+  {% if pc.sin_comprobante %}<tr><td colspan="6"><b>Total de percepciones sin factura</b></td><td class="num"><b>{{ pc.total_sin_comprobante|pesos }}</b></td></tr>{% endif %}
+  </tbody></table>
+  {% else %}<p class="sutil">Todavía no se leyó Mis Retenciones (se lee en la corrida completa o pidiendo "Percepciones y retenciones de IVA").</p>{% endif %}
+  {% endif %}
   {% if sec == 'relacion' %}<h2>Excel</h2><ul class="informes">
   {% for i in s.informes_lista if i.tipo == 'Relación débito/crédito' %}{% if loop.index <= 6 %}<li><a class="boton" href="{{ url_for('bajar_informe', ruta=i.ruta) }}">⬇ {{ i.tipo }}</a> <span class="sutil">{{ i.fecha|fecha }} · {{ i.archivo }}</span></li>{% endif %}
   {% else %}<li class="sutil">Todavía no hay Excel.</li>{% endfor %}</ul>{% endif %}

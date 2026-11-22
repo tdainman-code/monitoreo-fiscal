@@ -99,7 +99,8 @@ def _pesos_txt(x) -> str:
     return f"$ {x or 0:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None = None, arba: dict | None = None) -> list[dict]:
+def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None = None, arba: dict | None = None,
+               perc: dict | None = None) -> list[dict]:
     """Deuda histórica que el ENCARGADO tiene que revisar y marcar "visto, me ocupo" (Gaby, 17/11/2026):
     Convenio Multilateral (anticipo con saldo a favor del fisco y sin el pago; capital sin actualizar) y la deuda
     del estado de cumplimiento de Cuentas Tributarias. La clave cambia si aparece deuda nueva: vuelve a pedir revisión."""
@@ -144,6 +145,13 @@ def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None 
                                 sorted((scth.get("por_impuesto") or {}).items(), key=lambda x: -x[1])[:4] if v)
                                 if any((scth.get("por_impuesto") or {}).values()) else ""),
                     "importe": None, "a_favor": scth.get("saldos_recuperar_total") or 0.0, "visto": vis.get(clave)})
+    if perc and perc.get("sin_comprobante"):         # percepciones sin factura en el Libro IVA (Gaby 21/11/2026)
+        sc = perc["sin_comprobante"]
+        clave = f"perc:{cuit}:{round(perc.get('total_sin_comprobante') or 0)}:{len(sc)}"
+        out.append({"clave": clave, "tema": "Percepciones sin factura en el Libro IVA", "id_sec": "relacion",
+                    "texto": f"{len(sc)} percepción(es) por {_pesos_txt(perc.get('total_sin_comprobante') or 0)} de "
+                             f"{len({x['agente'] for x in sc})} agente(s): ni el gasto ni el crédito fiscal se computaron; buscar las facturas",
+                    "importe": None, "a_favor": None, "visto": vis.get(clave)})
     return out
 
 
@@ -178,8 +186,9 @@ def situacion(cuit: str) -> dict:
     r["agip"], r["fisc"] = agip, fisc
     ccma = _leer(_ultimo(os.path.join(base, "ccma", "*.json")))   # autónomos / monotributo (17/11/2026)
     scth = _leer(_ultimo(os.path.join(base, "sct_historico", "*.json")))   # deuda histórica SCT (17/11/2026)
-    r["cm"], r["scth"] = cm, scth
-    r["revisiones"] = revisiones(cuit, cm, scth, agip, arba)
+    perc = _leer(os.path.join(base, "conciliacion", "percepciones.json"))   # percepciones vs Libro IVA (21/11/2026)
+    r["cm"], r["scth"], r["percepciones"] = cm, scth, perc
+    r["revisiones"] = revisiones(cuit, cm, scth, agip, arba, perc)
     r["revisar"] = [x for x in r["revisiones"] if not x["visto"]]
     r["ccma"] = ccma
     r["ccma_impagos"] = len((ccma or {}).get("impagos") or [])
@@ -519,15 +528,19 @@ def ficha(cuit: str) -> dict:
         s["fuentes"] = fu
         dif = [f for f in fu.get("meses") or [] if f.get("estado") == "DIFERENCIA"]
         r_pct = lambda x: f"{x * 100:.2f}%".replace(".", ",") if x is not None else "—"
+        pc_ = s.get("percepciones") or {}
+        sub2_perc = (f"{len(pc_['sin_comprobante'])} percepción(es) sin factura en el Libro IVA: "
+                     f"{_pesos_txt(pc_.get('total_sin_comprobante') or 0)}") if pc_.get("sin_comprobante") else ""
         if inc:                                            # 20/11/2026: sin números engañosos si faltan datos
             b.append({"id": "relacion", "titulo": "Relación débito crédito", "valor": "datos incompletos",
                       "sub": f"{len(inc)} de {len(res)} meses sin alguna fuente (" + ", ".join(sorted({x for m in inc for x in m.get('faltantes', [])}))
-                             + ") · ver detalle", "color": "amarillo"})
+                             + ") · ver detalle", "color": "amarillo", "sub2": sub2_perc})
         else:
             b.append({"id": "relacion", "titulo": "Relación débito crédito", "valor": tot["resultado"], "pesos": True,
                       "sub": f"{len(res)} meses · índice erogaciones/ventas {r_pct(tot.get('indice'))} · margen {r_pct(tot.get('margen'))}"
                              + (f" · {len(dif)} mes(es) no coinciden con Mis Comprobantes" if dif else ""),
-                      "color": "gris" if tot["resultado"] is None else "rojo" if tot["resultado"] < 0 or dif else "verde"})
+                      "color": "gris" if tot["resultado"] is None else "rojo" if tot["resultado"] < 0 or dif or sub2_perc else "verde",
+                      "sub2": sub2_perc})
     if s["fisc"] or (s["agip"] or {}).get("fiscalizacion") is not None:
         b.append({"id": "fiscalizaciones", "titulo": "Fiscalizaciones", "valor": s["fiscalizaciones"],
                   "sub": "ARCA (OI, SIACE) y AGIP", "color": "rojo" if s["fiscalizaciones"] else "verde"})

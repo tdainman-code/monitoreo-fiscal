@@ -555,6 +555,11 @@ def generar(cuit: str, nombre: str, ruta: str) -> dict | None:
         comparar_fuentes(cuit, conciliar_ventas(cuit), conciliar(cuit))
     except Exception:
         pass
+    try:                                   # percepciones sin factura en el Libro IVA (21/11/2026): con el libro nuevo
+        from . import percepciones
+        percepciones.cruzar(cuit)
+    except Exception:
+        pass
     r = conciliar(cuit)
     if r.get("sin_libro_iva"):
         return None
