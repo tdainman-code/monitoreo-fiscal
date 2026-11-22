@@ -233,3 +233,7 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .fila-amarilla td{background:#fffbeb}
 .caja-amarilla{background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;margin:0 0 16px}
 .caja-amarilla summary{cursor:pointer;margin-bottom:6px}
+
+/* fallas de la última corrida en los botones de la ficha (22/11/2026) */
+.boton-ficha .sub.falla{color:#b42318;font-size:.78em;margin-top:2px}
+.tabla.chica td{font-size:.85em}

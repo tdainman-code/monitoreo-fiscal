@@ -442,6 +442,23 @@ with open(rp.CANDADO, "a") as f:
     fcntl.flock(f, fcntl.LOCK_EX)
     ok(rp.procesar() == 0 and len([n for n in os.listdir(rp.PEDIDOS) if n.endswith(".json")]) == 1, "con una corrida en curso el pedido espera")
 ok("en espera" in cl.get("/robots").text, "estado 'en espera' visible")
+# fallas de la última corrida: en el botón de la ficha y en Más -> Robots (22/11/2026)
+escribir(f"{D}/{C2}/corrida_todo_2026-11-15_completo.json", {"fecha": "2026-11-15", "modo": "completo",
+         "errores": {"sifere": "TimeoutError: Locator.click: Timeout 45000ms exceeded", "mis_comprobantes": "ErrorRobot: x"},
+         "libro_iva": {"2026-10": "OK"}, "arba": "sin CIT cargada", "agip": "sin Clave Ciudad cargada"})
+escribir(f"{D}/{C2}/corrida_todo_2026-11-22_completo.json", {"fecha": "2026-11-22", "modo": "completo",
+         "errores": {"libro_iva": "SinRepresentado: Libro IVA: 30-71746863-1 no está entre los representados"},
+         "mis_comprobantes": {"2026-10": "OK"}, "sifere": {"2026-10": "OK"}, "arba": "sin CIT cargada", "agip": "sin Clave Ciudad cargada"})
+_fl = {f["parte"]: f for f in datos.fallas(C2)}
+ok(set(_fl) == {"libro_iva", "arba", "agip"} and _fl["libro_iva"]["boton"] == "iva" and "representación" in _fl["libro_iva"]["que_hacer"]
+   and _fl["arba"]["boton"] == "claves" and "CIT" in _fl["arba"]["que_hacer"],
+   f"fallas: lo que salió bien después ya no figura; cada una en su botón con qué hacer ({sorted(_fl)})")
+_fc = cl.get(f"/cliente/{C2}").text
+ok("⚠ Libro IVA:" in _fc and "cargar la CIT de ARBA" in _fc and "sub falla" in _fc, "ficha: la falla en letra chica en el botón")
+_rb0 = cl.get("/robots").text
+ok("Para corregir" in _rb0 and "cargar la Clave Ciudad de AGIP" in _rb0, "Más -> Robots: lista para corregir")
+for _f in ("2026-11-15", "2026-11-22"):
+    os.remove(f"{D}/{C2}/corrida_todo_{_f}_completo.json")
 # corrida programada en curso visible en Robots (21/11/2026)
 ok("No hay ninguna corrida programada en curso" in cl.get("/robots").text, "sin corrida programada: lo dice")
 escribir(os.path.join(datos.PUBLICO, "corrida_en_curso.json"), {"robot": "todo", "modo": "completo", "fin_de_semana": True, "horas": 14,

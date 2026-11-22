@@ -1002,7 +1002,7 @@ def robots():
     return render_template("robots.html", filas=[x for x in datos.ultimas_corridas() if ok_(x)],
                            pend=[x for x in pedidos.pendientes() if ok_(x)],
                            estado=[x for x in pedidos.estado() if ok_(x)], nombres=pedidos.ROBOTS,
-                           en_curso=_en_curso_visible())
+                           en_curso=_en_curso_visible(), fallas=datos.fallas_todos(_solo()))
 
 
 def _en_curso_visible():

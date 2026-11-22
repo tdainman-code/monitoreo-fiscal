@@ -587,6 +587,11 @@ def ficha(cuit: str) -> dict:
     orden = ["deuda", "por_vencer", "planes", "vencimientos", "ddjj", "notificaciones", "iibb", "compras", "iva", "relacion",
              "fiscalizaciones", "historica", "ccma", "agip", "ventas_bancos", "informes"]
     b.sort(key=lambda x: orden.index(x["id"]) if x["id"] in orden else len(orden))
+    fl = fallas(cuit)                                  # lo que falló en la última corrida, en el botón que corresponde
+    for x in b:
+        x["fallas"] = [f for f in fl if f["boton"] == x["id"]]
+    s["fallas_claves"] = [f for f in fl if f["boton"] == "claves"]
+    s["fallas"] = fl
     s["botones"] = b
     return s
 
@@ -672,3 +677,91 @@ def corrida_en_curso() -> dict | None:
     except Exception:
         pass
     return d
+
+
+# ---------------------------------------------------------------- fallas de las corridas, para corregir (22/11/2026)
+# Pedido de Gaby: en cada botón de la ficha, en letra chica (como el renglón del F.399), lo que falló en la última
+# corrida y qué hay que hacer; y la lista de todos en Más -> Robots.
+PARTE_BOTON = {"cuentas_tributarias": "deuda", "sct": "deuda", "mis_facilidades": "planes", "ccma": "ccma",
+               "sct_historico": "historica", "ddjj_presentadas": "ddjj", "dfe": "notificaciones", "arba_dfe": "notificaciones",
+               "sifere": "iibb", "arba": "iibb", "f931": "relacion", "libro_iva": "iva", "observados": "compras",
+               "fiscalizaciones": "fiscalizaciones", "mis_comprobantes": "relacion", "mis_retenciones": "relacion",
+               "agip": "agip", "informes": "informes", "clave": "claves", "todo": "claves"}
+NOMBRE_PARTE = {"cuentas_tributarias": "Cuentas Tributarias", "mis_facilidades": "Mis Facilidades", "ccma": "CCMA",
+                "sct_historico": "Deuda histórica", "ddjj_presentadas": "DDJJ presentadas", "dfe": "Ventanilla ARCA",
+                "arba_dfe": "ARBA DFE", "sifere": "SIFERE", "arba": "ARBA", "f931": "F.931", "libro_iva": "Libro IVA",
+                "observados": "Compras observadas", "fiscalizaciones": "Fiscalizaciones", "mis_comprobantes": "Mis Comprobantes",
+                "mis_retenciones": "Mis Retenciones", "agip": "AGIP", "informes": "Informes", "clave": "Ingreso a ARCA",
+                "todo": "Ingreso a ARCA"}
+
+
+def que_hacer(msg: str) -> str:
+    m = msg or ""
+    if re.search(r"sin CIT", m, re.I):
+        return "cargar la CIT de ARBA en 🔐 Claves"
+    if re.search(r"sin Clave Ciudad", m, re.I):
+        return "cargar la Clave Ciudad de AGIP en 🔐 Claves"
+    if re.search(r"rechaz|clave inv[aá]lida|ClaveInvalida|contrase", m, re.I):
+        return "la clave no anda: cargar la nueva en 🔐 Claves"
+    if re.search(r"SinRepresentado|no (est[aá]|figura) entre|representad|delegad|apoderad", m, re.I):
+        return "revisar en ARCA que el estudio tenga la representación / el servicio delegado de este cliente"
+    if re.search(r"RequiereIntervencion|no est[aá] habilitado|habilitar", m, re.I):
+        return "habilitar el servicio en ARCA (Administrador de relaciones) o revisarlo a mano"
+    if re.search(r"captcha", m, re.I):
+        return "ARCA pidió captcha: se reintenta solo en la próxima corrida"
+    if re.search(r"Timeout|corte|SesionPerdida|net::|ERR_|no respond|Trabada|cargando", m, re.I):
+        return "falla de la página del organismo: se reintenta en el repechaje del domingo; si se repite, avisar"
+    return "avisar para revisar el robot (copiar este texto)"
+
+
+def fallas(cuit: str) -> list[dict]:
+    """Lo que falló o falta en las últimas corridas del cliente: [{parte, nombre, boton, fecha, texto, que_hacer}].
+    Se recorren las corridas 'todo' de las últimas semanas: una parte que salió bien después ya no figura."""
+    base = os.path.join(DATOS, cuit)
+    estado: dict[str, tuple[str, str] | None] = {}
+    for ruta in sorted(glob.glob(os.path.join(base, "corrida_todo_*.json")))[-12:]:
+        d = _leer(ruta) or {}
+        f = d.get("fecha") or ""
+        err = d.get("errores") or {}
+        corridas = [k for k in ("mis_comprobantes", "f931", "sifere", "libro_iva", "observados", "arba", "arba_dfe", "agip",
+                                "fiscalizaciones", "ccma", "sct_historico", "mis_retenciones", "dfe") if d.get(k)]
+        corridas += ["cuentas_tributarias"] + (["mis_facilidades"] if d.get("modo") != "diaria" else [])
+        for k in corridas:
+            if k not in err:
+                estado[k] = None
+        for k, v in err.items():
+            estado[k] = (f, str(v))
+        if d.get("arba") == "sin CIT cargada":
+            estado["arba"] = (f, "sin CIT cargada")
+        if str(d.get("agip", "")).startswith("sin Clave Ciudad"):
+            estado["agip"] = (f, "sin Clave Ciudad cargada")
+    try:                                               # ingreso a ARCA rechazado: queda en el registro de ejecuciones
+        with open(REGISTRO, encoding="utf-8") as fh:
+            ult = None
+            for l in fh.readlines()[-3000:]:
+                try:
+                    e = json.loads(l)
+                except ValueError:
+                    continue
+                if e.get("cuit") == cuit and e.get("robot") not in ("arba", "agip"):
+                    ult = e
+        if ult and ult.get("estado") in ("Clave inválida", "Requiere intervención"):
+            estado["clave"] = ((ult.get("fecha") or "")[:10], f"{ult['estado']}: {ult.get('detalle') or ''}")
+    except OSError:
+        pass
+    out = []
+    for k, v in estado.items():
+        if not v:
+            continue
+        boton = "claves" if re.search(r"rechaz|clave inv|sin CIT|sin Clave Ciudad", v[1], re.I) else PARTE_BOTON.get(k, "informes")
+        out.append({"parte": k, "nombre": NOMBRE_PARTE.get(k, k), "boton": boton, "fecha": v[0],
+                    "texto": re.sub(r"\s+", " ", v[1])[:160], "que_hacer": que_hacer(v[1])})
+    return sorted(out, key=lambda x: x["nombre"])
+
+
+def fallas_todos(solo: set | None = None) -> list[dict]:
+    out = []
+    for c in lista_clientes(solo):
+        for f in fallas(c["cuit"]):
+            out.append({**f, "cuit": c["cuit"], "razon_social": c.get("razon_social") or ""})
+    return out
