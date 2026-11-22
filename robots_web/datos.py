@@ -517,8 +517,10 @@ def ficha(cuit: str) -> dict:
         # 20/11/2026: es débito fiscal ÷ crédito fiscal de IVA, NO la utilidad (la utilidad está en "Relación débito
         # crédito": ventas sin IVA − erogaciones). Mostrarla acá como "utilidad" contradecía a la otra tarjeta.
         b.append({"id": "iva", "titulo": "IVA: débito / crédito fiscal", "valor": f"{rt['ratio']:.2f}".replace(".", ",") if rt and rt["credito"] else None,
-                  "sub": f"débito fiscal ÷ crédito fiscal, {rt['meses']} meses · {rt['nivel']} · proyección" if rt else "",
-                  "color": {"Crítico": "rojo", "Advertencia": "amarillo"}.get((rt or {}).get("nivel"), "verde")})
+                  "sub": (f"débito fiscal ÷ crédito fiscal, {rt['meses']} meses · {rt['nivel']}"
+                          + (f" · {rt['parte_sin_iva'] * 100:.0f}% de las ventas sin IVA".replace(".", ",")
+                             if rt.get("parte_sin_iva", 0) >= 0.05 else "") + " · proyección") if rt else "",
+                  "color": {"Crítico": "rojo", "Advertencia": "amarillo", "No representativo": "gris"}.get((rt or {}).get("nivel"), "verde")})
     res = analisis.resultado_mensual(cuit)
     s["resultado"] = analisis.analizar_resultado(res)
     if res or meses_liva or any(i["tipo"] == "Relación débito/crédito" for i in inf):

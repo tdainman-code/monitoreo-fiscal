@@ -90,11 +90,11 @@
 {% elif vista == 'iva' %}
   <p class="sutil">Relación débito / crédito fiscal de los últimos {{ reglas.meses }} meses (Libro IVA de las DJ presentadas).
   Menos de {{ reglas.ratio_critico|string|replace('.', ',') }} = <span class="nivel-Crítico">Crítico</span>; menos de {{ reglas.ratio_advertencia|string|replace('.', ',') }} = <span class="nivel-Advertencia">Advertencia</span>.</p>
-  <table class="tabla"><thead><tr><th>Cliente</th><th>Meses</th><th class="num">Débito</th><th class="num">Crédito</th><th class="num">D/C</th><th class="num">Utilidad</th><th>Nivel</th><th class="num">Saldo último mes</th></tr></thead><tbody>
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Meses</th><th class="num">Débito</th><th class="num">Crédito</th><th class="num">D/C</th><th class="num">D/C − 1</th><th>Nivel</th><th class="num">Saldo último mes</th></tr></thead><tbody>
   {% for d in filas %}{% set r = d.ratio %}<tr><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='iva') }}">{{ d.nombre }}</a></td>
     <td data-l="Meses">{{ periodo_txt(r.desde) }} a {{ periodo_txt(r.hasta) }}</td><td class="num" data-l="Débito">{{ r.debito|pesos }}</td><td class="num" data-l="Crédito">{{ r.credito|pesos }}</td>
     <td class="num" data-l="D/C"><b>{{ r.ratio|dec if r.credito else '—' }}</b></td>
-    <td class="num {{ 'txt-rojo' if r.credito and r.ratio < 1 }}" data-l="Utilidad">{{ r.ratio|utilidad if r.credito else '—' }}</td><td data-l="Nivel" class="nivel-{{ r.nivel }}">{{ r.nivel }}</td>
+    <td class="num {{ 'txt-rojo' if r.credito and r.ratio < 1 }}" data-l="D/C − 1">{{ r.ratio|utilidad if r.credito else '—' }}</td><td data-l="Nivel" class="nivel-{{ r.nivel }}">{{ r.nivel }}</td>
     <td class="num" data-l="Saldo">{{ d.ultimo.saldo|pesos }} <span class="sutil">{{ periodo_txt(d.ultimo.periodo) }}</span></td></tr>
   {% else %}<tr><td colspan="8" class="sutil">Todavía no hay meses del Libro IVA bajados.</td></tr>{% endfor %}
   </tbody></table>
@@ -106,11 +106,11 @@
   {{ x.grafico|safe }}
   <p class="leyenda"><i style="background:#c0392b"></i>Débito<i style="background:#2e8b57"></i>Crédito · el último mes (*) es la proyección</p>
   {% endif %}
-  <table class="tabla"><thead><tr><th>Cliente</th><th>Período</th><th class="num">Débito proyectado</th><th class="num">Crédito proyectado</th><th class="num">D/C</th><th class="num">Utilidad</th><th class="num">Saldo proyectado</th><th></th></tr></thead><tbody>
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Período</th><th class="num">Débito proyectado</th><th class="num">Crédito proyectado</th><th class="num">D/C</th><th class="num">D/C − 1</th><th class="num">Saldo proyectado</th><th></th></tr></thead><tbody>
   {% for d in filas %}{% set p = d.proy %}<tr><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='iva') }}">{{ d.nombre }}</a></td>
     <td data-l="Período">{{ periodo_txt(p.periodo) }}</td><td class="num" data-l="Débito">{{ p.debito|pesos }}</td><td class="num" data-l="Crédito">{{ p.credito|pesos }}</td>
     <td class="num" data-l="D/C">{{ p.ratio|dec if p.ratio else '—' }}</td>
-    <td class="num {{ 'txt-rojo' if p.ratio and p.ratio < 1 }}" data-l="Utilidad">{{ p.ratio|utilidad if p.ratio else '—' }}</td>
+    <td class="num {{ 'txt-rojo' if p.ratio and p.ratio < 1 }}" data-l="D/C − 1">{{ p.ratio|utilidad if p.ratio else '—' }}</td>
     <td class="num" data-l="Saldo"><b class="{{ 'txt-rojo' if p.saldo > 0 }}">{{ p.saldo|pesos if p.saldo > 0 else 'a favor ' ~ (-p.saldo)|pesos }}</b></td>
     <td><a href="{{ url_for('cartera', vista='proyeccion', c=d.cuit) }}">ver gráfico</a></td></tr>
   {% else %}<tr><td colspan="7" class="sutil">Faltan datos (al menos 3 meses del Libro IVA).</td></tr>{% endfor %}

@@ -336,8 +336,14 @@ ok(_mf.status_code == 200 and "icono-512.png" in _mf.text and _mf.mimetype == "a
    and app.test_client().get("/static/icono-192.png").status_code == 200, "celular: se instala como app (manifest con íconos)")
 from robots_web.app import utilidad  # noqa: E402
 ok(utilidad(1.5) == "50,00%" and utilidad(0.87) == "−13,00%" and utilidad(1.23456) == "23,46%", "utilidad = D/C − 1 con 2 decimales")
+_rr = analisis.ratio_dc([{"periodo": f"2026-{i:02d}", "debito": 100.0, "credito": 300.0, "ventas_con_iva": 500.0,
+                           "ventas_sin_iva": 13_000.0} for i in range(1, 7)])
+_rr2 = analisis.ratio_dc([{"periodo": f"2026-{i:02d}", "debito": 100.0, "credito": 300.0, "ventas_con_iva": 500.0,
+                            "ventas_sin_iva": 50.0} for i in range(1, 7)])
+ok(_rr["nivel"] == "No representativo" and _rr2["nivel"] == "Crítico",
+   "Humaitá: si vende mucho sin IVA, el D/C bajo no se marca crítico ('No representativo')")
 _ri = cl.get(f"/cliente/{C2}/iva").text
-ok("(D/C − 1)" in _ri and "no es la utilidad" in _ri and "−50,00%" in _ri and "txt-rojo" in _ri, "D/C − 1 con signo menos, en rojo y aclarando que no es la utilidad")
+ok("Utilidad" not in _ri and "La utilidad no sale de acá" in _ri and "Margen real" in _ri, "IVA: sin 'utilidad' D/C − 1; el margen real es el de la Relación débito crédito")
 ok("IVA: débito / crédito fiscal" in r.text and "· utilidad" not in r.text and "índice erogaciones/ventas" in r.text or "datos incompletos" in r.text,
    "ficha del cliente: la tarjeta de IVA ya no dice 'utilidad'; la utilidad está en la relación D/C (20/11/2026)")
 ok("con ajustes" not in r2.text, "sin conciliación: no muestra el bloque de ajustes")

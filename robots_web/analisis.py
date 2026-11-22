@@ -29,6 +29,7 @@ REGLAS = {
     "ratio_critico": 0.8,
     "ratio_advertencia": 1.2,
     "meses": 12,
+    "ventas_sin_iva_no_representativo": 0.30,   # 30% o más de las ventas sin IVA: el D/C no sirve como alerta
 }
 _PER = re.compile(r"^\d{4}-\d{2}$")
 
@@ -109,7 +110,17 @@ def iva_mensual(cuit: str) -> list[dict]:
         v, c = d.get("ventas") or {}, d.get("compras") or {}
         deb = _num(v.get("Total IVA"))
         cred = _num(c.get("Crédito fiscal computable") or c.get("Total IVA"))
-        out.append({"periodo": per, "debito": deb, "credito": cred, "saldo": deb - cred})
+        # 22/11/2026 (Gaby, Humaitá): ventas que no generan débito (exentas, no gravadas, alícuota 0%, sin desglose);
+        # el D/C no las ve y da "crítico" a quien vende mucho sin IVA
+        claves = ("Neto gravado 21%", "Neto gravado 10,5%", "Neto gravado 27%")
+        if any(k in v for k in claves):
+            con_iva = sum(_num(v.get(k)) for k in claves)
+            cero = max(0.0, _num(v.get("Neto gravado total")) - con_iva)     # alícuota 0% o neto sin IVA
+        else:                                    # resumen sin el detalle por alícuota: todo el neto se toma con IVA
+            con_iva, cero = _num(v.get("Neto gravado total")), 0.0
+        sin_iva = _num(v.get("Exento")) + _num(v.get("No gravado")) + ventas_sin_desglose(d) + cero
+        out.append({"periodo": per, "debito": deb, "credito": cred, "saldo": deb - cred,
+                    "ventas_con_iva": round(con_iva, 2), "ventas_sin_iva": round(sin_iva, 2)})
     return out
 
 
@@ -128,8 +139,15 @@ def ratio_dc(iva: list[dict], meses: int | None = None) -> dict | None:
     deb = sum(m["debito"] for m in r)
     cred = sum(m["credito"] for m in r)
     ratio = deb / cred if cred else (float("inf") if deb else 0.0)
+    con = sum(m.get("ventas_con_iva") or 0 for m in r)
+    sin = sum(m.get("ventas_sin_iva") or 0 for m in r)
+    parte_sin = sin / (con + sin) if (con + sin) else 0.0
+    nivel = nivel_ratio(ratio)
+    if parte_sin >= REGLAS.get("ventas_sin_iva_no_representativo", 0.30) and nivel != "Adecuado":
+        nivel = "No representativo"          # vende mucho sin IVA: el crédito no tiene débito contra qué ir (22/11/2026)
     return {"debito": deb, "credito": cred, "ratio": ratio, "desde": r[0]["periodo"], "hasta": r[-1]["periodo"],
-            "meses": len(r), "nivel": nivel_ratio(ratio)}
+            "meses": len(r), "nivel": nivel, "ventas_sin_iva": round(sin, 2), "ventas_con_iva": round(con, 2),
+            "parte_sin_iva": parte_sin}
 
 
 def tendencia(vals: list[float]) -> tuple[list[float], float]:

@@ -197,7 +197,8 @@
   {% if r %}
   <div class="tarjetas">
     <div class="tarjeta"><span class="sutil">Relación D/C {{ r.meses }} meses</span><b class="nivel-{{ r.nivel }}">{{ r.ratio|dec if r.credito else '—' }}</b><span class="sutil nivel-{{ r.nivel }}">{{ r.nivel }}</span></div>
-    {% if r.credito %}<div class="tarjeta"><span class="sutil">Débito sobre crédito fiscal (D/C − 1) · no es la utilidad: ver Relación débito crédito</span><b class="{{ 'txt-rojo' if r.ratio < 1 }}">{{ r.ratio|utilidad }}</b></div>{% endif %}
+    {% if r.ventas_sin_iva %}<div class="tarjeta"><span class="sutil">Ventas sin IVA (exentas, no gravadas, 0%) · el D/C no las mide</span><b>{{ r.ventas_sin_iva|pesos }}</b><span class="sutil">{{ '%.0f'|format(r.parte_sin_iva * 100) }}% de lo vendido</span></div>{% endif %}
+    {% if s.resultado %}<div class="tarjeta"><span class="sutil">Margen real (Relación débito crédito: todas las ventas sin IVA − erogaciones)</span><b class="{{ 'txt-rojo' if s.resultado.total.margen is not none and s.resultado.total.margen < 0 }}">{{ pct(s.resultado.total.margen) }}</b></div>{% endif %}
     <div class="tarjeta"><span class="sutil">Débito {{ periodo_txt(r.desde) }} a {{ periodo_txt(r.hasta) }}</span><b>{{ r.debito|pesos }}</b></div>
     <div class="tarjeta"><span class="sutil">Crédito {{ periodo_txt(r.desde) }} a {{ periodo_txt(r.hasta) }}</span><b>{{ r.credito|pesos }}</b></div>
     {% if p %}<div class="tarjeta"><span class="sutil">Saldo proyectado {{ periodo_txt(p.periodo) }}</span><b class="{{ 'txt-rojo' if p.saldo > 0 }}">{{ p.saldo|pesos if p.saldo > 0 else 'a favor ' ~ (-p.saldo)|pesos }}</b>
@@ -205,11 +206,15 @@
   </div>
   {{ grafico|safe }}
   <p class="leyenda"><i style="background:#c0392b"></i>Débito<i style="background:#2e8b57"></i>Crédito{% if p %} · el último mes (*) es la proyección por tendencia lineal{% endif %}</p>
-  <p class="sutil">Utilidad = D/C − 1 (1,50 = 50,00%); en rojo con signo menos si el crédito supera al débito. Menos de 0,8 = Crítico (mucho crédito para lo que vende); menos de 1,2 = Advertencia. {% if r.meses < 6 %}Con menos de 6 meses no se marca alerta.{% endif %}</p>
-  <table class="tabla"><thead><tr><th>Período</th><th class="num">Débito</th><th class="num">Crédito</th><th class="num">Saldo</th><th class="num">D/C</th><th class="num">Utilidad</th></tr></thead><tbody>
+  <p class="sutil">D/C = débito fiscal ÷ crédito fiscal de IVA. Menos de 0,8 = Crítico (mucho crédito para lo que vende); menos de 1,2 = Advertencia.
+   Solo mide las ventas con IVA: si el 30% o más de lo vendido no lleva IVA (exento, no gravado, 0%) queda "No representativo" y no se marca alerta.
+   La utilidad no sale de acá: es el <b>margen</b> de la Relación débito crédito (todas las ventas sin IVA contra compras, sueldos, cargas e IIBB). {% if r.meses < 6 %}Con menos de 6 meses no se marca alerta.{% endif %}</p>
+  {% set marg = {} %}{% for x in (s.resultado or {}).get('meses') or [] %}{% set _ = marg.update({x.periodo: x.margen}) %}{% endfor %}
+  <table class="tabla"><thead><tr><th>Período</th><th class="num">Débito</th><th class="num">Crédito</th><th class="num">Saldo</th><th class="num">D/C</th><th class="num">Ventas sin IVA</th><th class="num">Margen real</th></tr></thead><tbody>
   {% for m in s.iva|reverse %}<tr><td>{{ periodo_txt(m.periodo) }}</td><td class="num" data-l="Débito">{{ m.debito|pesos }}</td><td class="num" data-l="Crédito">{{ m.credito|pesos }}</td>
     <td class="num" data-l="Saldo">{{ m.saldo|pesos }}</td><td class="num" data-l="D/C">{{ (m.debito / m.credito)|dec if m.credito else '—' }}</td>
-    <td class="num {{ 'txt-rojo' if m.credito and m.debito < m.credito }}" data-l="Utilidad">{{ (m.debito / m.credito)|utilidad if m.credito else '—' }}</td></tr>{% endfor %}
+    <td class="num" data-l="Ventas sin IVA">{{ m.ventas_sin_iva|pesos if m.ventas_sin_iva else '—' }}</td>
+    <td class="num {{ 'txt-rojo' if marg.get(m.periodo) is not none and marg.get(m.periodo) < 0 }}" data-l="Margen real">{{ pct(marg.get(m.periodo)) if marg.get(m.periodo) is not none else '—' }}</td></tr>{% endfor %}
   </tbody></table>
   {% else %}<p class="sutil">Todavía no hay meses del Libro IVA bajados (se bajan en la corrida semanal).</p>{% endif %}
 
