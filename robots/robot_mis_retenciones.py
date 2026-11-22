@@ -229,7 +229,9 @@ def _resultados(page, cuit: str, que: str = "") -> list[dict]:
         if crudas:
             break
         texto = page.inner_text("body")
-        if re.search(r"no (se encontraron|existen|hay|posee|registra)|sin (resultados|datos|movimientos)|"
+        # 22/11/2026: ARCA dice "No se han encontrado datos para esta consulta o los parámetros ingresados
+        # corresponden a retenciones/percepciones con importe en cero" (la consulta anduvo, no hay movimientos)
+        if re.search(r"no se han encontrado|no (se encontraron|existen|hay|posee|registra)|sin (resultados|datos|movimientos)|"
                      r"no hay (datos|registros)|0 registros", texto, re.I):
             return []
         if AVISOS:

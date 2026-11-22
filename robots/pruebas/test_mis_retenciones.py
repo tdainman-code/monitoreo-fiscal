@@ -136,6 +136,10 @@ with sync_playwright() as p:
         chk(False, "un CUIT que no está en 'CUIT del retenido' debe frenar")
     except arca.SinRepresentado:
         chk(True, "si el cliente no figura en 'CUIT del retenido', avisa")
+    # 22/11/2026: mensaje real de ARCA cuando no hay movimientos (captura de Gaby)
+    pg.set_content("<table><tr><td>- Impositivas</td></tr></table><p>No se han encontrado datos para esta consulta o los "
+                   "parámetros ingresados corresponden a retenciones /percepciones con importe en cero</p><button>VOLVER</button>")
+    chk(rm._resultados(pg, CUIT, "impositivas_216") == [], "sin movimientos ('No se han encontrado datos…') no es falla")
     # 22/11/2026: si ARCA no muestra resultados, el error dice qué cartel o mensaje mostró la página
     pg.set_content("<p>Consulta de Retenciones Impositivas</p><button onclick=\"alert('Debe ingresar el Impuesto retenido')\">CONSULTAR</button>")
     rm._escuchar_avisos(pg)

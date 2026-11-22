@@ -107,5 +107,12 @@ chk(f"conciliación: hoja 'Impacto en saldos' después del Resumen ({wb_c.sheetn
 imp = {f["Período"]: f for f in conciliacion.generar(CUIT, "Prueba", ruta)["impacto"]}
 chk("impacto: duplicado y NC restan crédito fiscal",
     abs(imp["2025-12"]["Ajuste al crédito fiscal"] + 3752.86) < 0.01 and abs(imp["2025-11"]["NC no computadas (IVA)"] + 8056125) < 1)
+# 22/11/2026 (Humaitá): mes bajado sin comprobantes emitidos ("No existe información"): ventas MC = 0, no "falta"
+_m = os.path.join(TMP, "20999999995", "2025-11")
+os.makedirs(_m, exist_ok=True)
+json.dump({"archivos": {"emitidos": {"tipo": "emitidos", "registros": 0, "archivo": None},
+                        "recibidos": {"tipo": "recibidos", "registros": 0, "archivo": None}}}, open(os.path.join(_m, "resultado.json"), "w"))
+chk("Mis Comprobantes: mes sin comprobantes cuenta 0 (no 'falta')", conciliacion._mc_totales("20999999995", "2025-11") == {"ventas": 0.0, "compras": 0.0})
+chk("Mis Comprobantes: mes no bajado sigue siendo 'falta'", conciliacion._mc_totales("20999999995", "2025-10") is None)
 print("OK" if ok else "FALLÓ")
 sys.exit(0 if ok else 1)

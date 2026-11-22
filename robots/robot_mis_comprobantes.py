@@ -89,7 +89,8 @@ def _descargar(page: Page, tipo: str, periodo: str, destino: str) -> dict:
 
     # Esperar resultados (la consulta puede tardar con miles de comprobantes)
     try:
-        page.get_by_text(re.compile(r"Mostrando registros|No se encontraron|Ning[uú]n dato", re.I)).first \
+        # 22/11/2026 (Humaitá): sin comprobantes ARCA dice "No existe información para los filtros ingresados"
+        page.get_by_text(re.compile(r"Mostrando registros|No se encontraron|Ning[uú]n dato|No existe informaci[oó]n", re.I)).first \
             .wait_for(state="visible", timeout=120_000)
     except PWTimeout as e:
         raise arca.ErrorRobot(f"Mis Comprobantes no devolvió resultados ({tipo})") from e
@@ -103,7 +104,7 @@ def _descargar(page: Page, tipo: str, periodo: str, destino: str) -> dict:
         raise arca.ErrorRobot(f"ARCA aplicó otro rango de fechas {aplicado} en lugar de {desde} a {hasta} ({tipo}); "
                               "no se descargó nada")
 
-    if arca._hay_texto(page, r"No se encontraron|Ning[uú]n dato"):
+    if arca._hay_texto(page, r"No se encontraron|Ning[uú]n dato|No existe informaci[oó]n|Mostrando 0 registros"):
         return {"tipo": tipo, "registros": 0, "archivo": None}
 
     m = re.search(r"total de ([\d\.]+)", page.inner_text("body"))

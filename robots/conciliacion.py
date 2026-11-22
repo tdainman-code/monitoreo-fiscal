@@ -395,11 +395,21 @@ def _mc_totales(cuit: str, per: str) -> dict | None:
     ventas = neto gravado + no gravado + exento (+ el total de los comprobantes sin desglose, p. ej. facturas C);
     compras = lo mismo sin las facturas B (no se toman) y con el total de las C. None = el mes no está bajado."""
     emi, rec = os.path.join(DATOS, cuit, per, "emitidos.csv"), os.path.join(DATOS, cuit, per, "recibidos.csv")
-    if not os.path.exists(emi) or not os.path.exists(rec):
+    # 22/11/2026: un mes bajado SIN comprobantes no tiene CSV (ARCA: "No existe información"); el resultado.json lo
+    # anota con 0 registros: ese lado vale 0, no "falta Mis Comprobantes"
+    try:
+        with open(os.path.join(DATOS, cuit, per, "resultado.json"), encoding="utf-8") as f:
+            arch = (json.load(f).get("archivos") or {})
+    except (OSError, ValueError):
+        arch = {}
+    vacio = lambda t: (arch.get(t) or {}).get("registros") == 0 and not (arch.get(t) or {}).get("archivo")
+    if (not os.path.exists(emi) and not vacio("emitidos")) or (not os.path.exists(rec) and not vacio("recibidos")):
         return None
     from .lector_mis_comprobantes import leer
 
     def suma(ruta, compras):
+        if not os.path.exists(ruta):
+            return 0.0
         df = leer(ruta)
         t = 0.0
         for _, x in df.iterrows():
