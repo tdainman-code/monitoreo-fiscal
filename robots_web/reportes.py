@@ -241,7 +241,7 @@ def percepciones_excel(pc: dict, nombre: str, cuit: str, nombres: dict, hoy: dat
         ws["A2"].font = Font(bold=True)
         ws["A4"].font = Font(italic=True, color="595959", size=9)
         cab = ["Impuesto", "Origen", "CUIT del agente", "Proveedor", "Régimen", "Comprobante", "Número", "Fecha",
-               "Mes del Libro IVA", "Percepción", "¿Encontrado? / observaciones"]
+               "Mes del Libro IVA", "En Mis Comprobantes", "Percepción", "¿Encontrado? / observaciones"]
         ws.append(cab)
         for j in range(1, len(cab) + 1):
             c = ws.cell(6, j)
@@ -251,20 +251,21 @@ def percepciones_excel(pc: dict, nombre: str, cuit: str, nombres: dict, hoy: dat
             ag = str(x.get("agente") or "")
             ws.append([x.get("impuesto"), x.get("fuente"), f"{ag[:2]}-{ag[2:10]}-{ag[10:]}" if len(ag) == 11 else ag,
                        x.get("proveedor"), x.get("regimen") or "", x.get("desc_comprobante") or "", x.get("comprobante") or "",
-                       x.get("fecha_comprobante") or "", f"{(x.get('mes') or '')[5:]}/{(x.get('mes') or '')[:4]}", x.get("importe") or 0.0, ""])
+                       x.get("fecha_comprobante") or "", f"{(x.get('mes') or '')[5:]}/{(x.get('mes') or '')[:4]}",
+                       {True: "sí (falta cargarla)", False: "no"}.get(x.get("en_mis_comprobantes"), "—"), x.get("importe") or 0.0, x.get("nota") or ""])
         ult = ws.max_row
         if filas:
-            ws.append(["TOTAL", "", "", f"{len(filas)} comprobante(s)", "", "", "", "", "", f"=SUM(J7:J{ult})", ""])
+            ws.append(["TOTAL", "", "", f"{len(filas)} comprobante(s)", "", "", "", "", "", "", f"=SUM(K7:K{ult})", ""])
         for i in range(7, ws.max_row + 1):
             for j in range(1, len(cab) + 1):
                 c = ws.cell(i, j)
                 c.border = Border(top=fino, bottom=fino, left=fino, right=fino)
-                if j == 10:
+                if j == 11:
                     c.number_format = NUM
                 if i > ult:
                     c.font = Font(bold=True)
                     c.fill = PatternFill("solid", fgColor="F2F2F2")
-        for col, w in zip("ABCDEFGHIJK", (14, 22, 15, 32, 9, 24, 20, 12, 12, 15, 30)):
+        for col, w in zip("ABCDEFGHIJKL", (16, 24, 15, 32, 9, 24, 20, 12, 12, 16, 15, 30)):
             ws.column_dimensions[col].width = w
         ws.row_dimensions[6].height = 32
         ws.freeze_panes = "A7"

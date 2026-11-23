@@ -274,6 +274,7 @@ def alertas_cuenta(c: dict, minimo: float = 15_000.0) -> list[dict]:
 #   ... CUIT agente 30-70956507-5 | fecha 07/11/2025 | ... número 11084585 | tipo F | letra A | importe 333,15
 URL_DEDUCCIONES = "https://dfe.arba.gov.ar/DomicilioElectronico/preDescargarRetenciones.do"
 MESES_DEDUCCIONES = 13
+TIPOS_CP = {"F": "FACTURA", "R": "RECIBO", "C": "NOTA DE CREDITO", "D": "NOTA DE DEBITO", "O": "OTRO COMPROBANTE"}
 _RE_CP = re.compile(r"(\d{2}-\d{8}-\d)(\d{2}/\d{2}/\d{4})(\d*?)(\d{8})([A-Z])([A-Z ])(-?\d+,\d{2})\s*$")
 
 
@@ -284,9 +285,13 @@ def leer_cp(texto: str) -> list[dict]:
         m = _RE_CP.search(l.strip())
         if not m:
             continue
+        imp = float(m[7].replace(",", "."))
+        if m[5] == "C" and imp > 0:                      # nota de crédito: la percepción se devuelve
+            imp = -imp
         out.append({"agente": re.sub(r"\D", "", m[1]), "fecha": m[2], "fecha_comprobante": m[2],
                     "comprobante": m[4], "tipo": m[5], "letra": m[6].strip(),
-                    "importe": float(m[7].replace(",", ".")), "operacion": "PERCEPCION"})
+                    "desc_comprobante": (TIPOS_CP.get(m[5], m[5]) + (f" {m[6].strip()}" if m[6].strip() else "")),
+                    "importe": imp, "operacion": "PERCEPCION"})
     return out
 
 

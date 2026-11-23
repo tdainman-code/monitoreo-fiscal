@@ -229,5 +229,32 @@ cr2 = percepciones.cruzar(CUIT, date(2026, 11, 21))
 chk(len(cr2["nc_sin_comprobante"]) == 1 and cr2["total_sin_comprobante"] == cr["total_sin_comprobante"]
     and any("Notas de crédito" in a["tipo"] for a in cr2["alertas"]),
     "nota de crédito con percepción negativa sin registrar: va aparte y no resta del total de facturas faltantes")
+# 22/11/2026: la misma factura con percepción de IVA (ARCA) y de IIBB (ARBA) se muestra una vez; Mis Comprobantes
+os.makedirs(f"{D}/{CUIT}/arba_dfe/2026-11-22", exist_ok=True)
+json.dump({"fecha": "2026-11-22", "percepciones": [{"agente": "30516186670", "fecha": "21/10/2026", "fecha_comprobante": "21/10/2026",
+           "comprobante": "00281993", "tipo": "F", "letra": "A", "desc_comprobante": "FACTURA A", "importe": 150.0,
+           "operacion": "PERCEPCION"}]}, open(f"{D}/{CUIT}/arba_dfe/2026-11-22/resultado.json", "w"))
+os.makedirs(f"{D}/{CUIT}/2026-10", exist_ok=True)
+open(f"{D}/{CUIT}/2026-10/recibidos.csv", "w", encoding="utf-8").write(
+    "Fecha de Emisión;Tipo de Comprobante;Punto de Venta;Número Desde;Nro. Doc. Emisor\n2026-10-21;1;2031;281993;30516186670\n")
+cr3 = percepciones.cruzar(CUIT, date(2026, 11, 21))
+_u = [x for x in cr3["sin_comprobante"] if x["agente"] == "30516186670"]
+chk(len(_u) == 1 and _u[0]["impuesto"] == "IVA + IIBB Buenos Aires" and abs(_u[0]["importe"] - (291.83 + 150)) < 0.01
+    and _u[0]["en_mis_comprobantes"] is True, f"misma factura con percepción de IVA y de IIBB: una sola fila, y figura en Mis Comprobantes ({_u})")
+_o = [x for x in cr3["sin_comprobante"] if x["agente"] == "30500001735"]
+chk(_o and _o[0]["en_mis_comprobantes"] is False, "la que no está en Mis Comprobantes dice 'no'")
+from robots import robot_arba_dfe as _rad  # noqa: E402
+_cp = _rad.leer_cp("0290230-59036076-315/11/20250344800000000000000002886RA000000004620,79\n"
+                   "0290230-59036076-316/11/20250344800000000000000002890CA000000000100,00")
+chk(_cp[0]["desc_comprobante"] == "RECIBO A" and _cp[1]["importe"] == -100.0, "ARBA: nombre del comprobante (R = recibo) y nota de crédito en negativo")
+# número igual pero otra fecha = otro comprobante (Gaby, 22/11/2026): no se da por computado y se avisa
+_lib = {"2026-10": [{"fecha": "2026-03-02", "tipo": 1, "numero": 4444, "cuit": "30777777770"}], "2026-11": [], "2026-12": []}
+_e = percepciones.buscar({"agente": "30777777770", "comprobante": "0000100000004444", "fecha_comprobante": "15/10/2026"}, _lib)
+chk(_e[0] == "sin_comprobante" and "mismo número" in _e[2], f"mismo número con otra fecha: es otro comprobante ({_e})")
+_lib["2026-10"].append({"fecha": "2026-10-16", "tipo": 1, "numero": 4444, "cuit": "30777777770"})
+chk(percepciones.buscar({"agente": "30777777770", "comprobante": "0000100000004444", "fecha_comprobante": "15/10/2026"}, _lib)[0] == "en_libro",
+    "mismo número y fecha cercana: es el mismo comprobante")
+chk(percepciones.buscar({"agente": "30777777770", "comprobante": "0000100000009999", "fecha_comprobante": "16/10/2026"}, _lib)[0]
+    == "sin_comprobante", "misma fecha pero otro número: NO es el mismo comprobante")
 print("OK" if ok else "FALLÓ")
 sys.exit(0 if ok else 1)

@@ -15,11 +15,11 @@
 <p class="dato"><b>Percepciones informadas por los agentes:</b> {{ pc.desde or '—' }} al {{ pc.hasta or '—' }} &nbsp;·&nbsp; preparado el {{ hoy.strftime('%d/%m/%Y') }}</p>
 <p class="nota">Entraron en la DDJJ de IVA (importación automática) pero la factura no está en el Libro IVA Digital: ni el gasto ni el crédito fiscal se computaron. Buscar cada comprobante y anotar si se encontró.</p>
 {% macro tabla(filas) %}
-<table><thead><tr><th>Impuesto</th><th>CUIT del agente</th><th>Proveedor</th><th>Comprobante</th><th>Fecha</th><th>Mes Libro IVA</th><th>Percepción</th><th>¿Encontrado? / obs.</th></tr></thead><tbody>
+<table><thead><tr><th>Impuesto</th><th>CUIT del agente</th><th>Proveedor</th><th>Comprobante</th><th>Fecha</th><th>Mes Libro IVA</th><th>En Mis Comp.</th><th>Percepción</th><th>¿Encontrado? / obs.</th></tr></thead><tbody>
 {% for x in filas %}<tr><td>{{ x.impuesto }}<br><span class="nota">{{ x.fuente }}</span></td><td>{{ cuit_fmt(x.agente) }}</td><td>{{ x.proveedor }}</td>
-  <td>{{ x.desc_comprobante or '' }} {{ x.comprobante }}</td><td>{{ x.fecha_comprobante }}</td><td>{{ (x.mes or '')[5:] }}/{{ (x.mes or '')[:4] }}</td>
-  <td class="num">{{ x.importe|pesos }}</td><td class="ok">☐</td></tr>{% endfor %}
-<tr class="total"><td colspan="6">Total ({{ filas|length }} comprobante/s)</td><td class="num">{{ filas|sum(attribute='importe')|pesos }}</td><td></td></tr>
+  <td>{{ x.desc_comprobante or '' }} {{ x.comprobante }}{% if x.nota %}<br><span class="nota">⚠ {{ x.nota }}</span>{% endif %}</td><td>{{ x.fecha_comprobante }}</td><td>{{ (x.mes or '')[5:] }}/{{ (x.mes or '')[:4] }}</td>
+  <td>{{ 'sí' if x.en_mis_comprobantes else ('no' if x.en_mis_comprobantes is sameas false else '—') }}</td><td class="num">{{ x.importe|pesos }}</td><td class="ok">☐</td></tr>{% endfor %}
+<tr class="total"><td colspan="7">Total ({{ filas|length }} comprobante/s)</td><td class="num">{{ filas|sum(attribute='importe')|pesos }}</td><td></td></tr>
 </tbody></table>{% endmacro %}
 {% if fac %}{{ tabla(fac) }}{% else %}<p>No hay percepciones sin factura.</p>{% endif %}
 {% if ncs %}<h2>Notas de crédito con percepción que no están en el Libro IVA</h2>

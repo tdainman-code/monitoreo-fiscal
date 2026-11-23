@@ -299,13 +299,15 @@
    {{ pc.en_libro }} con su comprobante en el Libro IVA{% if pc.no_comparables %} · {{ pc.no_comparables }} sin comparar (falta el Libro IVA de {% for m in pc.meses_sin_libro %}{{ m[5:] }}/{{ m[:4] }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}.</p>
   {% if pc.sin_comprobante or pc.nc_sin_comprobante %}<p><a class="boton" href="{{ url_for('percepciones_bajar', cuit=c.cuit, formato='excel') }}">⬇ Excel para buscar los comprobantes</a>
     <a class="boton" href="{{ url_for('percepciones_bajar', cuit=c.cuit, formato='imprimir') }}" target="_blank">🖨 Imprimir / PDF</a></p>{% endif %}
-  <table class="tabla"><thead><tr><th>Impuesto</th><th>Agente</th><th>Régimen</th><th>Comprobante</th><th>Fecha</th><th>Mes del Libro IVA</th><th class="num">Percepción</th></tr></thead><tbody>
+  <table class="tabla"><thead><tr><th>Impuesto</th><th>Agente</th><th>Régimen</th><th>Comprobante</th><th>Fecha</th><th>Mes del Libro IVA</th><th>En Mis Comprobantes</th><th class="num">Percepción</th></tr></thead><tbody>
   {% for x in pc.sin_comprobante %}<tr class="fila-amarilla"><td data-l="Impuesto">{{ x.impuesto }}<div class="sutil">{{ x.fuente }}</div></td>
     <td data-l="Agente">{{ cuit_fmt(x.agente) }}</td><td data-l="Régimen">{{ x.regimen or '' }}</td>
-    <td data-l="Comprobante">{{ x.desc_comprobante or '' }} {{ x.comprobante }}</td><td data-l="Fecha">{{ x.fecha_comprobante }}</td>
-    <td data-l="Mes">{{ (x.mes or '')[5:] }}/{{ (x.mes or '')[:4] }}</td><td class="num" data-l="Percepción"><b>{{ x.importe|pesos }}</b></td></tr>
-  {% else %}<tr><td colspan="7" class="sutil">Todas las percepciones comparadas tienen su comprobante en el Libro IVA.</td></tr>{% endfor %}
-  {% if pc.sin_comprobante %}<tr><td colspan="6"><b>Total de percepciones sin factura</b></td><td class="num"><b>{{ pc.total_sin_comprobante|pesos }}</b></td></tr>{% endif %}
+    <td data-l="Comprobante">{{ x.desc_comprobante or '' }} {{ x.comprobante }}{% if x.nota %}<div class="sutil txt-rojo">⚠ {{ x.nota }}</div>{% endif %}</td><td data-l="Fecha">{{ x.fecha_comprobante }}</td>
+    <td data-l="Mes">{{ (x.mes or '')[5:] }}/{{ (x.mes or '')[:4] }}</td>
+    <td data-l="En Mis Comprobantes">{% if x.en_mis_comprobantes %}<b>sí</b> <span class="sutil">(existe: falta cargarla)</span>{% elif x.en_mis_comprobantes is sameas false %}no{% else %}<span class="sutil">—</span>{% endif %}</td>
+    <td class="num" data-l="Percepción"><b>{{ x.importe|pesos }}</b>{% if x.por_impuesto and x.por_impuesto|length > 1 %}<div class="sutil">{% for k, v in x.por_impuesto.items() %}{{ k }} {{ v|pesos }}{{ ' · ' if not loop.last }}{% endfor %}</div>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="8" class="sutil">Todas las percepciones comparadas tienen su comprobante en el Libro IVA.</td></tr>{% endfor %}
+  {% if pc.sin_comprobante %}<tr><td colspan="7"><b>Total de percepciones sin factura</b></td><td class="num"><b>{{ pc.total_sin_comprobante|pesos }}</b></td></tr>{% endif %}
   </tbody></table>
   {% if pc.nc_sin_comprobante %}<h3>Notas de crédito con percepción que no están en el Libro IVA</h3>
   <p class="sutil">Al revés que las facturas: si la nota de crédito del proveedor no se registró, el crédito fiscal y el gasto pueden estar de más.</p>

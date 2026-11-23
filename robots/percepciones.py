@@ -66,33 +66,116 @@ def _numero(c: str) -> int:
     return int(d[-8:]) if d else 0
 
 
-def buscar(p: dict, libros: dict[str, list[dict]]) -> tuple[str, str | None]:
-    """('en_libro', mes) | ('no_comparable', mes) | ('sin_comprobante', mes)."""
+DIAS_MISMO_COMPROBANTE = 45
+
+
+def _dias(a: str, b: str) -> int | None:
+    try:
+        return abs((date.fromisoformat(a) - date.fromisoformat(b)).days)
+    except (TypeError, ValueError):
+        return None
+
+
+def buscar(p: dict, libros: dict[str, list[dict]]) -> tuple[str, str | None, str]:
+    """('en_libro', mes, nota) | ('no_comparable', mes, nota) | ('sin_comprobante', mes, nota).
+    22/11/2026 (Gaby): es el MISMO comprobante si coinciden proveedor, número Y fecha (hasta 45 días de diferencia, por
+    la fecha de registración). Mismo número con otra fecha es OTRO comprobante: no se da por computado y se avisa para
+    revisar (puede ser uno parecido que se omitió, o uno duplicado). Sin número, alcanza proveedor y misma fecha."""
     f = _fecha_iso(p.get("fecha_comprobante") or p.get("fecha"))
     if not f:
-        return "no_comparable", None
+        return "no_comparable", None, ""
     mes = f[:7]
     meses = [_mas_meses(mes, k) for k in range(MESES_DESPUES + 1)]
     if mes not in libros:
-        return "no_comparable", mes
+        return "no_comparable", mes, ""
     num = _numero(p.get("comprobante"))
     txt = re.sub(r"[^\w]", "", str(p.get("comprobante") or "")).upper()
     aduana = bool(p.get("aduana")) or bool(re.fullmatch(r"\d{5}[A-Z]{2}\d{6,8}[A-Z]?", txt))   # n° de despacho
+    parecido = ""
     for m in meses:
         for c in libros.get(m, []):
+            fc = _fecha_iso(c.get("fecha"))
+            d = _dias(fc, f)
             if aduana:                                 # despacho: por su número (el CUIT del libro puede ser el de la Aduana)
                 if txt and txt == str(c.get("numero_txt") or "").upper():
-                    return "en_libro", m
-                if int(c.get("tipo") or 0) == 66 and _fecha_iso(c.get("fecha")) == f:
-                    return "en_libro", m
+                    if d is None or d <= DIAS_MISMO_COMPROBANTE:
+                        return "en_libro", m, ""
+                    parecido = f"en el Libro IVA de {m[5:]}/{m[:4]} está el despacho {txt} con fecha {fc}: revisar si es el mismo"
+                elif not txt and int(c.get("tipo") or 0) == 66 and fc == f:
+                    return "en_libro", m, ""
                 continue
             if re.sub(r"\D", "", str(c.get("cuit") or "")) != p["agente"]:
                 continue
             if num and int(c.get("numero") or 0) == num:
-                return "en_libro", m
-            if _fecha_iso(c.get("fecha")) == f:
-                return "en_libro", m
-    return "sin_comprobante", mes
+                if d is None or d <= DIAS_MISMO_COMPROBANTE:
+                    return "en_libro", m, ""
+                parecido = (f"en el Libro IVA de {m[5:]}/{m[:4]} hay un comprobante de este proveedor con el mismo número "
+                            f"pero fecha {fc}: es otro comprobante, revisar si este se omitió o está duplicado")
+            elif fc == f and (not num or re.search(r"SERV|OTRO", str(p.get("desc_comprobante") or ""), re.I)):
+                # sin número, o servicios públicos / "otro comprobante" (su número viene en otro formato en el Libro
+                # IVA): mismo proveedor y misma fecha
+                return "en_libro", m, ""
+    return "sin_comprobante", mes, parecido
+
+
+def _unir_por_comprobante(filas: list[dict]) -> list[dict]:
+    """22/11/2026 (Gaby): la misma factura suele tener percepción de IVA (ARCA) y de IIBB (ARBA / AGIP). Se muestra una
+    vez, con los impuestos juntos, el importe de cada uno y el nombre del comprobante más claro (ARBA dice FACTURA o
+    RECIBO donde ARCA a veces dice OTRO COMPROBANTE)."""
+    out, idx = [], {}
+    for x in filas:
+        n = _numero(x.get("comprobante"))
+        # mismo proveedor, número, signo y MES del comprobante (mismo número en otro mes = otro comprobante)
+        k = (x.get("agente"), n, (x.get("importe") or 0) < 0, (_fecha_iso(x.get("fecha_comprobante")) or "")[:7]) if n else None
+        if k is None or k not in idx:
+            y = dict(x)
+            y["por_impuesto"] = {x["impuesto"]: round(x.get("importe") or 0.0, 2)}
+            y["fuentes"] = [x.get("fuente")]
+            if k is not None:
+                idx[k] = len(out)
+            out.append(y)
+            continue
+        y = out[idx[k]]
+        y["por_impuesto"][x["impuesto"]] = round(y["por_impuesto"].get(x["impuesto"], 0.0) + (x.get("importe") or 0.0), 2)
+        y["impuesto"] = " + ".join(y["por_impuesto"])
+        y["importe"] = round(sum(y["por_impuesto"].values()), 2)
+        if x.get("fuente") not in y["fuentes"]:
+            y["fuentes"].append(x.get("fuente"))
+        y["fuente"] = " · ".join(f for f in y["fuentes"] if f)
+        if (not y.get("desc_comprobante") or re.search(r"OTRO", y.get("desc_comprobante") or "", re.I)) and x.get("desc_comprobante"):
+            y["desc_comprobante"] = x["desc_comprobante"]
+    return out
+
+
+def _marcar_mis_comprobantes(cuit: str, filas: list[dict]) -> None:
+    """¿El comprobante está en Mis Comprobantes (recibidos)? Si está, existe y solo falta cargarlo en el Libro IVA."""
+    import csv
+    meses: dict[str, set] = {}
+    for x in filas:
+        if not x.get("mes"):
+            continue
+        for m in (x["mes"], _mas_meses(x["mes"], -1), _mas_meses(x["mes"], 1)):
+            if m in meses:
+                continue
+            meses[m] = set()
+            ruta = os.path.join(DATOS, cuit, m, "recibidos.csv")
+            try:
+                with open(ruta, encoding="utf-8-sig", errors="replace") as f:
+                    for r in csv.DictReader(f, delimiter=";"):
+                        r = {k.strip(): (v or "") for k, v in r.items() if k}
+                        cu = re.sub(r"\D", "", r.get("Nro. Doc. Emisor", ""))
+                        nu = re.sub(r"\D", "", (r.get("Número Desde") or "").split(".")[0])
+                        if cu and nu:
+                            meses[m].add((cu, int(nu[-8:])))
+            except OSError:
+                meses[m] = None
+    for x in filas:
+        n = _numero(x.get("comprobante"))
+        bajados = [meses.get(m) for m in ((x["mes"], _mas_meses(x["mes"], -1), _mas_meses(x["mes"], 1)) if x.get("mes") else ())]
+        if not n or not any(b is not None for b in bajados):
+            x["en_mis_comprobantes"] = None              # no se puede saber (no está bajado Mis Comprobantes)
+        else:
+            x["en_mis_comprobantes"] = any(b and (x["agente"], n) in b for b in bajados)
 
 
 def _pesos(x: float) -> str:
@@ -137,7 +220,7 @@ def cruzar(cuit: str, hoy: date | None = None) -> dict | None:
                 despachos[k]["impuesto"] = " + ".join(sorted({*despachos[k]["impuesto"].split(" + "), imp}))
                 despachos[k]["importe_" + imp.lower()] = round(despachos[k].get("importe_" + imp.lower(), 0) + (p.get("importe") or 0), 2)
                 continue
-        estado, mes = buscar(p, libros)
+        estado, mes, nota = buscar(p, libros)
         if estado == "en_libro":
             ok += 1
             continue
@@ -146,11 +229,13 @@ def cruzar(cuit: str, hoy: date | None = None) -> dict | None:
                 "agente": p["agente"], "regimen": p.get("regimen"),
                 "fecha_comprobante": p.get("fecha_comprobante"), "comprobante": p.get("comprobante"),
                 "desc_comprobante": "Despacho" if p.get("aduana") else p.get("desc_comprobante"),
-                "importe": p.get("importe") or 0.0, "mes": mes}
+                "importe": p.get("importe") or 0.0, "mes": mes, "nota": nota}
         if p.get("aduana"):
             fila["importe_" + imp.lower()] = fila["importe"]
             despachos[p.get("comprobante") or f"{p.get('fecha_comprobante')}"] = fila
         (sin if estado == "sin_comprobante" else nc).append(fila)
+    sin = _unir_por_comprobante(sin)
+    _marcar_mis_comprobantes(cuit, sin)
     for x in sin + nc:                                # importe del despacho: el de IVA (crédito fiscal) si lo hay
         if "importe_iva" in x or "importe_ganancias" in x:
             x["importe"] = x.get("importe_iva", 0.0) + x.get("importe_ganancias", 0.0)
