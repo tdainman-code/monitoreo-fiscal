@@ -216,7 +216,7 @@ def nombres_proveedores(cuit: str) -> dict:
 
 
 def percepciones_filas(pc: dict, nombres: dict) -> tuple[list[dict], list[dict]]:
-    orden = lambda x: (x.get("agente") or "", x.get("mes") or "", x.get("fecha_comprobante") or "")
+    orden = lambda x: (str(x.get("agente") or ""), str(x.get("mes") or ""), str(x.get("fecha_comprobante") or ""))
     arma = lambda x: {**x, "proveedor": x.get("nombre") or nombres.get(str(x.get("agente")), "")}
     return ([arma(x) for x in sorted(pc.get("sin_comprobante") or [], key=orden)],
             [arma(x) for x in sorted(pc.get("nc_sin_comprobante") or [], key=orden)])
@@ -233,7 +233,9 @@ def percepciones_excel(pc: dict, nombre: str, cuit: str, nombres: dict, hoy: dat
 
     def hoja(ws, titulo, filas, nota):
         cuit_f = f"{cuit[:2]}-{cuit[2:10]}-{cuit[10]}"
-        for f in ([titulo], [f"Contribuyente: {nombre}   ·   CUIT: {cuit_f}"],
+        from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE as _ILL
+        nombre_ = _ILL.sub("", str(nombre or ""))
+        for f in ([titulo], [f"Contribuyente: {nombre_}   ·   CUIT: {cuit_f}"],
                   [f"Percepciones informadas por los agentes del {pc.get('desde') or '—'} al {pc.get('hasta') or '—'} · "
                    f"preparado el {hoy.strftime('%d/%m/%Y')}"], [nota], []):
             ws.append(f)
@@ -247,12 +249,17 @@ def percepciones_excel(pc: dict, nombre: str, cuit: str, nombres: dict, hoy: dat
             c = ws.cell(6, j)
             c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1F4E78")
             c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+        limpio = lambda v: ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v   # caracteres de control
+        num = lambda v: v if isinstance(v, (int, float)) else 0.0
         for x in filas:
             ag = str(x.get("agente") or "")
-            ws.append([x.get("impuesto"), x.get("fuente"), f"{ag[:2]}-{ag[2:10]}-{ag[10:]}" if len(ag) == 11 else ag,
+            x = {**x, "importe": num(x.get("importe"))}
+            fila_ = [x.get("impuesto"), x.get("fuente"), f"{ag[:2]}-{ag[2:10]}-{ag[10:]}" if len(ag) == 11 else ag,
                        x.get("proveedor"), x.get("regimen") or "", x.get("desc_comprobante") or "", x.get("comprobante") or "",
                        x.get("fecha_comprobante") or "", f"{(x.get('mes') or '')[5:]}/{(x.get('mes') or '')[:4]}",
-                       {True: "sí (falta cargarla)", False: "no"}.get(x.get("en_mis_comprobantes"), "—"), x.get("importe") or 0.0, x.get("nota") or ""])
+                       {True: "sí (falta cargarla)", False: "no"}.get(x.get("en_mis_comprobantes"), "—"), x.get("importe") or 0.0, x.get("nota") or ""]
+            ws.append([limpio(v) if not isinstance(v, (dict, list)) else str(v) for v in fila_])
         ult = ws.max_row
         if filas:
             ws.append(["TOTAL", "", "", f"{len(filas)} comprobante(s)", "", "", "", "", "", "", f"=SUM(K7:K{ult})", ""])
@@ -270,9 +277,15 @@ def percepciones_excel(pc: dict, nombre: str, cuit: str, nombres: dict, hoy: dat
         ws.row_dimensions[6].height = 32
         ws.freeze_panes = "A7"
         ws.page_setup.orientation = "landscape"
-        ws.page_setup.fitToWidth = 1
-        ws.sheet_properties.pageSetUpPr.fitToPage = True
-        ws.page_setup.fitToHeight = 0
+        try:                                          # versiones viejas de openpyxl no traen pageSetUpPr armado
+            from openpyxl.worksheet.properties import PageSetupProperties
+            if ws.sheet_properties.pageSetUpPr is None:
+                ws.sheet_properties.pageSetUpPr = PageSetupProperties()
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 0
+        except Exception:
+            pass
 
     ws = wb.active
     ws.title = "Facturas a buscar"

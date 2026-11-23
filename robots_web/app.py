@@ -317,7 +317,14 @@ def percepciones_bajar(cuit, formato):
         fac, ncs = reportes.percepciones_filas(pc, nombres)
         return render_template("percepciones_imprimir.html", pc=pc, fac=fac, ncs=ncs, nombre=nombre, cuit=cuit, hoy=date.today())
     from io import BytesIO
-    return send_file(BytesIO(reportes.percepciones_excel(pc, nombre, cuit, nombres)), as_attachment=True,
+    try:
+        contenido = reportes.percepciones_excel(pc, nombre, cuit, nombres)
+    except Exception as e:                            # 22/11/2026: que no quede un error 500 sin explicación
+        app.logger.exception("Excel de percepciones %s", cuit)
+        flash(f"No se pudo armar el Excel ({type(e).__name__}: {str(e)[:150]}). Avisar para revisarlo; "
+              "mientras tanto se puede usar 'Imprimir / PDF'.", "error")
+        return redirect(url_for("cliente_seccion", cuit=cuit, seccion="relacion"))
+    return send_file(BytesIO(contenido), as_attachment=True,
                      download_name=f"percepciones_sin_factura_{cuit}_{date.today().isoformat()}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
