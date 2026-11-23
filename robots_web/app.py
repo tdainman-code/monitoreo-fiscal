@@ -300,6 +300,28 @@ def _ventas_bancos(cuit):
     return reportes.ventas_bancos(libro, desde, hasta), libro
 
 
+@app.route("/cliente/<cuit>/percepciones/<formato>")
+@requiere_login
+def percepciones_bajar(cuit, formato):
+    """Percepciones sin factura en el Libro IVA: Excel o versión para imprimir, para que el encargado busque los
+    comprobantes (pedido de Gaby, 22/11/2026)."""
+    info = _cliente_info(cuit)
+    pc = datos._leer(os.path.join(datos.DATOS, cuit, "conciliacion", "percepciones.json"))
+    if not pc or formato not in ("excel", "imprimir"):
+        abort(404)
+    from . import reportes
+    nombre = info.get("razon_social") or datos.cuit_fmt(cuit)
+    nombres = reportes.nombres_proveedores(cuit)
+    usuarios.registrar(session["usuario"], f"percepciones sin factura ({formato})", cuit, _ip())
+    if formato == "imprimir":
+        fac, ncs = reportes.percepciones_filas(pc, nombres)
+        return render_template("percepciones_imprimir.html", pc=pc, fac=fac, ncs=ncs, nombre=nombre, cuit=cuit, hoy=date.today())
+    from io import BytesIO
+    return send_file(BytesIO(reportes.percepciones_excel(pc, nombre, cuit, nombres)), as_attachment=True,
+                     download_name=f"percepciones_sin_factura_{cuit}_{date.today().isoformat()}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @app.route("/cliente/<cuit>/ventas_bancos/<formato>")
 @requiere_login
 def ventas_bancos_bajar(cuit, formato):

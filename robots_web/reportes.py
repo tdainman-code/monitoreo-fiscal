@@ -194,3 +194,94 @@ def ventas_bancos_excel(r: dict, nombre: str, cuit: str, condicion: str = "", ho
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------- percepciones sin factura (22/11/2026, Gaby)
+def nombres_proveedores(cuit: str) -> dict:
+    """CUIT -> razón social, de los Libros IVA de compras del cliente (Mis Retenciones no trae el nombre del agente)."""
+    import glob
+    import json
+    import os
+    from . import datos
+    out = {}
+    for ruta in glob.glob(os.path.join(datos.DATOS, cuit, "libro_iva", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json")):
+        try:
+            with open(ruta, encoding="utf-8") as f:
+                for c in json.load(f).get("comprobantes_compras") or []:
+                    if c.get("cuit") and c.get("nombre"):
+                        out[str(c["cuit"])] = c["nombre"]
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def percepciones_filas(pc: dict, nombres: dict) -> tuple[list[dict], list[dict]]:
+    orden = lambda x: (x.get("agente") or "", x.get("mes") or "", x.get("fecha_comprobante") or "")
+    arma = lambda x: {**x, "proveedor": x.get("nombre") or nombres.get(str(x.get("agente")), "")}
+    return ([arma(x) for x in sorted(pc.get("sin_comprobante") or [], key=orden)],
+            [arma(x) for x in sorted(pc.get("nc_sin_comprobante") or [], key=orden)])
+
+
+def percepciones_excel(pc: dict, nombre: str, cuit: str, nombres: dict, hoy: date | None = None) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    hoy = hoy or date.today()
+    NUM = '#,##0.00;[Red]\\-#,##0.00;"-"'
+    fac, ncs = percepciones_filas(pc, nombres)
+    wb = Workbook()
+    fino = Side(style="thin", color="BFBFBF")
+
+    def hoja(ws, titulo, filas, nota):
+        cuit_f = f"{cuit[:2]}-{cuit[2:10]}-{cuit[10]}"
+        for f in ([titulo], [f"Contribuyente: {nombre}   ·   CUIT: {cuit_f}"],
+                  [f"Percepciones informadas por los agentes del {pc.get('desde') or '—'} al {pc.get('hasta') or '—'} · "
+                   f"preparado el {hoy.strftime('%d/%m/%Y')}"], [nota], []):
+            ws.append(f)
+        ws["A1"].font = Font(bold=True, size=14)
+        ws["A2"].font = Font(bold=True)
+        ws["A4"].font = Font(italic=True, color="595959", size=9)
+        cab = ["Impuesto", "Origen", "CUIT del agente", "Proveedor", "Régimen", "Comprobante", "Número", "Fecha",
+               "Mes del Libro IVA", "Percepción", "¿Encontrado? / observaciones"]
+        ws.append(cab)
+        for j in range(1, len(cab) + 1):
+            c = ws.cell(6, j)
+            c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1F4E78")
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for x in filas:
+            ag = str(x.get("agente") or "")
+            ws.append([x.get("impuesto"), x.get("fuente"), f"{ag[:2]}-{ag[2:10]}-{ag[10:]}" if len(ag) == 11 else ag,
+                       x.get("proveedor"), x.get("regimen") or "", x.get("desc_comprobante") or "", x.get("comprobante") or "",
+                       x.get("fecha_comprobante") or "", f"{(x.get('mes') or '')[5:]}/{(x.get('mes') or '')[:4]}", x.get("importe") or 0.0, ""])
+        ult = ws.max_row
+        if filas:
+            ws.append(["TOTAL", "", "", f"{len(filas)} comprobante(s)", "", "", "", "", "", f"=SUM(J7:J{ult})", ""])
+        for i in range(7, ws.max_row + 1):
+            for j in range(1, len(cab) + 1):
+                c = ws.cell(i, j)
+                c.border = Border(top=fino, bottom=fino, left=fino, right=fino)
+                if j == 10:
+                    c.number_format = NUM
+                if i > ult:
+                    c.font = Font(bold=True)
+                    c.fill = PatternFill("solid", fgColor="F2F2F2")
+        for col, w in zip("ABCDEFGHIJK", (14, 22, 15, 32, 9, 24, 20, 12, 12, 15, 30)):
+            ws.column_dimensions[col].width = w
+        ws.row_dimensions[6].height = 32
+        ws.freeze_panes = "A7"
+        ws.page_setup.orientation = "landscape"
+        ws.page_setup.fitToWidth = 1
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToHeight = 0
+
+    ws = wb.active
+    ws.title = "Facturas a buscar"
+    hoja(ws, "PERCEPCIONES SIN FACTURA EN EL LIBRO IVA", fac,
+         "Entraron en la DDJJ de IVA (importación automática) pero la factura no está en el Libro IVA Digital: ni el gasto ni "
+         "el crédito fiscal se computaron. Buscar el comprobante.")
+    if ncs:
+        hoja(wb.create_sheet("Notas de crédito"), "NOTAS DE CRÉDITO CON PERCEPCIÓN SIN REGISTRAR", ncs,
+             "Al revés que las facturas: si la nota de crédito no se registró, el crédito fiscal y el gasto pueden estar de más.")
+    from io import BytesIO
+    b = BytesIO()
+    wb.save(b)
+    return b.getvalue()

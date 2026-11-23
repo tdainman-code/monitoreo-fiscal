@@ -379,6 +379,15 @@ _rp = cl.get(f"/cliente/{C2}/relacion").text
 ok("Percepciones sin factura en el Libro IVA" in _rp and "26001IC04212899D" in _rp and "3.298.790,12" in _rp
    and "Visto, me ocupo" in _rp and "03/2026" in _rp, "Relación D/C: percepciones sin factura en el Libro IVA, para el encargado")
 ok("2 percepción(es) sin factura en el Libro IVA" in cl.get(f"/cliente/{C2}").text, "tarjeta Relación D/C: renglón de percepciones")
+_xl = cl.get(f"/cliente/{C2}/percepciones/excel")
+from openpyxl import load_workbook as _lw  # noqa: E402
+_wbp = _lw(__import__("io").BytesIO(_xl.data))
+_txt = [str(c.value) for r_ in _wbp.active.iter_rows() for c in r_ if c.value is not None]
+ok(_xl.status_code == 200 and "Facturas a buscar" in _wbp.sheetnames and "26001IC04212899D" in _txt and "30-50000173-5" in _txt
+   and "¿Encontrado? / observaciones" in _txt, "percepciones: Excel para que el encargado busque los comprobantes")
+_pi = cl.get(f"/cliente/{C2}/percepciones/imprimir").text
+ok("Imprimir / guardar como PDF" in _pi and "26001IC04212899D" in _pi and "☐" in _pi, "percepciones: versión para imprimir con casilla para tildar")
+ok("Excel para buscar los comprobantes" in _rp, "Relación D/C: botones de Excel e imprimir")
 _sp = datos.situacion(C2)
 _k = next(x["clave"] for x in _sp["revisiones"] if x["clave"].startswith("perc:"))
 cl.post("/revision/visto", data={"clave": _k, "cuit": C2, "marcar": "1", "nota": "pedidas al proveedor", "csrf": token(_rp)})
