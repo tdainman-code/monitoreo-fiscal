@@ -138,6 +138,78 @@ def alertas(r: dict) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- monotributo: categoría y tope (22/11/2026)
+# Pantalla de Gaby (Gándara): monotributo.afip.gob.ar/app/Inicio.aspx -> "CUIT 20-32956192-6 / Categoría A LOCACIONES
+# DE SERVICIOS"; "Facturación electrónica | 01/01/2026 al 21/11/2026"; cartel "Superaste el tope de facturación de tu
+# categoria, tenelo en cuenta para la próxima recategorización"; "$12.009.410,45 Tope categoría A";
+# "$26.300.000,00 Monto facturado". Aviso al encargado si superó el tope o pasó el 80 %.
+CERCA_DEL_TOPE = 0.80
+
+
+def _pesos_ar(t: str) -> float | None:
+    t = (t or "").strip()
+    return float(t.replace(".", "").replace(",", ".")) if re.fullmatch(r"-?[\d.]+,\d{2}", t) else None
+
+
+def leer_monotributo(texto: str) -> dict | None:
+    t = re.sub(r"\s+", " ", texto)
+    m_cat = re.search(r"Categor[ií]a\s+([A-K])\b\s*([A-ZÁÉÍÓÚÑ ]{3,40}?)(?=\s+(Inicio|Pagos|Facturaci|$)|$)", t)
+    m_tope = re.search(r"\$\s*([\d.]+,\d{2})\s*Tope categor[ií]a", t, re.I)
+    m_fac = re.search(r"\$\s*([\d.]+,\d{2})\s*Monto facturado", t, re.I)
+    if not (m_cat or m_tope or m_fac):
+        return None
+    m_per = re.search(r"Facturaci[oó]n electr[oó]nica\s*\|?\s*(\d{2}/\d{2}/\d{4})\s*al\s*(\d{2}/\d{2}/\d{4})", t, re.I)
+    tope, fac = _pesos_ar(m_tope[1]) if m_tope else None, _pesos_ar(m_fac[1]) if m_fac else None
+    return {"categoria": m_cat[1] if m_cat else "", "actividad": (m_cat[2].strip() if m_cat else ""),
+            "tope": tope, "facturado": fac, "desde": m_per[1] if m_per else "", "hasta": m_per[2] if m_per else "",
+            "supero_cartel": bool(re.search(r"Superaste el tope", t, re.I)),
+            "proporcion": round(fac / tope, 4) if tope and fac is not None else None}
+
+
+def alertas_monotributo(m: dict | None) -> list[dict]:
+    if not m or m.get("proporcion") is None and not m.get("supero_cartel"):
+        return []
+    f = lambda x: f"$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if x is not None else "—"
+    per = f" ({m['desde']} al {m['hasta']})" if m.get("desde") else ""
+    if m.get("supero_cartel") or (m.get("proporcion") or 0) > 1:
+        return [{"prioridad": "ALTA", "tipo": "Monotributo: superó el tope de su categoría",
+                 "texto": f"Categoría {m['categoria']}: facturado {f(m['facturado'])} contra un tope de {f(m['tope'])}{per}. "
+                          f"Revisar la recategorización (o la exclusión) y avisarle al cliente."}]
+    if (m.get("proporcion") or 0) >= CERCA_DEL_TOPE:
+        return [{"prioridad": "MEDIA", "tipo": "Monotributo: cerca del tope de su categoría",
+                 "texto": f"Categoría {m['categoria']}: facturado {f(m['facturado'])}, el {m['proporcion'] * 100:.0f}% del tope "
+                          f"de {f(m['tope'])}{per}."}]
+    return []
+
+
+def _leer_inicio_monotributo(ctx, portal, cuit: str) -> dict | None:
+    """Abre Monotributo (eligiendo el representado si hace falta), lee categoría / tope / facturado y cierra."""
+    try:
+        page = arca.abrir_servicio(ctx, portal, "monotributo")
+    except arca.RequiereIntervencion:
+        return None
+    try:
+        page.wait_for_load_state("domcontentloaded")
+        arca.pausa(1, 2)
+        if re.search(r"SelecRepresentado", page.url, re.I):
+            tarjeta = page.get_by_text(arca.cuit_fmt(cuit), exact=True)
+            if not tarjeta.count():
+                return None
+            tarjeta.first.click()
+            page.wait_for_load_state("domcontentloaded")
+            arca.pausa(1.5, 3)
+        page.wait_for_timeout(2500)                       # el tope y lo facturado se cargan con JavaScript
+        texto = page.inner_text("body")
+        if arca.cuit_fmt(cuit) not in texto and cuit not in re.sub(r"[\s-]", "", texto):
+            return None
+        return leer_monotributo(texto)
+    finally:
+        try:
+            page.close()
+        except Exception:
+            pass
+
+
 def _abrir_ccma(ctx, portal, cuit: str, usuario: str):
     """Devuelve la página de la CCMA del cliente, o (None, motivo) si no corresponde."""
     if usuario == cuit:
@@ -237,8 +309,21 @@ def paso(cuit: str, usuario: str, estado: dict):
         if cuit.startswith("3"):
             estado.update(resultado="no corresponde (persona jurídica)")
             return "no corresponde"
+        try:                                             # categoría y tope de monotributo (22/11/2026)
+            mono = _leer_inicio_monotributo(ctx, portal, cuit)
+        except Exception:
+            mono = None
         page, motivo = _abrir_ccma(ctx, portal, cuit, usuario)
         if page is None:
+            if mono:
+                d = os.path.join(DATOS, cuit, "ccma")
+                os.makedirs(d, exist_ok=True)
+                r0 = {"cuit": cuit, "fecha": hoy.isoformat(), "sin_ccma": True, "texto": motivo, "periodos": [],
+                      "movimientos": [], "impagos": [], "deuda_impaga": 0.0, "totales": {}, "monotributo": mono,
+                      "alertas": alertas_monotributo(mono)}
+                with open(os.path.join(d, f"{hoy.isoformat()}.json"), "w", encoding="utf-8") as f:
+                    json.dump(r0, f, ensure_ascii=False, indent=1, default=str)
+                estado.update(alertas=r0["alertas"])
             estado.update(resultado=motivo)
             return motivo
         try:
@@ -249,8 +334,8 @@ def paso(cuit: str, usuario: str, estado: dict):
                 fh.write(page.content())
         finally:
             page.close()
-        r.update(cuit=cuit, fecha=hoy.isoformat())
-        r["alertas"] = alertas(r)
+        r.update(cuit=cuit, fecha=hoy.isoformat(), monotributo=mono)
+        r["alertas"] = alertas(r) + alertas_monotributo(mono)
         d = os.path.join(DATOS, cuit, "ccma")
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, f"{hoy.isoformat()}.json"), "w", encoding="utf-8") as f:

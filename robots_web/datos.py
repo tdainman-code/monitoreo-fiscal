@@ -100,7 +100,7 @@ def _pesos_txt(x) -> str:
 
 
 def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None = None, arba: dict | None = None,
-               perc: dict | None = None) -> list[dict]:
+               perc: dict | None = None, ccma: dict | None = None) -> list[dict]:
     """Deuda histórica que el ENCARGADO tiene que revisar y marcar "visto, me ocupo" (Gaby, 17/11/2026):
     Convenio Multilateral (anticipo con saldo a favor del fisco y sin el pago; capital sin actualizar) y la deuda
     del estado de cumplimiento de Cuentas Tributarias. La clave cambia si aparece deuda nueva: vuelve a pedir revisión."""
@@ -145,6 +145,12 @@ def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None 
                                 sorted((scth.get("por_impuesto") or {}).items(), key=lambda x: -x[1])[:4] if v)
                                 if any((scth.get("por_impuesto") or {}).values()) else ""),
                     "importe": None, "a_favor": scth.get("saldos_recuperar_total") or 0.0, "visto": vis.get(clave)})
+    mono = (ccma or {}).get("monotributo") or {}
+    al_m = [a for a in (ccma or {}).get("alertas") or [] if a.get("tipo", "").startswith("Monotributo:")]
+    if al_m:                                         # monotributo: superó / cerca del tope (Gaby 22/11/2026)
+        clave = f"mono:{cuit}:{mono.get('categoria') or 'x'}:{round(mono.get('facturado') or 0)}"
+        out.append({"clave": clave, "tema": al_m[0]["tipo"], "id_sec": "ccma", "texto": al_m[0]["texto"],
+                    "importe": None, "a_favor": None, "visto": vis.get(clave)})
     if perc and perc.get("sin_comprobante"):         # percepciones sin factura en el Libro IVA (Gaby 21/11/2026)
         sc = perc["sin_comprobante"]
         clave = f"perc:{cuit}:{round(perc.get('total_sin_comprobante') or 0)}:{len(sc)}"
@@ -188,7 +194,7 @@ def situacion(cuit: str) -> dict:
     scth = _leer(_ultimo(os.path.join(base, "sct_historico", "*.json")))   # deuda histórica SCT (17/11/2026)
     perc = _leer(os.path.join(base, "conciliacion", "percepciones.json"))   # percepciones vs Libro IVA (21/11/2026)
     r["cm"], r["scth"], r["percepciones"] = cm, scth, perc
-    r["revisiones"] = revisiones(cuit, cm, scth, agip, arba, perc)
+    r["revisiones"] = revisiones(cuit, cm, scth, agip, arba, perc, ccma)
     r["revisar"] = [x for x in r["revisiones"] if not x["visto"]]
     r["ccma"] = ccma
     r["ccma_impagos"] = len((ccma or {}).get("impagos") or [])
@@ -558,7 +564,12 @@ def ficha(cuit: str) -> dict:
                   "pesos": bool(s["ccma_deuda"]),
                   "sub": (f"{s['ccma_impagos']} período(s) impago(s)" if s["ccma_impagos"] else
                           "sin deuda" if cm_.get("sin_ccma") else "pagos al día") + f" · CCMA {cm_.get('fecha', '')[8:10]}/{cm_.get('fecha', '')[5:7]}",
-                  "color": "rojo" if s["ccma_impagos"] else "amarillo" if (cm_.get("totales") or {}).get("deudor_accesorios") else "verde"})
+                  "sub2": (lambda m: (f"Monotributo cat. {m.get('categoria')}: facturado {_pesos_txt(m['facturado'])} · tope "
+                                      f"{_pesos_txt(m['tope'])}" + (" — SUPERÓ EL TOPE" if m.get("supero_cartel") or (m.get("proporcion") or 0) > 1
+                                                                    else f" ({m['proporcion'] * 100:.0f}%)" if m.get("proporcion") else ""))
+                           if m.get("tope") and m.get("facturado") is not None else "")(cm_.get("monotributo") or {}),
+                  "color": "rojo" if s["ccma_impagos"] or (cm_.get("monotributo") or {}).get("supero_cartel")
+                           else "amarillo" if (cm_.get("totales") or {}).get("deudor_accesorios") else "verde"})
     if s["agip"]:
         b.append({"id": "agip", "titulo": "AGIP (Ciudad)", "valor": s["agip_deuda"] or None, "pesos": True,
                   "sub": f"{(s['agip'] or {}).get('sin_abrir') or 0} comunicaciones sin abrir · deuda",

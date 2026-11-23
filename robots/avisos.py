@@ -291,6 +291,12 @@ def revisiones(cuit: str) -> list[dict]:
             if re.match(r"(AGIP|ARBA): (compensar|saldo a favor para recuperar|deuda en juicio)", a.get("tipo", "")):
                 clave = f"{org}:{cuit}:" + re.sub(r"[^\w.:-]", "", (a["tipo"].split(":")[1] + ":" + "".join(re.findall(r"\d", a["texto"]))[:24]))[:58]
                 out.append({"clave": clave, "tema": a["tipo"], "texto": a["texto"]})
+    cc = _ultimo_json(cuit, "ccma") or {}             # monotributo: superó / cerca del tope (22/11/2026)
+    al_m = [a for a in cc.get("alertas") or [] if a.get("tipo", "").startswith("Monotributo:")]
+    if al_m:
+        mo = cc.get("monotributo") or {}
+        out.append({"clave": f"mono:{cuit}:{mo.get('categoria') or 'x'}:{round(mo.get('facturado') or 0)}",
+                    "tema": al_m[0]["tipo"], "texto": al_m[0]["texto"]})
     pc = _leer(os.path.join(DATOS, cuit, "conciliacion", "percepciones.json")) or {}
     if pc.get("sin_comprobante"):                       # percepciones sin factura en el Libro IVA (21/11/2026)
         sc = pc["sin_comprobante"]

@@ -500,7 +500,7 @@ def revision_visto():
     """Deuda histórica (Convenio / Cuentas Tributarias): el encargado la marca "visto, me ocupo"."""
     _controlar_csrf()
     clave, cuit = request.form.get("clave", ""), request.form.get("cuit", "")
-    if not datos.CUIT_RE.match(cuit) or not re.fullmatch(r"(cm|sct|sld|agip|arba|perc):\d{11}:[\w.:-]{1,60}", clave) or f":{cuit}:" not in clave:
+    if not datos.CUIT_RE.match(cuit) or not re.fullmatch(r"(cm|sct|sld|agip|arba|perc|mono):\d{11}:[\w.:-]{1,60}", clave) or f":{cuit}:" not in clave:
         abort(400)
     _cliente_info(cuit)
     enc = (usuarios.datos_cliente(cuit) or {}).get("encargado")

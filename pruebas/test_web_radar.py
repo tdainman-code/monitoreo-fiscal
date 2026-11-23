@@ -178,6 +178,16 @@ escribir(f"{D}/{C}/ccma/2026-11-17.json", {"cuit": C, "fecha": "2026-11-17", "to
                        "saldo": -120000.0, "estado": "IMPAGO", "dias_vencido": 28}],
          "impagos": [{"periodo": "09/2026", "saldo": -120000.0}], "deuda_impaga": 120000.0,
          "alertas": [{"prioridad": "ALTA", "tipo": "Autónomos / Monotributo impago", "texto": "Monotributista: 1 período(s) impago(s) (09/2026)"}]})
+# monotributo: superó el tope -> aviso al encargado (22/11/2026, Gándara)
+escribir(f"{D}/{C3}/ccma/2026-11-22.json", {"fecha": "2026-11-22", "sin_ccma": True, "texto": "", "periodos": [], "impagos": [],
+         "deuda_impaga": 0.0, "totales": {}, "monotributo": {"categoria": "A", "actividad": "LOCACIONES DE SERVICIOS", "tope": 12009410.45,
+         "facturado": 26300000.0, "desde": "01/01/2026", "hasta": "21/11/2026", "supero_cartel": True, "proporcion": 2.19},
+         "alertas": [{"prioridad": "ALTA", "tipo": "Monotributo: superó el tope de su categoría", "texto": "Categoría A: facturado $ 26.300.000,00 contra un tope de $ 12.009.410,45"}]})
+_s3 = datos.situacion(C3)
+ok(any(x["clave"].startswith("mono:") for x in _s3["revisar"]), "monotributo arriba del tope: queda para que lo revise el encargado")
+ok("SUPERÓ EL TOPE" in cl.get(f"/cliente/{C3}").text and "Visto, me ocupo" in cl.get(f"/cliente/{C3}/ccma").text
+   and "12.009.410,45" in cl.get(f"/cliente/{C3}/ccma").text, "monotributo: tarjeta y sección con categoría, facturado y tope")
+os.remove(f"{D}/{C3}/ccma/2026-11-22.json")
 _rc = cl.get(f"/cliente/{C}/ccma").text
 ok("09/2026" in _rc and "IMPAGO" in _rc and "120.000,00" in _rc and "28 días" in _rc, "autónomos / monotributo: períodos impagos")
 _f = cl.get(f"/cliente/{C}").text

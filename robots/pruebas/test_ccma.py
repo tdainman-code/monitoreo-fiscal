@@ -150,5 +150,17 @@ with sync_playwright() as p:
     chk(rc.paso("30711111119", "20333333334", {})(ctx, portal) == "no corresponde", "persona jurídica: no se consulta")
     b.close()
 
+# monotributo: categoría, tope y facturado de Inicio.aspx (pantalla de Gaby, 22/11/2026, datos de fantasía)
+_t = ("CUIT 20-11111111-2 Categoría A LOCACIONES DE SERVICIOS Inicio Pagos Facturación "
+      "Facturación electrónica | 01/01/2026 al 21/11/2026 Superaste el tope de facturación de tu categoria, tenelo en cuenta "
+      "para la próxima recategorización . A $12.009.410,45 Tope categoría A $26.300.000,00 Monto facturado")
+_m = rc.leer_monotributo(_t)
+chk(_m["categoria"] == "A" and _m["tope"] == 12009410.45 and _m["facturado"] == 26300000.0 and _m["supero_cartel"]
+    and _m["desde"] == "01/01/2026", f"monotributo: lee categoría, tope y facturado ({_m})")
+_a = rc.alertas_monotributo(_m)
+chk(_a and _a[0]["prioridad"] == "ALTA" and "superó el tope" in _a[0]["tipo"], "monotributo: superó el tope -> aviso ALTA")
+_b = rc.alertas_monotributo(dict(_m, facturado=10_000_000.0, proporcion=0.83, supero_cartel=False))
+chk(_b and "cerca del tope" in _b[0]["tipo"], "monotributo: más del 80 % del tope -> aviso de cerca del tope")
+chk(rc.alertas_monotributo(dict(_m, facturado=1_000_000.0, proporcion=0.08, supero_cartel=False)) == [], "lejos del tope: sin aviso")
 print("OK" if ok else "FALLÓ")
 sys.exit(0 if ok else 1)

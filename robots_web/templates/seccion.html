@@ -326,7 +326,30 @@
   {% for fila in t.filas %}<tr class="fila-roja">{% for v in fila %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table>{% endfor %}
 
 {% elif sec == 'ccma' %}
+  {% for x in s.revisiones if x.id_sec == sec %}
+  <div class="aviso {{ 'ok' if x.visto else 'error' }}">
+    <b>{{ x.tema }}:</b> {{ x.texto }} — {% if x.importe is none %}{% if x.a_favor %}a recuperar {{ x.a_favor|pesos }}{% endif %}{% else %}{{ x.importe|pesos }} <span class="sutil">(capital sin actualizar: no es la deuda de hoy)</span>{% endif %}
+    {% if x.a_favor %}<br><span class="sutil">Saldos a favor del contribuyente en esa jurisdicción: {{ x.a_favor|pesos }} (¿compensa?)</span>{% endif %}
+    {% if x.visto %}<br>✔ Vista por <b>{{ x.visto.nombre or x.visto.usuario }}</b> el {{ x.visto.fecha[:10]|fecha }}{% if x.visto.nota %}: {{ x.visto.nota }}{% endif %}
+    <form method="post" action="{{ url_for('revision_visto') }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="clave" value="{{ x.clave }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="0">
+      <input type="hidden" name="volver" value="{{ request.path }}"><button class="boton chico">Desmarcar</button></form>
+    {% else %}
+    <form method="post" action="{{ url_for('revision_visto') }}"><input type="hidden" name="csrf" value="{{ csrf() }}">
+      <input type="hidden" name="clave" value="{{ x.clave }}"><input type="hidden" name="cuit" value="{{ c.cuit }}"><input type="hidden" name="marcar" value="1">
+      <input type="hidden" name="volver" value="{{ request.path }}">
+      <input type="text" name="nota" maxlength="300" placeholder="Nota (opcional): p. ej. compensada con saldo a favor, en plan, se paga el…">
+      <button class="boton">✔ Visto, me ocupo</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
   {% set cm = s.ccma %}
+  {% set mo = (cm or {}).get('monotributo') %}
+  {% if mo %}<div class="tarjetas">
+    <div class="tarjeta"><span class="sutil">Categoría de monotributo</span><b>{{ mo.categoria }}</b><span class="sutil">{{ mo.actividad }}</span></div>
+    <div class="tarjeta"><span class="sutil">Facturado {{ mo.desde }} al {{ mo.hasta }}</span><b class="{{ 'txt-rojo' if mo.supero_cartel or (mo.proporcion or 0) > 1 }}">{{ mo.facturado|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Tope de la categoría {{ mo.categoria }}</span><b>{{ mo.tope|pesos }}</b>{% if mo.proporcion %}<span class="sutil">facturado: {{ '%.0f'|format(mo.proporcion * 100) }}% del tope</span>{% endif %}</div>
+  </div>{% endif %}
   {% if cm and cm.sin_ccma %}
   <p>Monotributo no derivó a la cuenta corriente (CCMA) el {{ cm.fecha|fecha }}: según ARCA <b>no hay deuda</b>.</p>
   <p class="sutil">{{ cm.texto[:400] }}</p>
