@@ -172,18 +172,31 @@ def _buscar(page, desde: str, hasta: str, http_comarb: list[str]):
              http_comarb)
 
 
+FORMULARIO_DDJJ = {}                             # período -> texto del formulario de la fila elegida (para el clic)
+
+
 def _lista(page) -> dict[str, tuple[int, int]]:
-    """{'2026-09': (rectificativa, índice de fila en la tabla)}"""
-    out = {}
+    """{'2026-09': (rectificativa, índice de fila en la tabla)}
+    22/11/2026 (Humaitá): un anticipo puede tener, además de la DDJJ (F.5866 'Presentacion Y Pago'), filas de VEP
+    (F.5857 'Vep Presentacion Y Pago', F.5869 'Vep Solo Pago'). Se elegía la primera fila del anticipo; si era un VEP
+    el detalle no tenía la liquidación, el robot fallaba ahí y los meses siguientes quedaban 'No presentada'.
+    Ahora se elige la DDJJ (no los VEP) de la última rectificativa."""
+    out, mejor = {}, {}
     for tabla in page.evaluate(JS_FILAS):
         if not tabla or not any("Anticipo" in c for c in tabla[0]):
             continue
         for i, c in enumerate(tabla[1:], 1):
             m = next((re.search(r"(\d{2})/(\d{4})\s*-\s*(\d+)", x) for x in c if re.search(r"\d{2}/\d{4}\s*-\s*\d+", x)), None)
-            if m:
-                per, rect = f"{m[2]}-{m[1]}", int(m[3])
-                if per not in out or rect > out[per][0]:
-                    out[per] = (rect, i)
+            if not m:
+                continue
+            per, rect = f"{m[2]}-{m[1]}", int(m[3])
+            form = next((x for x in c if re.search(r"^\s*\d{4}\s*-", x)), "")
+            es_vep = bool(re.search(r"\bvep\b|solo pago", form, re.I))
+            rango = (rect, 0 if es_vep else 1)
+            if per not in mejor or rango > mejor[per]:
+                mejor[per] = rango
+                out[per] = (rect, i)
+                FORMULARIO_DDJJ[per] = form.strip()
     return out
 
 
@@ -397,10 +410,19 @@ def paso(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
                     continue
             # buscar de nuevo la fila (después de volver la tabla se regenera)
             texto_ant = f"{per[5:]}/{per[:4]} - {rect}"
-            fila = page.locator("tr", has_text=texto_ant).filter(has=page.locator("a"))
+            form = FORMULARIO_DDJJ.get(per, "")
+
+            def _fila():
+                f = page.locator("tr", has_text=texto_ant).filter(has=page.locator("a"))
+                if form:                              # la fila de la DDJJ, no la de un VEP del mismo anticipo
+                    f2 = f.filter(has_text=form)
+                    if f2.count():
+                        return f2
+                return f.filter(has_not_text=re.compile(r"\bVep\b|Solo Pago", re.I))
+            fila = _fila()
             if not fila.count():
                 _buscar(page, per, per, http_comarb)
-                fila = page.locator("tr", has_text=texto_ant).filter(has=page.locator("a"))
+                fila = _fila()
             _navegar(page, lambda: fila.first.locator("a").first.click(), http_comarb)
             _controlar_cuit(page, cuit)
             d = _detalle(page)

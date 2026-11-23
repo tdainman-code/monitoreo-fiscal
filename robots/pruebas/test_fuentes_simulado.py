@@ -60,6 +60,9 @@ def sifere_lista():
         f"<tr><td><a href='/siferewebconsultas/sfrDdjj.do?det={a}{m}-{r}'><img alt='Valores por Jurisdicción'></a></td>"
         f"<td>{m}/{a} - {r}</td><td>5866 - Presentacion</td><td></td><td></td><td>993 - Afip</td><td>19/10/2026</td></tr>"
         for a, m, r in [("2026", "09", 0), ("2026", "08", 0), ("2026", "08", 1), ("2026", "07", 0)])
+    # 22/11/2026 (Humaitá): fila de VEP del mismo anticipo ANTES de la DDJJ; su "detalle" no tiene la liquidación
+    filas = (f"<tr><td><a href='/siferewebconsultas/sfrDdjj.do?vep=1'><img alt='Valores por Jurisdicción'></a></td>"
+             f"<td>07/2026 - 0</td><td>5857 - Vep Presentacion Y Pago</td><td>$6.000,00</td><td>QR</td><td>322 - Banco</td><td>05/08/2026</td></tr>") + filas
     return f"<table><tr><th></th><th>Anticipo</th><th>Formulario</th><th>Monto Total</th><th>Forma Pago</th><th>Banco / Sucursal</th><th>Fecha</th></tr>{filas}</table>"
 
 

@@ -156,7 +156,12 @@ def cruzar(cuit: str, hoy: date | None = None) -> dict | None:
             x["importe"] = x.get("importe_iva", 0.0) + x.get("importe_ganancias", 0.0)
     sin.sort(key=lambda x: (x["mes"] or "", x["agente"]), reverse=True)
     meses_nc = sorted({x["mes"] for x in nc if x["mes"]})
+    # 22/11/2026: percepción NEGATIVA = nota de crédito del proveedor; si falta en el Libro IVA el problema es al revés
+    # (el crédito fiscal quedó de más). Va aparte y no resta del total de facturas faltantes.
+    nc_sin = [x for x in sin if (x.get("importe") or 0) < 0]
+    sin = [x for x in sin if (x.get("importe") or 0) >= 0]
     r = {"cuit": cuit, "fecha": hoy.isoformat(), "fecha_mis_retenciones": mr.get("fecha"), "desde": mr.get("desde"),
+         "nc_sin_comprobante": nc_sin, "total_nc_sin_comprobante": round(sum(x["importe"] for x in nc_sin), 2),
          "hasta": mr.get("hasta"), "fecha_agip": (agip or {}).get("fecha"), "fecha_arba": (arba or {}).get("fecha"), "en_libro": ok, "sin_comprobante": sin,
          "total_sin_comprobante": round(sum(x["importe"] for x in sin), 2),
          "no_comparables": len(nc), "meses_sin_libro": meses_nc}
@@ -169,6 +174,10 @@ def cruzar(cuit: str, hoy: date | None = None) -> dict | None:
                             + (f" (incluye {n_desp} despacho(s) de importación)" if n_desp else "")
                             + " sin el comprobante en el Libro IVA: ni el gasto ni el crédito fiscal se computaron. "
                               "Buscar los comprobantes."})
+    if nc_sin:
+        al.append({"prioridad": "MEDIA", "tipo": "Notas de crédito con percepción sin registrar en el Libro IVA",
+                   "texto": f"{len(nc_sin)} nota(s) de crédito de proveedores (percepción {_pesos(r['total_nc_sin_comprobante'])}) "
+                            f"que no están en el Libro IVA: el crédito fiscal y el gasto pueden estar de más. Revisar."})
     r["alertas"] = al
     d = os.path.join(DATOS, cuit, "conciliacion")
     os.makedirs(d, exist_ok=True)

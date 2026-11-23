@@ -305,6 +305,12 @@
   {% else %}<tr><td colspan="7" class="sutil">Todas las percepciones comparadas tienen su comprobante en el Libro IVA.</td></tr>{% endfor %}
   {% if pc.sin_comprobante %}<tr><td colspan="6"><b>Total de percepciones sin factura</b></td><td class="num"><b>{{ pc.total_sin_comprobante|pesos }}</b></td></tr>{% endif %}
   </tbody></table>
+  {% if pc.nc_sin_comprobante %}<h3>Notas de crédito con percepción que no están en el Libro IVA</h3>
+  <p class="sutil">Al revés que las facturas: si la nota de crédito del proveedor no se registró, el crédito fiscal y el gasto pueden estar de más.</p>
+  <table class="tabla"><thead><tr><th>Agente</th><th>Comprobante</th><th>Fecha</th><th class="num">Percepción</th></tr></thead><tbody>
+  {% for x in pc.nc_sin_comprobante %}<tr><td data-l="Agente">{{ cuit_fmt(x.agente) }}</td><td data-l="Comprobante">{{ x.desc_comprobante or '' }} {{ x.comprobante }}</td>
+    <td data-l="Fecha">{{ x.fecha_comprobante }}</td><td class="num" data-l="Percepción">{{ x.importe|pesos }}</td></tr>{% endfor %}
+  </tbody></table>{% endif %}
   {% else %}<p class="sutil">Todavía no se leyó Mis Retenciones (se lee en la corrida completa o pidiendo "Percepciones y retenciones de IVA").</p>{% endif %}
   {% endif %}
   {% if sec == 'relacion' %}<h2>Excel</h2><ul class="informes">

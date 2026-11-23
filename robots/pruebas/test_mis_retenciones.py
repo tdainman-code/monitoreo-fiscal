@@ -220,5 +220,14 @@ chk(round(cr["total_sin_comprobante"], 2) == round(891.83 + 500000 + 2798190.12,
 chk(os.path.exists(f"{D}/{CUIT}/conciliacion/percepciones.json"), "queda en conciliacion/percepciones.json")
 chk(not any(x["comprobante"] == "0000000000085460" for x in cr["sin_comprobante"]), "las retenciones no se cruzan con compras")
 
+# nota de crédito del proveedor con percepción negativa (Excel de Gaby del 22/11/2026): va aparte
+r["filas"].append({"agente": "30663205621", "impuesto": "767", "regimen": "493", "fecha": "19/10/2026", "certificado": "0",
+                   "operacion": "PERCEPCION", "importe": -3551.69, "comprobante": "3160", "fecha_comprobante": "19/10/2026",
+                   "desc_comprobante": "NOTA DE CREDITO", "fecha_dj": "", "aduana": False})
+json.dump(r, open(f"{D}/{CUIT}/mis_retenciones/2026-11-21.json", "w"))
+cr2 = percepciones.cruzar(CUIT, date(2026, 11, 21))
+chk(len(cr2["nc_sin_comprobante"]) == 1 and cr2["total_sin_comprobante"] == cr["total_sin_comprobante"]
+    and any("Notas de crédito" in a["tipo"] for a in cr2["alertas"]),
+    "nota de crédito con percepción negativa sin registrar: va aparte y no resta del total de facturas faltantes")
 print("OK" if ok else "FALLÓ")
 sys.exit(0 if ok else 1)
