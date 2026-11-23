@@ -260,7 +260,7 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
         if not tiene_sifere or sif.get(p) or arba.get(p) or hay_ventas is None:
             continue
         if alta_cm and p < alta_cm:
-            c = ws.cell(r_iibb, j, "ARBA s/dato")
+            c = ws.cell(r_iibb, j, "Local s/dato")          # antes del alta en Convenio: local (ARBA o AGIP)
             locales.append(p)
             c.font = Font(italic=True, color="595959")
             c.fill = _fill(GRIS)
@@ -320,7 +320,7 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
              "Facturas C de compra: se suman como gasto por el total (sin crédito fiscal). Las facturas B de compra no "
              "se toman nunca (no son computables)."] + ["Amarillo: impuesto a los combustibles ESTIMADO a confirmar (ver alertas del mes en Mis Comprobantes).",
              "'No presentada': anticipo sin DDJJ en SIFERE a la fecha de consulta (posterior al alta en Convenio Multilateral).",
-             "'ARBA s/dato': mes anterior al alta en Convenio Multilateral sin DJ local leída en ARBA (falta la CIT o la DJ).",
+             "'Local s/dato': mes anterior al alta en Convenio Multilateral: tributaba como local (ARBA o AGIP) y esa DJ no se leyó (falta la CIT de ARBA o el robot de e-Sicol de AGIP).",
              "Resultado bruto en amarillo: falta alguna fuente del mes (F931 o IIBB); el saldo se calcula sin ese concepto.",
              "Columnas en blanco: meses todavía no descargados por el robot.",
              "Rojo en TOTAL VENTAS/COMPRAS NETAS: el mes da negativo (notas de crédito mayores a lo facturado/comprado); revisar si es un movimiento no ordinario.",
