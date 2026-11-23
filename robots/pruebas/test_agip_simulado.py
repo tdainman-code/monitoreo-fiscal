@@ -16,7 +16,7 @@ CUIT, REPRESENTANTE = "30717468631", "20142836751"
 M = {"clave_ok": "bien", "entro": False, "con_selector": False}
 
 INICIO = """<html><head><title>AGIP - Clave Ciudad</title></head><body>
-<a class="btn-miba-login" href="#">Ingresá con cuenta miBA</a>
+<a class="btn-miba-login" href="https://login.buenosaires.gob.ar/auth/realms/mail">Ingresá con cuenta miBA</a>
 <div class="clave-ciudad-info"><a href="#" onclick="document.getElementById('loginCC').style.display='block'">Clave Ciudad</a></div>
 <form id="loginCC" style="display:none"><input id="cuit"><input id="clave" type="password">
 <a class="btn btn-primary" href="#" onclick="location.href='https://claveciudad.agip.gob.ar/login?c='+document.getElementById('clave').value">Ingresar</a>
@@ -57,6 +57,14 @@ def servir(route):
     url = route.request.url
     if url.rstrip("/") == "https://claveciudad.agip.gob.ar":
         return route.fulfill(**html(INICIO_ERROR if M.get("error_previo") else INICIO))
+    if "login.buenosaires.gob.ar" in url:             # cuenta miBA (22/11/2026)
+        if "p=" in url:
+            if url.endswith("p=" + M.get("miba_ok", "-")):
+                M["entro"] = True
+                return route.fulfill(**html("<script>location.href='https://claveciudad.agip.gob.ar/menu_principal.php'</script>"))
+            return route.fulfill(**html("<p class='alert-error'>Usuario o contraseña inválidos</p>"))
+        return route.fulfill(**html("""<h1>Ingresá a tu cuenta de la Ciudad</h1><input id="username"><input id="password" type="password">
+          <button id="kc-login" onclick="location.href='https://login.buenosaires.gob.ar/auth?p='+document.getElementById('password').value">Iniciar sesión</button>"""))
     if "/login?c=" in url:
         if url.endswith("c=" + M["clave_ok"]):
             M["entro"] = True
@@ -122,6 +130,10 @@ caso("Clave Ciudad incorrecta -> ClaveInvalida (no reintenta)",
      lambda r: False)
 res[-1] = not res[-1]
 print("   (el caso anterior DEBE fallar con ClaveInvalida)")
+M.update(entro=False, error_previo=False, miba_ok="miba123")
+caso("Clave Ciudad rechazada pero la clave es de miBA -> entra por miBA (Gaby, 22/11/2026)",
+     lambda: (robot_agip.correr(CUIT, None, CUIT, "miba123"), leer())[1],
+     lambda r: M["entro"] and len(r["comunicaciones"]) == 2)
 M.update(entro=False, error_previo=False, con_selector=True, cuit_fe=REPRESENTANTE)
 caso("representante: elige el CUIT del cliente; si una pantalla muestra a otro, NO la lee",
      lambda: (robot_agip.correr(CUIT, None, REPRESENTANTE, "bien"), leer())[1],

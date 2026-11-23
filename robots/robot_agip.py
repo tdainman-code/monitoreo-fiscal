@@ -225,7 +225,64 @@ def _visible(page, selector: str, timeout: int = 1500) -> bool:
         return False
 
 
+def login_miba(ctx, usuario: str, clave: str):
+    """Ingreso con cuenta miBA (22/11/2026, Gaby entra así): claveciudad.agip.gob.ar -> "Iniciar sesión" ->
+    login.buenosaires.gob.ar ("Ingresá a tu cuenta de la Ciudad": CUIL o correo + contraseña -> Iniciar sesión) ->
+    vuelve a claveciudad.agip.gob.ar/menu_principal.php."""
+    page = ctx.new_page()
+    page.goto(PORTAL, wait_until="domcontentloaded")
+    arca.pausa(1.2, 2.0)
+    boton = page.locator("a.btn-miba-login, a[href*='miba'], a:has-text('Iniciar sesión'), button:has-text('Iniciar sesión')")
+    if not boton.count():
+        raise arca.ErrorRobot("AGIP: no aparece el botón de ingreso con miBA")
+    boton.first.click()
+    try:
+        page.wait_for_url(re.compile(r"login\.buenosaires\.gob\.ar"), timeout=30_000)
+    except Exception:
+        pass
+    page.wait_for_load_state("domcontentloaded")
+    arca.pausa(1.0, 1.8)
+    usu = page.locator("#username, input[name=username], input[autocomplete=username]").first
+    pas = page.locator("#password, input[name=password], input[type=password]").first
+    arca._tipear(usu, usuario)
+    arca._tipear(pas, clave)
+    arca.pausa(0.4, 0.9)
+    page.locator("#kc-login, button[type=submit], input[type=submit]").first.click()
+    try:
+        page.wait_for_url(re.compile(r"claveciudad\.agip\.gob\.ar"), timeout=45_000)
+    except Exception:
+        err = ""
+        try:
+            err = page.locator(".alert-error, .kc-feedback-text, #input-error, [class*=error]").first.inner_text(timeout=2000).strip()
+        except Exception:
+            pass
+        if re.search(r"c[oó]digo|verificaci|segundo factor|OTP", page.inner_text("body"), re.I):
+            raise arca.RequiereIntervencion("miBA pide un código de verificación: no se puede ingresar automáticamente")
+        raise arca.ClaveInvalida(f"miBA no aceptó el usuario o la contraseña{': ' + err if err else ''}")
+    page.wait_for_load_state("domcontentloaded")
+    arca.pausa(1.5, 2.5)
+    return page
+
+
 def login(ctx, usuario: str, clave: str):
+    """Clave Ciudad; si AGIP la rechaza, se prueba la misma clave como cuenta miBA (hay quien entra así)."""
+    try:
+        return _login_clave_ciudad(ctx, usuario, clave)
+    except arca.ClaveInvalida as e:
+        for p in list(ctx.pages):
+            try:
+                p.close()
+            except Exception:
+                pass
+        try:
+            return login_miba(ctx, usuario, clave)
+        except arca.RequiereIntervencion:
+            raise
+        except Exception:
+            raise arca.ClaveInvalida(f"{e} (tampoco entra como cuenta miBA)")
+
+
+def _login_clave_ciudad(ctx, usuario: str, clave: str):
     page = ctx.new_page()
     page.goto(PORTAL, wait_until="domcontentloaded")
     arca.pausa(1.2, 2.0)
