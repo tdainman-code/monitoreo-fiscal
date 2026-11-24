@@ -153,16 +153,22 @@ systemctl enable --now caddy >/dev/null 2>&1; systemctl reload caddy || systemct
 
 echo "== 5. Tareas automáticas (usuario robot)"
 install -o robot -g robot -m 755 "$AQUI/programar_nube.sh" /home/robot/programar_nube.sh
-sudo -u robot bash /home/robot/programar_nube.sh
+if [ "${SIN_TAREAS:-0}" = "1" ]; then
+  # servidor de respaldo (restaurar_respaldo.sh): sin corridas automáticas, para no pisarse con la nube
+  crontab -u robot -r 2>/dev/null || true
+  echo "   sin corridas automáticas (servidor de respaldo). Para activarlas: sudo -u robot bash /home/robot/programar_nube.sh"
+else
+  sudo -u robot bash /home/robot/programar_nube.sh
+fi
 
 echo "== 6. Administrador de la web"
-if ! sudo -u web env ROBOTS_WEB_DATOS=/var/lib/robots-web /opt/robots-web/venv/bin/python -m robots_web.usuarios listar 2>/dev/null | grep -qi admin; then
+if ! (cd /opt/robots-web && sudo -u web env ROBOTS_WEB_DATOS=/var/lib/robots-web /opt/robots-web/venv/bin/python -m robots_web.usuarios listar 2>/dev/null) | grep -qi admin; then
   read -r -p "   Usuario administrador para la web (ej. tomas): " ADMIN
   read -r -p "   Nombre a mostrar (ej. Tomás Dainman): " NOMBRE
   (cd /opt/robots-web && sudo -u web env ROBOTS_WEB_DATOS=/var/lib/robots-web /opt/robots-web/venv/bin/python -m robots_web.usuarios crear "$ADMIN" "$NOMBRE" --admin)
 fi
 # administrador del SERVIDOR (además de root): usuario con sudo, para entrar por SSH sin usar root
-if [ -z "$(getent group sudo | cut -d: -f4)" ]; then
+if [ "${SIN_ADMIN_SERVIDOR:-0}" != "1" ] && [ -z "$(getent group sudo | cut -d: -f4)" ]; then
   read -r -p "   Usuario administrador del servidor (Enter para seguir usando solo root): " ADM_SRV
   if [ -n "$ADM_SRV" ]; then
     id "$ADM_SRV" >/dev/null 2>&1 || adduser --gecos "" "$ADM_SRV"
