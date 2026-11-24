@@ -9,7 +9,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 T = tempfile.mkdtemp()
 os.environ.update(ROBOTS_DATOS=os.path.join(T, "datos"), ROBOTS_PUBLICO=os.path.join(T, "publico"),
-                  ROBOTS_REGISTRO=os.path.join(T, "ejecuciones.jsonl"))
+                  ROBOTS_REGISTRO=os.path.join(T, "ejecuciones.jsonl"), ROBOTS_PAUSADOS=os.path.join(T, "pausados.txt"))
 from robots import correr  # noqa: E402
 
 res = []
@@ -81,5 +81,8 @@ correr.correr_uno = falso(lambda c: "OK (0 alertas)")
 correr.hora_limite = lambda h: dt.datetime.now() - dt.timedelta(seconds=1)       # ya pasó la hora límite
 correr.main(["todo", "--cuit"] + cuits[:3] + ["--hasta", "06:00"])
 chk(llamadas == [], "--hasta: pasada la hora no arranca clientes nuevos y los deja pendientes")
+# clientes en pausa: las corridas automáticas no los toman
+open(correr.PAUSADOS, "w").write("20-33116000-0\n2033116000\n")   # el segundo está mal escrito: se ignora
+chk(correr.pausados() == {cuits[0]}, "lista de clientes en pausa")
 print("OK" if all(res) else "FALLÓ")
 sys.exit(0 if all(res) else 1)

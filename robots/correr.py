@@ -193,14 +193,28 @@ def registrar(evento: dict) -> None:
         f.write(json.dumps(evento, ensure_ascii=False, default=str) + "\n")
 
 
+PAUSADOS = os.environ.get("ROBOTS_PAUSADOS", "/var/lib/robots/pausados.txt")
+
+
+def pausados() -> set[str]:
+    """Clientes EN PAUSA (24/11/2026, Tomás): siguen cargados (claves y datos) pero las corridas automáticas no los
+    toman hasta que se decida si se dan de baja. Un CUIT por renglón en /var/lib/robots/pausados.txt."""
+    try:
+        with open(PAUSADOS, encoding="utf-8") as f:
+            return {"".join(ch for ch in x if ch.isdigit()) for x in f if len("".join(ch for ch in x if ch.isdigit())) == 11}
+    except OSError:
+        return set()
+
+
 def clientes_arca() -> list[str]:
     """Clientes con clave de ARCA utilizable, ORDENADOS POR IMPORTANCIA (pedido del 16/11/2026):
-    responsables inscriptos -> sin clasificar todavía -> monotributistas / sin Portal IVA."""
+    responsables inscriptos -> sin clasificar todavía -> monotributistas / sin Portal IVA. Sin los clientes en pausa."""
     with closing(alm.conectar()) as con:
         cuits = [r[0] for r in con.execute(
             "SELECT cuit FROM accesos WHERE organismo='ARCA' AND estado NOT IN ('Clave inválida','Requiere intervención') "
             "ORDER BY cuit")]
-    return sorted(cuits, key=lambda c: (robot_libro_iva.prioridad(c), c))
+    pausa = pausados()
+    return sorted((c for c in cuits if c not in pausa), key=lambda c: (robot_libro_iva.prioridad(c), c))
 
 
 def correr_arba(cuit: str, periodo: str, visible: bool, meses=None, forzar=False, robot: str = "arba") -> str:
