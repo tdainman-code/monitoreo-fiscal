@@ -1144,8 +1144,8 @@ def asignaciones():
             return redirect(url_for("asignaciones"))
         try:
             filas, errores = asg.leer(contenido, {u[0] for u in activos}, CAMPOS_CLIENTE, OPCIONES_CLIENTE, MEDIOS_VEP)
-        except ImportError:
-            flash("Falta instalar openpyxl en la web (se instala sola con la próxima actualización)", "error")
+        except ImportError as e:
+            flash(f"Falta instalar openpyxl en la web ({e}). Avisá al administrador: se instala con ARREGLAR_OPENPYXL.bat", "error")
             return redirect(url_for("asignaciones"))
         finally:
             contenido = None                                   # el archivo no se guarda en ningún lado
@@ -1196,8 +1196,8 @@ def asignaciones():
         try:
             cont = asg.generar(clientes, {c["cuit"]: usuarios.datos_cliente(c["cuit"]) or {} for c in clientes},
                                [(u[0], u[1], u[2]) for u in activos], CAMPOS_CLIENTE, OPCIONES_CLIENTE, MEDIOS_VEP)
-        except ImportError:
-            flash("Falta instalar openpyxl en la web (se instala sola con la próxima actualización)", "error")
+        except ImportError as e:
+            flash(f"Falta instalar openpyxl en la web ({e}). Avisá al administrador: se instala con ARREGLAR_OPENPYXL.bat", "error")
             return redirect(url_for("asignaciones"))
         usuarios.registrar(session["usuario"], "bajó la planilla de clientes", "", _ip())
         from io import BytesIO

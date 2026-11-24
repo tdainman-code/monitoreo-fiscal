@@ -81,7 +81,10 @@ instalar_desde() {   # $1 = carpeta con robots/ y robots_web/
   chown -R robot:robot /home/robot/app; chown -R root:root /opt/robots-web; chmod -R go-w /opt/robots-web
   [ -f "$1/nube/programar_nube.sh" ] && install -o robot -g robot -m 755 "$1/nube/programar_nube.sh" /home/robot/programar_nube.sh \
       && sudo -u robot bash /home/robot/programar_nube.sh >/dev/null
-  /opt/robots-web/venv/bin/python -c "import openpyxl" 2>/dev/null || /opt/robots-web/venv/bin/pip install -q openpyxl
+  # 24/11/2026: si openpyxl no se pudo instalar, que quede anotado (antes fallaba en silencio y la planilla no subía)
+  /opt/robots-web/venv/bin/python -c "import openpyxl" 2>/dev/null || /opt/robots-web/venv/bin/pip install -q openpyxl \
+      || /opt/robots-web/venv/bin/pip install -q --no-cache-dir openpyxl \
+      || echo "$(date) ERROR: no se pudo instalar openpyxl en la web" >> "$LOG"
   systemctl restart robots-web
   flock -u 9
 }
