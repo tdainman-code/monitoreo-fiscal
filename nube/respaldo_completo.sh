@@ -70,11 +70,14 @@ RESPALDO COMPLETO DEL MONITOREO FISCAL — $FECHA (versión $(cat "$TMP/m/codigo
 Contiene, CIFRADO con tu contraseña: código, claves (llave maestra + almacén), datos e informes de los clientes,
 usuarios de la web. Sin la contraseña no sirve. No lo subas a ningún lado ni lo mandes por mail.
 
-INSTALARLO EN TU SERVIDOR (Ubuntu 24.04, recién instalado o dedicado a esto, 2 GB de RAM o más):
-  1. Copiá esta carpeta entera al servidor, por ejemplo a /root/respaldo_monitoreo_$FECHA
-  2. sudo bash /root/respaldo_monitoreo_$FECHA/restaurar_respaldo.sh
-     (te pide la contraseña del respaldo; tarda unos 15 minutos la primera vez)
-  3. Queda instalado SIN corridas automáticas, para no pisarse con la nube.
+INSTALARLO EN TU SERVIDOR:
+  1. Copiá esta carpeta entera al servidor con WinSCP, por ejemplo a /home/robot/respaldo_monitoreo_$FECHA
+  2. En la consola del servidor:  sudo bash /home/robot/respaldo_monitoreo_$FECHA/restaurar_respaldo.sh
+     (te pide la contraseña del respaldo)
+     - En la máquina "robots" de la oficina (ya tiene el sistema en /home/robot/robots): reemplaza código, claves,
+       datos y usuarios, guardando copia de lo anterior. No toca nada más del servidor.
+     - En un Ubuntu 24.04 nuevo: instala todo el sistema (unos 15 minutos).
+  3. Queda SIN corridas automáticas, para no pisarse con la nube.
 
 CORRIDA URGENTE DE UN CLIENTE:
   sudo bash /root/corrida_urgente.sh 30XXXXXXXXX           (todo: ARCA + ARBA + AGIP + informes)

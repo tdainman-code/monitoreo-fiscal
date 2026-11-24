@@ -10,7 +10,9 @@ ROBOT="${2:-todo}"
 [ ${#CUIT} -eq 11 ] || { echo "El CUIT tiene que tener 11 números"; exit 1; }
 [[ "$ROBOT" =~ ^[a-z_]+$ ]] || { echo "Robot inválido"; exit 1; }
 echo "== $ROBOT para $CUIT (si hay otra corrida en curso, espera)"
-sudo -u robot bash -c "cd ~/app && flock -w 7200 /tmp/robots_todo.lock xvfb-run -a ~/venv/bin/python -m robots.correr $ROBOT --cuit $CUIT" \
+APP=/home/robot/app; [ -d "$APP/robots" ] || APP=/home/robot/robots      # nube: ~/app · máquina de la oficina: ~/robots
+XV=""; command -v xvfb-run >/dev/null && XV="xvfb-run -a"                    # pantalla virtual (AGIP la necesita)
+sudo -u robot bash -c "cd $APP && flock -w 7200 /tmp/robots_todo.lock $XV ~/venv/bin/python -m robots.correr $ROBOT --cuit $CUIT" \
   | tee "/root/corrida_urgente_${CUIT}_$(date +%Y%m%d_%H%M).log"
 echo
 echo "Datos:     /var/lib/robots/datos/$CUIT"
