@@ -69,5 +69,17 @@ llamadas.clear()
 correr.correr_uno = falso(lambda c: "CLAVE INVÁLIDA – pedir clave nueva al cliente")
 correr.main(["todo", "--cuit"] + cuits[:8])
 chk(len(llamadas) == 8, "claves inválidas no frenan la corrida (son de cada cliente)")
+# --hasta: corta a la próxima vez que llega esa hora
+d0 = dt.datetime(2026, 11, 24, 19, 30)
+chk(correr.hora_limite("06:00", d0) == dt.datetime(2026, 11, 25, 6, 0), "--hasta 06:00 arrancando 19:30 corta a las 6 del día siguiente")
+chk(correr.hora_limite("06:00", dt.datetime(2026, 11, 25, 4, 0)) == dt.datetime(2026, 11, 25, 6, 0),
+    "--hasta 06:00 arrancando 4:00 (esperó a otra) corta a las 6 de ese día")
+chk(correr.hora_limite("06:00", dt.datetime(2026, 11, 25, 6, 30)) <= dt.datetime(2026, 11, 25, 6, 30),
+    "--hasta 06:00 si recién arranca a las 6:30 (esperó toda la noche) no corre de día")
+llamadas.clear()
+correr.correr_uno = falso(lambda c: "OK (0 alertas)")
+correr.hora_limite = lambda h: dt.datetime.now() - dt.timedelta(seconds=1)       # ya pasó la hora límite
+correr.main(["todo", "--cuit"] + cuits[:3] + ["--hasta", "06:00"])
+chk(llamadas == [], "--hasta: pasada la hora no arranca clientes nuevos y los deja pendientes")
 print("OK" if all(res) else "FALLÓ")
 sys.exit(0 if all(res) else 1)

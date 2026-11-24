@@ -145,6 +145,19 @@ def urgentes_primero(cuits: list[str]) -> list[str]:
 FRENO_ERRORES_SEGUIDOS = 4      # errores de portal seguidos (no claves inválidas): ARCA está rechazando, se frena la noche
 
 
+def hora_limite(hhmm: str, ahora: dt.datetime | None = None) -> dt.datetime:
+    """Próxima vez que el reloj marca HH:MM a partir de ahora (24/11/2026): una corrida de las 20 h con --hasta 06:00
+    corta a las 6 del día siguiente, y una que arrancó a las 4 (porque esperó a otra) corta a las 6 de ese mismo día."""
+    ahora = ahora or dt.datetime.now()
+    h, m = (int(x) for x in hhmm.split(":"))
+    lim = ahora.replace(hour=h, minute=m, second=0, microsecond=0)
+    if lim > ahora:
+        return lim
+    # si la hora límite pasó hace menos de 8 h (una corrida de la noche que esperó a otra y recién arranca a las 6:30),
+    # ya está vencida: no se mete en el día. Si pasó hace más, es la de mañana.
+    return lim if ahora - lim < dt.timedelta(hours=8) else lim + dt.timedelta(days=1)
+
+
 def le_toca_hoy(cuit: str, asig: dict, hoy: dt.date | None = None) -> bool:
     hoy = hoy or dt.date.today()
     if asig["dia"] != hoy.weekday():
@@ -355,6 +368,8 @@ def main(argv=None):
                     help="con --todos: solo los clientes cuya última corrida de los últimos 7 días terminó en error (repechaje)")
     ap.add_argument("--fin-de-semana", action="store_true",
                     help="corrida completa de fin de semana: los clientes que tienen fijo el sábado o el domingo (el de hoy)")
+    ap.add_argument("--hasta", help="HH:MM: no arrancar clientes nuevos pasada esa hora (la próxima vez que llegue después "
+                                    "de arrancar; p. ej. 06:00 para no meterse en el día aunque la corrida haya esperado)")
     ap.add_argument("--urgentes-primero", action="store_true",
                     help="primero los que tenían deuda vencida o DDJJ sin presentar, después los de datos más viejos")
     ap.add_argument("--grupos", type=int, default=5, help="en cuántos días se reparten los clientes (5 = lunes a viernes)")
@@ -428,7 +443,13 @@ def _progreso(d: dict | None) -> None:
 
 
 def _recorrer(a, cuits, partes, inicio, seguidos):
+    limite = hora_limite(a.hasta) if getattr(a, "hasta", None) else None
     for i, cuit in enumerate(cuits, 1):
+        if limite and dt.datetime.now() >= limite:
+            pend = cuits[i - 1:]
+            print(f"SON LAS {a.hasta}: quedan {len(pend)} clientes pendientes para la próxima corrida: {' '.join(pend)}")
+            registrar({"robot": a.robot, "modo": a.modo, "estado": "Pendientes por horario", "cuits": pend})
+            break
         if a.horas and time.time() - inicio > a.horas * 3600:
             pend = cuits[i - 1:]
             print(f"TIEMPO CUMPLIDO ({a.horas} h): quedan {len(pend)} clientes pendientes por tiempo: {' '.join(pend)}")

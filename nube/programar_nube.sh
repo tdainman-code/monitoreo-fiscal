@@ -23,12 +23,12 @@ TAG="# robots-nube"
 CMD="cd \$HOME/app && flock -w 172800 /tmp/robots_todo.lock xvfb-run -a $PY -m robots.correr todo --todos"
 NUEVAS=$(cat <<EOT
 $TAG corrida diaria liviana de todos los clientes (lun-vie 20:00, no arranca clientes nuevos despues de las 6:00)
-0 20 * * 1-5 $CMD --modo diaria --urgentes-primero --horas 10 >> \$HOME/logs/diaria_\$(date +\%F).log 2>&1 $TAG
+0 20 * * 1-5 $CMD --modo diaria --urgentes-primero --horas 10 --hasta 06:00 >> \$HOME/logs/diaria_\$(date +\%F).log 2>&1 $TAG
 $TAG corrida completa de fin de semana (sabado y domingo 6:00; cada cliente tiene su dia)
 0 6 * * 6 $CMD --modo completo --fin-de-semana --horas 14 >> \$HOME/logs/finde_\$(date +\%F).log 2>&1 $TAG
 0 6 * * 0 $CMD --modo completo --fin-de-semana --horas 13 >> \$HOME/logs/finde_\$(date +\%F).log 2>&1 $TAG
 $TAG repechaje de la semana (domingo 20:00)
-0 20 * * 0 $CMD --modo completo --solo-fallidos --horas 9 >> \$HOME/logs/repechaje_\$(date +\%F).log 2>&1 $TAG
+0 20 * * 0 $CMD --modo completo --solo-fallidos --horas 9 --hasta 05:00 >> \$HOME/logs/repechaje_\$(date +\%F).log 2>&1 $TAG
 $TAG claves cargadas desde la web
 */3 * * * * cd \$HOME/app && $PY -m robots.almacen_claves procesar-bandeja >> \$HOME/logs/bandeja.log 2>&1 $TAG
 $TAG corridas pedidas desde la web
