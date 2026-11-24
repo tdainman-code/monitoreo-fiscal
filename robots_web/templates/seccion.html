@@ -317,7 +317,14 @@
   </tbody></table>{% endif %}
   {% else %}<p class="sutil">Todavía no se leyó Mis Retenciones (se lee en la corrida completa o pidiendo "Percepciones y retenciones de IVA").</p>{% endif %}
   {% endif %}
-  {% if sec == 'relacion' %}<h2>Excel</h2><ul class="informes">
+  {% if sec == 'relacion' %}
+  <h2>Mail para el cliente</h2>
+  {% if s.mail_cliente %}
+  <p class="sutil">Mail modelo para mandar con el Excel (Estado de resultados, Resumen mensual y Notas). Revisalo antes de enviarlo.</p>
+  <textarea id="mail-cliente" class="mail-modelo" rows="18" readonly>{{ s.mail_cliente }}</textarea>
+  <p><button type="button" onclick="const t=document.getElementById('mail-cliente');t.select();navigator.clipboard.writeText(t.value).then(()=>{this.textContent='✔ Copiado'})">📋 Copiar el mail</button></p>
+  {% else %}<p class="sutil">Se arma junto con el Excel de la relación débito crédito (próxima corrida completa o pidiendo "Actualizar ahora").</p>{% endif %}
+  <h2>Excel</h2><ul class="informes">
   {% for i in s.informes_lista if i.tipo == 'Relación débito/crédito' %}{% if loop.index <= 6 %}<li><a class="boton" href="{{ url_for('bajar_informe', ruta=i.ruta) }}">⬇ {{ i.tipo }}</a> <span class="sutil">{{ i.fecha|fecha }} · {{ i.archivo }}</span></li>{% endif %}
   {% else %}<li class="sutil">Todavía no hay Excel.</li>{% endfor %}</ul>{% endif %}
 

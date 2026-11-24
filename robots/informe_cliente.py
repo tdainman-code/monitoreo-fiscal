@@ -337,11 +337,259 @@ def relacion_dc(cuit: str, nombre: str, periodos: list[str], ruta: str) -> dict:
     ws.page_setup.orientation = "landscape"
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToHeight = 0
+    # 24/11/2026 (Tomás): "Estado de resultados" + "Resumen mensual" + "Notas" como los armados a mano para La Nata y
+    # los otros cuatro clientes; ventas y compras del Portal IVA, sueldos del F.931 e IIBB SOLO de DDJJ presentadas.
+    mail = _resumen_mensual(wb, cuit, nombre, periodos, liva, f931, sif, arba, jurs, _sin_desglose, _bcmc, alta_cm, tiene_sifere)
+    try:                                          # la web lo muestra con un botón "Copiar" (Relación débito crédito)
+        os.makedirs(os.path.join(DATOS, cuit), exist_ok=True)
+        with open(os.path.join(DATOS, cuit, "mail_relacion_dc.txt"), "w", encoding="utf-8") as f:
+            f.write(mail)
+    except OSError:
+        pass
     os.makedirs(os.path.dirname(ruta), exist_ok=True)
     wb.save(ruta)
     return {"meses_mc": sum(1 for v in mc.values() if v), "meses_libro_iva": sum(1 for v in liva.values() if v),
             "provisorios": provisorio, "meses_f931": sum(1 for v in f931.values() if v),
             "meses_sifere": sum(1 for v in sif.values() if v), "faltas": faltas}
+
+
+# ================================================================ Resumen mensual + Estado de resultados (24/11/2026)
+def _per_txt(p):
+    a, m = p.split("-")
+    return f"{MESES[int(m) - 1].capitalize()}-{a}"
+
+
+def mail_cliente(nombre: str, desde: str, hasta: str, resultado: float | None, ventas: float | None) -> str:
+    """Mail modelo para mandarle el informe al cliente (pedido de Tomás, 24/11/2026). Texto para copiar y pegar."""
+    per = f"{_per_txt(desde)} a {_per_txt(hasta)}" if desde and hasta else "el período"
+    pesos = lambda x: ("$ " + f"{abs(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")) if x is not None else "—"
+    if resultado is None:
+        cuerpo = ("Todavía faltan datos de algunos meses para sacar una conclusión; en cuanto estén completos les "
+                  "mandamos la versión final.")
+    elif resultado >= 0:
+        cuerpo = (f"En el período el resultado operativo da positivo: {pesos(resultado)}. Con los datos declarados, "
+                  "la relación entre lo que la empresa vende y lo que gasta es razonable.")
+    else:
+        cuerpo = (f"En el período el resultado operativo da NEGATIVO: una pérdida de {pesos(resultado)}. Es decir, la "
+                  "empresa compró y pagó sueldos, cargas sociales e Ingresos Brutos por más de lo que facturó.\n\n"
+                  "Esa diferencia tiene que estar justificada con fondos de origen genuino y documentado, por ejemplo:\n"
+                  "  • préstamos tomados en blanco (bancarios o de terceros, con contrato y movimiento bancario);\n"
+                  "  • créditos o saldos pendientes con proveedores (compras todavía no pagadas);\n"
+                  "  • mercadería que quedó en stock (compras que todavía no se vendieron).\n\n"
+                  "Si la diferencia no se puede justificar de alguna de esas formas, tiene que ser facturada: para ARCA "
+                  "una empresa que gasta sistemáticamente más de lo que vende tiene ventas sin facturar, y es lo primero "
+                  "que mira en una fiscalización (la relación débito/crédito).\n\n"
+                  "Les pedimos que nos manden el detalle de préstamos, deudas con proveedores y el stock de mercadería "
+                  "a la fecha, así lo analizamos juntos.")
+    return (f"Asunto: {nombre} – Resumen mensual y estado de resultados ({per})\n\n"
+            "Hola, ¿cómo están?\n\n"
+            f"Les mandamos el resumen de {nombre} de {per}, armado con lo declarado ante ARCA: ventas y compras del "
+            "Libro IVA (Portal IVA), sueldos y cargas sociales del F.931 e Ingresos Brutos de las declaraciones "
+            "juradas presentadas. El archivo tiene tres hojas:\n"
+            "  • Estado de resultados: ventas, compras, sueldos, cargas sociales e Ingresos Brutos de cada mes, y el "
+            "resultado.\n"
+            "  • Resumen mensual: el detalle mes por mes (neto, IVA, otros tributos, empleados, IIBB por jurisdicción).\n"
+            "  • Notas: de dónde sale cada número y qué no incluye.\n\n"
+            f"{cuerpo}\n\n"
+            f"Ventas netas del período: {pesos(ventas)}.\n"
+            "Es un cálculo sobre lo declarado: no incluye variación de existencias, amortizaciones, impuesto al cheque "
+            "ni Ganancias.\n\n"
+            "Cualquier duda nos consultan.\n\nSaludos,")
+
+
+def _resumen_mensual(wb, cuit, nombre, periodos, liva, f931, sif, arba, jurs, sin_desglose, bcmc, alta_cm, tiene_sifere):
+    meses = [p for p in periodos if liva.get(p) or f931.get(p)]
+    V = lambda p, k: ((liva.get(p) or {}).get("ventas") or {}).get(k) if liva.get(p) else None
+    C = lambda p, k: ((liva.get(p) or {}).get("compras") or {}).get(k) if liva.get(p) else None
+    F = lambda p, k: (f931.get(p) or {}).get(k) if f931.get(p) else None
+    sm = lambda *xs: None if all(x is None for x in xs) else round(sum(x or 0 for x in xs), 2)
+    col_iibb = (["ARBA (local)"] if any(arba.values()) else []) + [f"{JUR.get(j, j)}" for j in jurs]
+    cols = ["Período", "Ventas – Neto gravado", "Ventas – No grav./Exento", "Ventas – IVA DF", "Ventas – Otros tributos",
+            "Ventas – Total", "Compras – Neto gravado", "Compras – No grav./Exento",
+            "Compras – Sin crédito fiscal (Fact. C)", "Compras – Imp. combustibles / internos", "Compras – IVA CF",
+            "Compras – Percepciones / otros tributos", "Compras – Total", "Sueldos (F.931, con no remunerativos)",
+            "Cargas sociales (contrib. + ART + SCVO)", "Aportes personales (S.S. + O.S.)", "Empleados",
+            "IIBB – Impuesto determinado (DDJJ)"] + [f"IIBB – {x}" for x in col_iibb]
+    ws = wb.create_sheet("Resumen mensual", 0)
+    for j, t in enumerate(cols, 1):
+        c = ws.cell(1, j, t)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = _fill(AZUL)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[1].height = 48
+    n_iibb0 = 19                                            # columna S: primera jurisdicción
+    sin_dj = []
+    for i, p in enumerate(meses, 2):
+        fila = [_per_txt(p),
+                V(p, "Neto gravado total"), sm(V(p, "No gravado"), V(p, "Exento"), sin_desglose(p)),
+                V(p, "Total IVA"), V(p, "Otros tributos / percepciones"), f"=SUM(B{i}:E{i})",
+                C(p, "Neto gravado total"), sm(C(p, "No gravado"), C(p, "Exento")),
+                sm(C(p, "Comprobantes B/C (sin IVA discriminado)"), (bcmc.get(p) or 0.0) if liva.get(p) else None),
+                C(p, "Impuesto a los combustibles"), C(p, "Total IVA"), C(p, "Otros tributos / percepciones"),
+                f"=SUM(G{i}:L{i})",
+                (F(p, "Remuneración total (con no remunerativos)") if F(p, "Remuneración total (con no remunerativos)")
+                 is not None else F(p, "Remuneración total (Rem. 1)")),
+                sm(F(p, "Contribuciones S.S. (subtotal)"), F(p, "Contribuciones O.S. (subtotal)"), F(p, "ART (L.R.T. total)"),
+                   F(p, "Seguro de vida obligatorio"), F(p, "RENATRE")),
+                sm(F(p, "Aportes S.S. (a1)"), F(p, "Aportes O.S. (a1)")), F(p, "Empleados")]
+        jur_vals = ([(arba.get(p) or {}).get("impuesto_determinado") if arba.get(p) else None] if any(arba.values()) else [])
+        jur_vals += [((sif.get(p) or {}).get("jurisdicciones", {}).get(j_) or {}).get("determinado") if sif.get(p) else None
+                     for j_ in jurs]
+        hay_dj = any(v is not None for v in jur_vals)
+        if col_iibb and hay_dj:
+            fila.append(f"=SUM({get_column_letter(n_iibb0)}{i}:{get_column_letter(n_iibb0 + len(col_iibb) - 1)}{i})")
+        elif alta_cm and p < alta_cm:
+            fila.append("Local s/dato")
+        else:
+            fila.append("Sin DDJJ")
+            sin_dj.append(p)
+        fila += jur_vals
+        for j, v in enumerate(fila, 1):
+            c = ws.cell(i, j, v)
+            if j > 1 and j != 17:
+                c.number_format = NUM
+            if isinstance(v, str) and not v.startswith("="):
+                c.alignment = Alignment(horizontal="center")
+                if j > 1:
+                    c.fill = _fill(AMARILLO)
+                    c.font = Font(italic=True)
+        for j, falta in ((2, not liva.get(p)), (14, not f931.get(p))):    # mes sin Libro IVA o sin F.931: amarillo
+            if falta:
+                for jj in (range(2, 14) if j == 2 else range(14, 18)):
+                    ws.cell(i, jj).fill = _fill(AMARILLO)
+    tot = len(meses) + 2
+    ws.cell(tot, 1, "Total").font = Font(bold=True)
+    for j in range(2, len(cols) + 1):
+        L = get_column_letter(j)
+        c = ws.cell(tot, j, f"=SUM({L}2:{L}{tot - 1})" if j != 17 else None)
+        c.number_format = NUM
+        c.font = Font(bold=True)
+        c.fill = _fill(GRIS)
+    ws.cell(tot, 1).fill = _fill(GRIS)
+    ws.freeze_panes = "B2"
+    ws.column_dimensions["A"].width = 12
+    for j in range(2, len(cols) + 1):
+        ws.column_dimensions[get_column_letter(j)].width = 17
+    ws.column_dimensions["Q"].width = 11
+
+    # ---- Estado de resultados (solo meses reales, sin proyectar)
+    er = wb.create_sheet("Estado de resultados", 0)
+    er["A1"] = f"ESTADO DE RESULTADOS — {nombre} — CUIT {cuit[:2]}-{cuit[2:10]}-{cuit[10]}"
+    er["A1"].font = Font(bold=True, size=13)
+    er["A2"] = (f"{_per_txt(meses[0])} a {_per_txt(meses[-1])} · Ventas y compras: Libro IVA (Portal IVA) · Sueldos: F.931 · "
+                "IIBB: DDJJ presentadas" if meses else "Sin datos de Libro IVA ni de F.931 todavía")
+    er["A2"].font = Font(color="595959")
+    er.cell(4, 1, "Concepto")
+    for j, p in enumerate(meses, 2):
+        er.cell(4, j, _per_txt(p))
+    nt = len(meses) + 2
+    er.cell(4, nt, "Total")
+    for j in range(1, nt + 1):
+        c = er.cell(4, j)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = _fill(AZUL if j in (1, nt) else AZUL_MES)
+        c.alignment = Alignment(horizontal="center")
+    R = "'Resumen mensual'!"
+    renglones = [("Ventas netas (neto gravado + no gravado / exento)", lambda r: f"={R}B{r}+{R}C{r}", NUM, True),
+                 ("Compras netas (neto + no gravado / exento + sin CF + combustibles)",
+                  lambda r: f"={R}G{r}+{R}H{r}+{R}I{r}+{R}J{r}", NUM, False),
+                 ("RESULTADO BRUTO", None, NUM, True), ("Margen bruto", None, "0.00%;[Red]\\-0.00%", False),
+                 ("Sueldos (F.931)", lambda r: f"={R}N{r}", NUM, False),
+                 ("Cargas sociales", lambda r: f"={R}O{r}", NUM, False),
+                 ("Ingresos Brutos (DDJJ presentadas)", lambda r: f"=N({R}R{r})", NUM, False),
+                 ("RESULTADO OPERATIVO", None, NUM, True), ("Margen operativo", None, "0.00%;[Red]\\-0.00%", False)]
+    for k, (tit, fn, fmt, neg) in enumerate(renglones):
+        r = 5 + k
+        er.cell(r, 1, tit).font = Font(bold=tit.isupper())
+        for j in range(2, nt + 1):
+            L = get_column_letter(j)
+            if j == nt:                                   # columna Total
+                v = (f"=IF({L}5=0,\"\",{L}7/{L}5)" if k == 3 else f"=IF({L}5=0,\"\",{L}12/{L}5)" if k == 8
+                     else f"=SUM(B{r}:{get_column_letter(nt - 1)}{r})")
+            elif fn:
+                v = fn(j)                                 # fila j del Resumen = mes j-1 (fila 2 en adelante)
+            else:
+                v = {2: f"={L}5-{L}6", 3: f"=IF({L}5=0,\"\",{L}7/{L}5)", 7: f"={L}7-{L}9-{L}10-{L}11",
+                     8: f"=IF({L}5=0,\"\",{L}12/{L}5)"}[k]
+            c = er.cell(r, j, v)
+            c.number_format = fmt
+            if tit.isupper():
+                c.font = Font(bold=True)
+                c.fill = _fill(GRIS)
+        if tit.isupper():
+            er.cell(r, 1).fill = _fill(GRIS)
+    from openpyxl.formatting.rule import CellIsRule
+    for r in (7, 12):
+        er.conditional_formatting.add(f"B{r}:{get_column_letter(nt)}{r}",
+                                      CellIsRule(operator="lessThan", formula=["0"], fill=_fill(ROSA), font=Font(bold=True, color="9C0006")))
+    notas_er = ["Solo meses reales (no se proyecta). Como costo se toman las compras del mes, SIN variación de existencias: "
+                "si la empresa acumuló o vendió stock, el resultado no es el contable.",
+                "No incluye amortizaciones, impuesto a los débitos y créditos, Ganancias ni gastos sin comprobante.",
+                "Si el resultado operativo da negativo, la diferencia tiene que estar justificada (préstamos tomados en "
+                "blanco, créditos de proveedores o stock); si no, para ARCA son ventas sin facturar."]
+    for i, t in enumerate(notas_er):
+        er.cell(15 + i, 1, t).font = Font(color="595959", italic=True)
+    er.column_dimensions["A"].width = 58
+    for j in range(2, nt + 1):
+        er.column_dimensions[get_column_letter(j)].width = 15
+    er.freeze_panes = "B5"
+
+    # ---- Notas
+    nw = wb.create_sheet("Notas", 2)
+    nw["A1"] = "Notas sobre el resumen"
+    nw["A1"].font = Font(bold=True, size=12)
+    notas = ["1. Ventas y compras: Libro IVA de las DDJJ de IVA presentadas (Portal IVA), mes a mes. Mis Comprobantes no se usa: "
+             "un mes sin DDJJ de IVA presentada queda en amarillo y vacío.",
+             "2. Notas de crédito restadas. Despachos de importación, servicios públicos y tiques: incluidos tal como figuran en el Libro IVA.",
+             "3. Compras sin crédito fiscal: Facturas C recibidas (por el total). Las Facturas B de compra NO se toman nunca "
+             "(no son computables fiscalmente).",
+             "4. Otros tributos: percepciones y retenciones (no son costo; en el estado de resultados no entran). El impuesto a "
+             "los combustibles e internos va aparte y sí es costo.",
+             "5. Sueldos: remuneración total del F.931 (Suma de Rem. 1 más los conceptos no remunerativos). Incluye los aportes "
+             "personales, que se muestran aparte solo como dato.",
+             "6. Cargas sociales: contribuciones de seguridad social y de obra social + ART (L.R.T.) + seguro de vida obligatorio "
+             "+ RENATRE, del F.931.",
+             "7. Ingresos Brutos: impuesto determinado SOLO según las DDJJ presentadas (CM03 de Convenio Multilateral por "
+             "jurisdicción y DDJJ de ARBA como local). No se estima ni se presume: un mes sin DDJJ dice 'Sin DDJJ' y no suma; "
+             "'Local s/dato' es un mes anterior al alta en Convenio cuya DDJJ local no se leyó.",
+             "8. Amarillo: falta una fuente del mes (Libro IVA, F.931 o DDJJ de IIBB).",
+             "9. La hoja 'Relación DC' tiene el cuadro de siempre (erogaciones, saldo, índices y margen). La conciliación "
+             "con Mis Comprobantes está en la planilla aparte 'Conciliación de compras'."]
+    if sin_dj:
+        notas.append("10. Meses sin DDJJ de Ingresos Brutos: " + ", ".join(_per_txt(p) for p in sin_dj) + ".")
+    for i, t in enumerate(notas, 3):
+        c = nw.cell(i, 1, t)
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+    nw.column_dimensions["A"].width = 130
+
+    # ---- Mail modelo para el cliente (para copiar y pegar)
+    ventas = round(sum((V(p, "Neto gravado total") or 0) + (V(p, "No gravado") or 0) + (V(p, "Exento") or 0)
+                       + (sin_desglose(p) or 0) for p in meses if liva.get(p)), 2) if meses else None
+    compras = sum((C(p, "Neto gravado total") or 0) + (C(p, "No gravado") or 0) + (C(p, "Exento") or 0)
+                  + (C(p, "Comprobantes B/C (sin IVA discriminado)") or 0) + ((bcmc.get(p) or 0) if liva.get(p) else 0)
+                  + (C(p, "Impuesto a los combustibles") or 0) for p in meses)
+    rem = lambda p: (F(p, "Remuneración total (con no remunerativos)") or F(p, "Remuneración total (Rem. 1)") or 0)
+    cs = lambda p: sum(F(p, k) or 0 for k in ("Contribuciones S.S. (subtotal)", "Contribuciones O.S. (subtotal)",
+                                             "ART (L.R.T. total)", "Seguro de vida obligatorio", "RENATRE"))
+    iibb = sum(((arba.get(p) or {}).get("impuesto_determinado") or 0)
+               + sum((((sif.get(p) or {}).get("jurisdicciones", {}).get(j_) or {}).get("determinado") or 0) for j_ in jurs)
+               for p in meses)
+    completo = meses and all(liva.get(p) for p in meses)
+    resultado = round(ventas - compras - sum(rem(p) + cs(p) for p in meses) - iibb, 2) if completo else None
+    texto = mail_cliente(nombre, meses[0] if meses else "", meses[-1] if meses else "", resultado, ventas)
+    mw = wb.create_sheet("Mail para el cliente")
+    mw["A1"] = "Mail modelo para mandar con este archivo (copiar y pegar; revisar antes de enviar)"
+    mw["A1"].font = Font(bold=True, size=12)
+    for i, linea in enumerate(texto.split("\n"), 3):
+        mw.cell(i, 1, linea)
+    mw.column_dimensions["A"].width = 120
+    for h in (er, ws):                                 # impresión: apaisado, todo el ancho en una hoja
+        h.page_setup.orientation = "landscape"
+        h.sheet_properties.pageSetUpPr.fitToPage = True
+        h.page_setup.fitToWidth = 1
+        h.page_setup.fitToHeight = 0
+    wb.active = 0
+    return texto
 
 
 # ================================================================ Situación fiscal

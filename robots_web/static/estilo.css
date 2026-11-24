@@ -237,3 +237,4 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 /* fallas de la última corrida en los botones de la ficha (22/11/2026) */
 .boton-ficha .sub.falla{color:#b42318;font-size:.78em;margin-top:2px}
 .tabla.chica td{font-size:.85em}
+.mail-modelo{width:100%;font:14px/1.5 system-ui,sans-serif;padding:12px;border:1px solid var(--borde);border-radius:12px;background:#fff;white-space:pre-wrap}

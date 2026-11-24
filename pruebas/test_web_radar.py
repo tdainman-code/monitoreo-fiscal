@@ -626,6 +626,10 @@ ok(_pv and len(_pv[0]["conceptos"]) == min(2, len(_vals)) and _pv[0]["medio"] ==
 for n in os.listdir(os.path.join(BANDEJA, "pedidos")):
     if n.endswith(".json") and json.load(open(os.path.join(BANDEJA, "pedidos", n))).get("robot") == "vep_deuda":
         os.remove(os.path.join(BANDEJA, "pedidos", n))
+# mail modelo para el cliente en Relación débito crédito (24/11/2026)
+open(f"{D}/{C2}/mail_relacion_dc.txt", "w", encoding="utf-8").write("Asunto: Prueba – Resumen\n\nHola, ¿cómo están?")
+_rl = cl.get(f"/cliente/{C2}/relacion").text
+ok("Mail para el cliente" in _rl and "Copiar el mail" in _rl and "Asunto: Prueba" in _rl, "relación D/C: mail modelo con botón Copiar")
 # informes Excel: solo el último de cada uno (20/11/2026)
 for _f in ("2026-10-01", "2026-11-01"):
     os.makedirs(f"{R}/informes/{_f}", exist_ok=True)

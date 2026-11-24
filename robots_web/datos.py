@@ -464,6 +464,11 @@ def ficha(cuit: str) -> dict:
     s["deudas_por_vencer"] = [d for d in deudas_ if not d.get("vencida") and (d.get("total") or 0) > 0]
     n_obl = len(s["deudas_vencidas"])
     s["veps_deuda"] = veps_deuda(cuit)
+    try:                                    # mail modelo que arma el informe de relación D/C (24/11/2026)
+        with open(os.path.join(base, "mail_relacion_dc.txt"), encoding="utf-8") as f_:
+            s["mail_cliente"] = f_.read()
+    except OSError:
+        s["mail_cliente"] = ""
     # 20/11/2026 (Benavidez): si Cuentas Tributarias no se pudo leer, no decir "sin datos" cuando hay deuda conocida
     # por otras consultas (autónomos/monotributo de CCMA, estado de cumplimiento).
     otras = []
