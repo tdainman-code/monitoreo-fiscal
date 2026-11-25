@@ -250,3 +250,6 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .estado-bib.pendiente{background:#fffbeb}.estado-bib.error{background:#fef2f2}
 .mes-bib{margin:18px 0}.mes-bib h2 .boton{margin-left:10px;vertical-align:middle}
 .tabla.revisiones tr.hecho td{opacity:.6}.tabla.revisiones input[type=text]{padding:5px 8px;border:1px solid var(--borde);border-radius:8px;width:180px}
+.baja-x{display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:8px;color:var(--rojo);text-decoration:none;font-weight:700}
+.baja-x:hover{background:#fef2f2}button.peligro{background:var(--rojo)}
+.form-datos label{display:flex;flex-direction:column;gap:4px;margin:8px 0;font-size:13px}.form-datos input{padding:8px 10px;border:1px solid var(--borde);border-radius:8px;font:inherit;max-width:420px}

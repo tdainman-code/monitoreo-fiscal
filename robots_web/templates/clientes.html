@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block titulo %}Clientes{% endblock %}
+{% block cuerpo %}
+<div class="cabecera">
+  <div><h1>Clientes</h1><div class="sutil">{{ filas|length }} cliente(s) cargados{% if es_admin %} · la ✕ da de baja al cliente (pide confirmación){% endif %}</div></div>
+  <a class="boton" href="{{ url_for('cliente_nuevo') }}">＋ Nuevo cliente</a>
+</div>
+<div class="buscar-grande" style="margin:12px 0"><input id="c-buscar" type="search" placeholder="🔍  Buscar por nombre, CUIT o encargado…" autocomplete="off"></div>
+<div class="panel">
+<table class="tabla" id="c-tabla"><thead><tr><th>Cliente</th><th>CUIT</th><th>Condición IVA</th><th>Encargado</th><th>Equipo</th><th>Clave ARCA</th>{% if es_admin %}<th></th>{% endif %}</tr></thead><tbody>
+{% for c in filas %}<tr data-buscar="{{ ((c.razon_social or '') ~ ' ' ~ c.cuit ~ ' ' ~ cuit_fmt(c.cuit) ~ ' ' ~ c.encargado ~ ' ' ~ c.equipo)|lower }}">
+  <td><a href="{{ url_for('cliente', cuit=c.cuit) }}"><b>{{ c.razon_social or '(sin nombre)' }}</b></a></td>
+  <td data-l="CUIT">{{ cuit_fmt(c.cuit) }}</td>
+  <td data-l="Condición IVA">{{ c.condicion or '—' }}</td>
+  <td data-l="Encargado">{{ c.encargado or '—' }}</td>
+  <td data-l="Equipo" class="sutil">{{ c.equipo or '—' }}</td>
+  <td data-l="Clave ARCA" class="{{ 'txt-rojo' if c.clave in ('Clave inválida', 'Requiere intervención', 'sin clave') }}">{{ c.clave or '—' }}</td>
+  {% if es_admin %}<td><a class="baja-x" href="{{ url_for('baja_cliente', cuit=c.cuit) }}" title="Dar de baja a {{ c.razon_social or c.cuit }}">✕</a></td>{% endif %}
+</tr>{% endfor %}
+<tr id="c-vacio" hidden><td colspan="7" class="sutil">No hay clientes que coincidan.</td></tr>
+</tbody></table></div>
+<script>
+(function () {
+  const filas = [...document.querySelectorAll('#c-tabla tbody tr[data-buscar]')], b = document.getElementById('c-buscar');
+  b.addEventListener('input', () => { const q = b.value.trim().toLowerCase().replace(/[-.\s]/g, ''); let n = 0;
+    filas.forEach(r => { const ok = !q || r.dataset.buscar.replace(/[-.\s]/g, '').includes(q); r.hidden = !ok; if (ok) n++; });
+    document.getElementById('c-vacio').hidden = n > 0; });
+  if (window.innerWidth > 700) b.focus();
+})();
+</script>
+{% endblock %}

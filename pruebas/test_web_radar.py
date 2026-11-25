@@ -808,6 +808,21 @@ _pg = _cg.get("/revisiones").text
 ok("Revisiones diarias" in _pg and "Revisados en el mes" in _pg, "revisiones: bandeja de Guido")
 _ra = cl2.get("/revisiones").text
 ok("Ver las de:" in _ra and "Resumen de todos" in _ra and "Atrasados" in _ra, "revisiones: el admin ve el resumen de todos y elige de quién ver")
+# Clientes: listado y baja desde la web (25/11/2026)
+_lc = cl2.get("/clientes").text
+ok("BH SOLUCIONES" in _lc and "baja-x" in _lc and "c-buscar" in _lc, "clientes: listado completo con la ✕ para el admin")
+ok("baja-x" not in cl.get("/clientes").text and cl.get(f"/clientes/baja/{C3}").status_code == 403, "clientes: solo el admin da de baja")
+_bp = cl2.get(f"/clientes/baja/{C3}").text
+ok("no se puede deshacer" in _bp and "escribí el CUIT" in _bp, "baja: pide confirmación escribiendo el CUIT")
+_r = cl2.post(f"/clientes/baja/{C3}", data={"csrf": token(_bp), "confirmo": "123"}, follow_redirects=True)
+ok("tenés que escribir el CUIT" in _r.text and C3 in [c["cuit"] for c in datos.lista_clientes()], "baja: CUIT mal escrito no da de baja")
+_antes = set(os.listdir(BANDEJA))
+_r = cl2.post(f"/clientes/baja/{C3}", data={"csrf": token(_bp), "confirmo": C3}, follow_redirects=True)
+_sb = [json.load(open(os.path.join(BANDEJA, n))) for n in set(os.listdir(BANDEJA)) - _antes if n.endswith(".json")]
+ok("dado de baja" in _r.text and _sb and _sb[0]["tipo"] == "baja" and _sb[0]["cuit"] == C3
+   and C3 not in [c["cuit"] for c in datos.lista_clientes()], "baja: va al robot y el cliente desaparece de la web enseguida")
+for _n in set(os.listdir(BANDEJA)) - _antes:
+    os.remove(os.path.join(BANDEJA, _n))
 # Biblioteca de importables (especificación de Gaby, 25/11/2026)
 from robots_web import biblioteca as _bib  # noqa: E402
 _pa = _bib.periodo_anterior()

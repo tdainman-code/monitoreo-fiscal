@@ -73,6 +73,37 @@ def encolar(cuit: str, razon_social: str, organismo: str, usuario: str, clave: s
     return sobre["id"]
 
 
+def encolar_baja(cuit: str, razon_social: str, por: str) -> None:
+    """Baja de un cliente (25/11/2026, solo administradores): el robot borra sus claves y su ficha, descarta sus sobres
+    pendientes y guarda aparte lo ya bajado (robots/bajas.py). Lo aplica la bandeja en pocos minutos."""
+    if not cuit_valido(cuit):
+        raise ErrorClaves("El CUIT no es válido")
+    os.makedirs(BANDEJA, exist_ok=True)
+    sobre = {"v": 1, "tipo": "baja", "id": uuid.uuid4().hex, "fecha": dt.datetime.now().isoformat(timespec="seconds"),
+             "por": por, "cuit": cuit, "razon_social": razon_social.strip()[:120]}
+    ruta = os.path.join(BANDEJA, f"{sobre['fecha'].replace(':', '')}_{sobre['id'][:8]}.json")
+    with open(ruta + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(sobre, f)
+    os.replace(ruta + ".tmp", ruta)
+
+
+def bajas_pendientes() -> set[str]:
+    out = set()
+    try:
+        for n in os.listdir(BANDEJA):
+            if n.endswith(".json"):
+                try:
+                    with open(os.path.join(BANDEJA, n), encoding="utf-8") as f:
+                        s = json.load(f)
+                    if s.get("tipo") == "baja":
+                        out.add(s.get("cuit", ""))
+                except (OSError, ValueError):
+                    pass
+    except OSError:
+        pass
+    return out
+
+
 def encolar_razon_social(cuit: str, razon_social: str, por: str) -> None:
     """Corrige la razón social en el almacén del robot (sin clave). Lo aplica la bandeja en pocos minutos."""
     if not cuit_valido(cuit):

@@ -374,6 +374,14 @@ def procesar_bandeja(verificar: bool = True) -> dict:
             with open(ruta, encoding="utf-8") as f:
                 s = json.load(f)
             cuit = _limpiar_cuit(s["cuit"])
+            if s.get("tipo") == "baja":                  # baja del cliente pedida desde la web (solo admin, 25/11/2026)
+                from . import bajas
+                res = bajas.dar_de_baja([cuit])
+                os.remove(ruta)
+                r["aplicados"] += 1
+                hechos.append({"fecha": _ahora(), "cuit": cuit, "organismo": "-", "estado": "baja",
+                               "motivo": f"cliente dado de baja por {s.get('por', '?')} ({res.get('claves', 0)} claves borradas)"})
+                continue
             if s.get("tipo") == "razon_social":          # corrección de datos desde la web (solo admin, 20/11/2026)
                 with closing(conectar()) as con:
                     ex = con.execute("SELECT datos FROM clientes WHERE cuit=?", (cuit,)).fetchone()

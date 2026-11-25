@@ -936,6 +936,44 @@ def alertas():
                            nombres=nombres, sin_nadie=sin_nadie)
 
 
+# ---------------------------------------------------------------- Clientes: listado completo y bajas (25/11/2026)
+@app.route("/clientes")
+@requiere_login
+def listado_clientes():
+    nombres = {u[0]: (u[1] or u[0]) for u in usuarios.listar()}
+    filas = []
+    for c in sorted(datos.lista_clientes(_solo()), key=lambda x: (x.get("razon_social") or x["cuit"]).upper()):
+        dc = usuarios.datos_cliente(c["cuit"]) or {}
+        arca = next((a for a in c.get("accesos") or [] if a.get("organismo") == "ARCA"), {})
+        filas.append({**c, "condicion": dc.get("condicion_iva") or "", "encargado": nombres.get(dc.get("encargado") or "", dc.get("encargado") or ""),
+                      "equipo": ", ".join(nombres.get(x.strip(), x.strip()) for x in str(dc.get("equipo") or "").split(",") if x.strip()),
+                      "clave": arca.get("estado") or ("sin clave" if not arca else "")})
+    return render_template("clientes.html", filas=filas, es_admin=session.get("rol") == "admin")
+
+
+@app.route("/clientes/baja/<cuit>", methods=["GET", "POST"])
+@requiere_login
+def baja_cliente(cuit):
+    if session.get("rol") != "admin":
+        abort(403)
+    info = _cliente_info(cuit)
+    nombre = info.get("razon_social") or datos.cuit_fmt(cuit)
+    if request.method == "POST":
+        _controlar_csrf()
+        if request.form.get("confirmo") != cuit:
+            flash("Para dar de baja tenés que escribir el CUIT del cliente (sin guiones)", "error")
+            return redirect(url_for("baja_cliente", cuit=cuit))
+        try:
+            claves.encolar_baja(cuit, nombre, session["usuario"])
+        except claves.ErrorClaves as e:
+            flash(str(e), "error")
+            return redirect(url_for("listado_clientes"))
+        usuarios.borrar_cliente(cuit, session["usuario"])
+        flash(f"{nombre} dado de baja. El robot borra sus claves en unos minutos; lo que ya había bajado queda guardado aparte.", "ok")
+        return redirect(url_for("listado_clientes"))
+    return render_template("baja_cliente.html", c=info, nombre=nombre)
+
+
 # ---------------------------------------------------------------- Revisiones diarias (Tomás, 25/11/2026)
 @app.route("/revisiones", methods=["GET", "POST"])
 @requiere_login

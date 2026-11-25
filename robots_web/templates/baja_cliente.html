@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block titulo %}Dar de baja · {{ nombre }}{% endblock %}
+{% block cuerpo %}
+<p><a href="{{ url_for('listado_clientes') }}">← Clientes</a></p>
+<h1>Dar de baja a {{ nombre }}</h1>
+<div class="aviso error">
+  <p><b>Esto no se puede deshacer desde la web.</b> Al dar de baja a {{ nombre }} (CUIT {{ cuit_fmt(c.cuit) }}):</p>
+  <ul>
+    <li>se borran sus <b>claves</b> (ARCA, ARBA, AGIP) y su ficha en el robot, y ya no entra en ninguna corrida;</li>
+    <li>se borran sus datos en la web: encargado, equipo, mails, teléfonos y alertas descartadas;</li>
+    <li>lo que el robot ya había bajado (informes, Libro IVA, etc.) <b>no se borra</b>: queda guardado aparte en el servidor.</li>
+  </ul>
+  <p>Para volver a tenerlo hay que cargarlo de nuevo, con sus claves.</p>
+</div>
+<form method="post" class="form-datos">
+  <input type="hidden" name="csrf" value="{{ csrf() }}">
+  <label>Para confirmar, escribí el CUIT sin guiones ({{ c.cuit }})<input name="confirmo" autocomplete="off" inputmode="numeric" required></label>
+  <button class="peligro">✕ Dar de baja</button> <a href="{{ url_for('listado_clientes') }}">Cancelar</a>
+</form>
+{% endblock %}

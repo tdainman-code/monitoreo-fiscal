@@ -55,5 +55,12 @@ chk("datos e informes guardados aparte", not os.path.exists(os.path.join(os.envi
 chk("sale de los grupos y de los pausados", list(json.load(open(correr.GRUPOS))) == [QUEDA] and correr.pausados() == {QUEDA})
 pub = json.load(open(os.path.join(os.environ["ROBOTS_PUBLICO"], "clientes.json")))
 chk("la lista publicada para la web ya no lo tiene", [c["cuit"] for c in pub] == [QUEDA])
+# baja pedida desde la web: sobre tipo "baja" en la bandeja
+json.dump({"v": 1, "tipo": "baja", "id": "abc", "cuit": QUEDA, "por": "tomas"}, open(os.path.join(os.environ["ROBOTS_BANDEJA"], "z_baja.json"), "w"))
+os.remove(os.path.join(os.environ["ROBOTS_BANDEJA"], f"s_{QUEDA}.json"))
+alm.procesar_bandeja(verificar=False)
+with alm.conectar() as con:
+    chk("bandeja: el sobre de baja borra las claves del cliente", con.execute("SELECT COUNT(*) FROM accesos").fetchone()[0] == 0)
+chk("bandeja: el sobre de baja se consume", not os.path.exists(os.path.join(os.environ["ROBOTS_BANDEJA"], "z_baja.json")))
 print("OK" if ok else "FALLÓ")
 sys.exit(0 if ok else 1)

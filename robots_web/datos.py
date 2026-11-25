@@ -70,6 +70,9 @@ def _lista_clientes() -> list[dict]:
         for p in claves.pendientes():
             if p["cuit"] not in {c["cuit"] for c in pub}:
                 pub.append({"cuit": p["cuit"], "razon_social": p.get("razon_social") or ""})
+        bajas = claves.bajas_pendientes()                  # dados de baja desde la web: desaparecen ya (25/11/2026)
+        if bajas:
+            pub = [c for c in pub if c["cuit"] not in bajas]
     except Exception:
         pass
     return pub
