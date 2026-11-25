@@ -27,7 +27,7 @@
     {% if k == 'ARCA' %}<label>Usuario, solo si ingresa con otro CUIT<input name="u_ARCA" inputmode="numeric" autocomplete="off" placeholder="si no completás, se usa el CUIT del cliente"></label>{% endif %}
     {% if k == 'AGIP' %}{% set ua = (c.accesos or [])|selectattr('organismo', 'equalto', 'AGIP')|selectattr('detalle', 'equalto', '')|map(attribute='usuario')|first %}
     <p class="sutil"><b>Clave Ciudad (ingreso viejo: «Accedé con Clave Ciudad»)</b></p>
-    <label>CUIT del administrador de relaciones (representante, persona física){% if ua and ua != c.cuit %} · hoy: {{ cuit_fmt(ua) }}{% endif %}<input name="u_AGIP" inputmode="numeric" autocomplete="off" placeholder="{{ 'dejar vacío para mantener ' ~ cuit_fmt(ua) if ua and ua != c.cuit else 'CUIT de la persona física: el de la sociedad no entra' }}"></label>{% endif %}
+    <label>CUIT del administrador de relaciones (representante, persona física){% if ua and ua != c.cuit %} · hoy: {{ cuit_fmt(ua) }}{% endif %}<input name="u_AGIP" inputmode="numeric" autocomplete="off" placeholder="{{ 'dejar vacío para mantener ' ~ cuit_fmt(ua) if ua and ua != c.cuit else 'si queda vacío, se usa el mismo CUIT que en ARCA' }}"></label>{% endif %}
     <label>Clave<input class="clave-vis" name="k_{{ k }}" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="100" data-lpignore="true" data-1p-ignore="true"></label>
     {% if k == 'AGIP' %}{% set um = (c.accesos or [])|selectattr('organismo', 'equalto', 'AGIP')|selectattr('detalle', 'equalto', 'miba')|map(attribute='usuario')|first %}
     <p class="sutil"><b>Cuenta miBA</b> (se usa si la Clave Ciudad no entra){% if um %} · hoy: {{ um }}{% endif %}</p>

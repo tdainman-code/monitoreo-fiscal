@@ -300,6 +300,15 @@ def claves_agip(cuit: str, motivo: str):
         u, c, _ = alm.obtener_clave(cuit, "AGIP", motivo=motivo)
     except alm.ErrorAlmacen:
         u = c = ""
+    if u and u == cuit:
+        # Gaby (25/11/2026): con Clave Ciudad se entra con el MISMO CUIT con el que se entra a ARCA (el administrador de
+        # relaciones / representante). Las claves de AGIP quedaron cargadas con el CUIT del cliente: se usa el de ARCA.
+        try:
+            ua, _c, _m = alm.obtener_clave(cuit, "ARCA", motivo=motivo + " (usuario de ARCA para AGIP)")
+            if ua and ua != cuit:
+                u = ua
+        except alm.ErrorAlmacen:
+            pass
     try:
         mu, mc, _ = alm.obtener_clave(cuit, "AGIP", motivo=motivo + " (miBA)", detalle="miba")
         miba = (mu, mc)

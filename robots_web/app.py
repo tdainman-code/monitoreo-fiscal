@@ -1528,9 +1528,13 @@ def _procesar_claves(cuit, razon, hay_razon):
         u = "".join(ch for ch in u if ch.isdigit())
         if org == "AGIP" and not u:
             # AGIP (Gaby, 25/11/2026): una persona jurídica entra con el CUIT del REPRESENTANTE (persona física)
-            ant = next((a.get("usuario") for a in (_cliente_info(cuit).get("accesos") or []) if a.get("organismo") == "AGIP"), "")
+            acc = _cliente_info(cuit).get("accesos") or []
+            ant = next((a.get("usuario") for a in acc if a.get("organismo") == "AGIP" and not a.get("detalle")), "")
+            u_arca = next((a.get("usuario") for a in acc if a.get("organismo") == "ARCA"), "")
             if ant and ant != cuit:
                 u = ant                                   # se mantiene el representante ya cargado
+            elif u_arca and u_arca != cuit:
+                u = u_arca                                # Gaby: es el mismo CUIT con el que se entra a ARCA
             elif cuit[:2] in ("30", "33", "34"):
                 err = ("AGIP: para una sociedad hay que completar el CUIT del representante (persona física) con el que "
                        "se entra con Clave Ciudad")
