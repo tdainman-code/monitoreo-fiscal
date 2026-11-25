@@ -345,6 +345,21 @@ def encargados() -> dict:
     return out
 
 
+def borrar_cliente(cuit: str, usuario: str) -> int:
+    """Baja de un cliente en la web (25/11/2026): datos, encargado y equipo, descartes y vistos. La actividad queda."""
+    con = conectar()
+    n = 0
+    with con:
+        for t in ("datos_cliente", "descartes", "descartes_items", "vistos", "informadas"):
+            try:
+                n += con.execute(f"DELETE FROM {t} WHERE cuit=?", (cuit,)).rowcount
+            except sqlite3.OperationalError:
+                pass
+        con.execute("INSERT INTO actividad VALUES (?,?,?,?,?)", (ahora(), usuario, "cliente dado de baja", cuit, ""))
+    con.close()
+    return n
+
+
 def datos_cliente(cuit) -> dict:
     import json as _json
     con = conectar()

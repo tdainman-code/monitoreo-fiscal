@@ -753,6 +753,11 @@ _iv = cl.get(f"/cliente/{C2}/iva").text
 ok("Proyección de IVA" in _iv and "A pagar estimado" in _iv and "no se le manda al cliente" in _iv, "sección IVA: cuadro de proyección")
 _cv = cl.get("/cartera/iva_mes").text
 ok("IVA del mes en curso" in _cv and "a pagar" in _cv and "Total estimado a pagar" in _cv, "cartera: IVA del mes de todos los clientes")
+# baja de clientes en la web (25/11/2026)
+usuarios.guardar_datos_cliente("20999999990", {"encargado": "ana", "emails": "x@x.com"}, "gabriel")
+usuarios.descartar("20999999990", "Deuda vencida", "t", "Otro", "n", "gabriel", "G", [("IVA||201801", 2018)])
+ok(usuarios.borrar_cliente("20999999990", "gabriel") >= 3 and usuarios.datos_cliente("20999999990") == {}
+   and "cliente dado de baja" in cl2.get("/actividad").text, "baja en la web: datos y descartes del cliente, queda en Actividad")
 # Biblioteca de importables (especificación de Gaby, 25/11/2026)
 from robots_web import biblioteca as _bib  # noqa: E402
 _pa = _bib.periodo_anterior()
