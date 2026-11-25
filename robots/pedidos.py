@@ -37,6 +37,7 @@ ROBOTS_PERMITIDOS = {
     "arba_retenciones": "ARBA: retenciones y percepciones (2 últimos meses)",
     "sistema_registral": "Datos registrales ARCA (impuestos inscriptos, importador) → completa la ficha",
     "padron_cm": "Constancia de Convenio Multilateral (Padrón Web COMARB) → régimen y jurisdicciones",
+    "pyme_iva": "IVA a 90 días (F.1272 PyME: pago diferido del IVA)",
     # botones de la pantalla Avisos (cuotas impagas): no entran a ARCA salvo para el VEP
     "aviso_enviar": "Aviso de cuota impaga al cliente",
     "aviso_vep": "Aviso de cuota impaga al cliente + VEP",

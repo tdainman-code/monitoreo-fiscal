@@ -714,6 +714,7 @@ CAMPOS_CLIENTE = {
     "contadores": "Contador/es a cargo", "emails": "Mails del cliente",
     "medios_vep": "Medios de pago del VEP (según sus bancos)",
     "no_corresponde": "Organismos que no le corresponden (no se reclaman claves ni se marcan fallas)",
+    "iva_90_dias": "IVA a 90 días (beneficio PyME de pago diferido)",
     "telefonos": "Teléfonos", "whatsapp": "WhatsApp", "importador": "Importador / exportador (Registro Aduanero)",
     "observaciones": "Observaciones",
 }
@@ -725,6 +726,7 @@ OPCIONES_CLIENTE = {
     "mes_cierre": [""] + ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre",
                           "Octubre", "Noviembre", "Diciembre"],
     "empleador": ["", "Sí", "No", "Casas particulares"],
+    "iva_90_dias": ["", "Sí", "No"],
 }
 
 

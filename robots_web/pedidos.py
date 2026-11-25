@@ -29,6 +29,7 @@ ROBOTS = {
     "arba_retenciones": "ARBA: retenciones y percepciones (2 últimos meses)",
     "sistema_registral": "Datos registrales ARCA (impuestos inscriptos, importador) → completa la ficha",
     "padron_cm": "Constancia de Convenio Multilateral (Padrón Web COMARB) → régimen y jurisdicciones",
+    "pyme_iva": "IVA a 90 días (F.1272 PyME: pago diferido del IVA)",
 }
 MAX_PENDIENTES = 30
 

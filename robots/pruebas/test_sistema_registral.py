@@ -97,5 +97,13 @@ ok(_c["directo"] and not _c["convenio_multilateral"] and rac.resumen_ficha(_c) =
    "constancia ARBA: contribuyente directo -> régimen local Buenos Aires")
 ok(rac.resumen_ficha(rac.leer_campos({"Convenio": "901-123456-7"}, "")) == {"regimen_iibb": "Convenio Multilateral"},
    "constancia ARBA con número de convenio -> Convenio Multilateral")
+# F.1272 PyME: IVA a 90 días (pantalla de Nabajuma, 25/11/2026)
+from robots import robot_pyme_iva as pi  # noqa: E402
+ok(pi.leer_beneficio("¿Solicita el beneficio del Pago del I.V.A. en forma diferida?\tNo") is False
+   and pi.leer_beneficio("¿Solicita el beneficio del Pago del I.V.A. en forma diferida?\n Si") is True
+   and pi.leer_beneficio("nada") is None, "F.1272: lee Sí / No del pago diferido del IVA")
+_fp = pi.filas_presentadas([["Acciones", "30712227571", "0", "F.1272 - PYMES", "2025", "Presentado", "21-04-2025 12:21", ""],
+                            ["Acciones", "30712227571", "0", "F.1272 - PYMES", "2026", "Presentado", "21-04-2026 12:26", ""]], "30712227571")
+ok(_fp[0]["periodo"] == "2026" and _fp[0]["estado"] == "Presentado", "F.1272: toma el período más nuevo")
 print(f"\n{sum(res)}/{len(res)} OK")
 sys.exit(0 if all(res) else 1)

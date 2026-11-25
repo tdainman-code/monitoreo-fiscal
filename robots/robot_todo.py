@@ -21,7 +21,7 @@ import os
 import glob
 from datetime import date, timedelta
 
-from . import arca, robot_agip, robot_ccma, robot_mis_retenciones, robot_sct_historico, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_sistema_registral, robot_padron_cm
+from . import arca, robot_agip, robot_ccma, robot_mis_retenciones, robot_sct_historico, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_sistema_registral, robot_padron_cm, robot_pyme_iva
 from . import robot_situacion_fiscal as rsf
 
 DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
@@ -39,7 +39,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
     rsf.USUARIO_ACTUAL["cuit"], rsf.USUARIO_ACTUAL["cliente"] = usuario, cuit
     sit = {"cuit": cuit, "fecha": hoy.isoformat(), "alertas": [], "archivos": {}, "reingresos": 0}
     avance_mf: dict = {}
-    est = {"mc": {}, "f931": {}, "sifere": {}, "dfe": {}, "arba": {}, "presentadas": {}, "liva": {}, "obs": {}, "arba_dfe": {}, "agip": {}, "fisc": {}, "ccma": {}, "scth": {}, "mret": {}, "sreg": {}, "pcm": {}}
+    est = {"mc": {}, "f931": {}, "sifere": {}, "dfe": {}, "arba": {}, "presentadas": {}, "liva": {}, "obs": {}, "arba_dfe": {}, "agip": {}, "fisc": {}, "ccma": {}, "scth": {}, "mret": {}, "sreg": {}, "pcm": {}, "pyme": {}}
 
     def p_sct(ctx, portal):
         sit["sct"] = rsf.leer_cuentas_tributarias(ctx, portal, cuit, destino, hoy, delegacion)
@@ -60,6 +60,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
              ("mis_retenciones", robot_mis_retenciones.paso(cuit, est["mret"])),
              ("sistema_registral", robot_sistema_registral.paso(cuit, est["sreg"])),   # ficha del cliente (25/11/2026)
              ("padron_cm", robot_padron_cm.paso(cuit, est["pcm"])),                    # constancia CM y jurisdicciones
+             ("pyme_iva", robot_pyme_iva.paso(cuit, est["pyme"])),                     # IVA a 90 días (F.1272)
              ("observados", robot_observados.paso(cuit, est["obs"])),
              ("fiscalizaciones", robot_fiscalizaciones.paso(cuit, est["fisc"])),
              ("mis_comprobantes", robot_mis_comprobantes.paso_periodos(cuit, periodos, est["mc"], forzar))]
@@ -151,7 +152,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
                "fiscalizaciones": est["fisc"].get("servicios", {}),
                "ccma": est["ccma"].get("resultado", ""), "sct_historico": est["scth"].get("resultado", ""),
                "mis_retenciones": est["mret"].get("resultado", ""), "sistema_registral": est["sreg"].get("resultado", ""),
-               "padron_cm": est["pcm"].get("resultado", ""), "dfe": {k: est["dfe"].get(k) for k in ("total", "sin_abrir", "altas_sin_abrir")}}
+               "padron_cm": est["pcm"].get("resultado", ""), "pyme_iva": est["pyme"].get("resultado", ""), "dfe": {k: est["dfe"].get(k) for k in ("total", "sin_abrir", "altas_sin_abrir")}}
     with open(os.path.join(DATOS, cuit, f"corrida_todo_{hoy.isoformat()}_{modo}.json"), "w", encoding="utf-8") as f:
         json.dump(resumen, f, ensure_ascii=False, indent=1, default=str)
 

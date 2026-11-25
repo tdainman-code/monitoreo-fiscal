@@ -461,6 +461,11 @@ def completar_desde_registral(cuit: str) -> list[str]:
     nuevos = dict(r.get("ficha") or {})
     cm = _leer(_ultimo(os.path.join(DATOS, cuit, "padron_cm", "*.json"))) or {}
     nuevos.update(cm.get("ficha") or {})                # Padrón Web de COMARB: régimen y jurisdicciones de IIBB
+    py = _leer(_ultimo(os.path.join(DATOS, cuit, "pyme", "*.json"))) or {}
+    if py.get("iva_diferido") is not None:               # F.1272 PyME: pago diferido del IVA = IVA a 90 días
+        nuevos["iva_90_dias"] = "Sí" if py["iva_diferido"] else "No"
+    elif py and py.get("tiene_f1272") is False:
+        nuevos["iva_90_dias"] = "No"
     if not (cm.get("ficha") or {}):                     # constancia de ARBA: local si no está en Convenio
         ab = _leer(_ultimo(os.path.join(DATOS, cuit, "arba_constancia", "*.json"))) or {}
         for k, v in (ab.get("ficha") or {}).items():
