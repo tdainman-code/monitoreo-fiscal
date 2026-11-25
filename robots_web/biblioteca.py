@@ -31,6 +31,7 @@ JUR_NOMBRE = {"901": "CABA", "902": "Buenos Aires", "903": "Catamarca", "904": "
 # id, organismo, nombre, robot disponible, se usa en
 FUENTES = [
     ("constancia", "ARCA", "Constancia de inscripción (se renueva cada mes)", False, "Datos fiscales del cliente"),
+    ("constancia_cm", "COMARB", "Constancia de inscripción Convenio Multilateral (Padrón Web)", True, "Régimen y jurisdicciones de IIBB"),
     ("arca_mr", "ARCA", "Mis Retenciones (SICORE / SIRE)", True, "IVA"),
     ("arca_aduana", "Aduana", "Percepciones aduaneras (IVA y Ganancias)", True, "IVA y Ganancias"),
     ("arca_piva", "ARCA", "Portal IVA: retenciones y percepciones precargadas", False, "IVA (control cruzado)"),
@@ -97,7 +98,7 @@ def por_defecto(cuit: str, dc: dict) -> list[str]:
         if "buenos aires" in jur or "pba" in jur:
             out += ["arba"]
         out += ["sircreb", "sirtac", "sircupa"]
-    for fu in ("arba", "agip"):
+    for fu in ("arba", "agip", "constancia_cm"):
         if glob.glob(os.path.join(datos.DATOS, cuit, "biblioteca", "*", fu)):
             out += [fu]
     if _filas_mr(cuit) and any(f.get("agente") == ADUANA for f in _filas_mr(cuit)):
@@ -189,6 +190,12 @@ def detalle(cuit: str, periodo: str, fuente: str) -> list[dict]:
 ROBOT_PEDIDO = {"arca_mr": "mis_retenciones", "arca_aduana": "mis_retenciones", "arba": "arba_retenciones", "agip": "agip"}
 
 
+def archivos(cuit: str, periodo: str, fuente: str) -> list[str]:
+    """Archivos tal como los bajó el organismo (TXT para importar, Excel/CSV, constancias en PDF)."""
+    d = os.path.join(datos.DATOS, cuit, "biblioteca", periodo, fuente, "archivos")
+    return sorted(x for x in (os.listdir(d) if os.path.isdir(d) else []) if not x.startswith("."))
+
+
 def versiones_alguna(cuit: str, fuente: str) -> bool:
     return bool(glob.glob(os.path.join(datos.DATOS, cuit, "biblioteca", "*", fuente, "[0-9]*.json")))
 
@@ -260,6 +267,8 @@ def estado(cuit: str, periodo: str, fuente: str, dc: dict | None = None, errores
         return "no"
     if not DISPONIBLE.get(fuente):
         return "robot"
+    if fuente == "constancia_cm":
+        return "bajado" if glob.glob(os.path.join(datos.DATOS, cuit, "biblioteca", periodo, fuente, "archivos", "*.pdf")) else "pendiente"
     if fuente in ("arba", "agip"):
         if versiones(cuit, periodo, fuente):
             return "bajado" if _detalle_arba(cuit, periodo, fuente) else "sin_mov"
@@ -369,7 +378,7 @@ def zip_mes(cuit: str, nombre: str, periodo: str, fuentes: list[str]) -> bytes:
     b = io.BytesIO()
     with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as z:
         for fu in fuentes:
-            if DISPONIBLE.get(fu):
+            if DISPONIBLE.get(fu) and not fu.startswith("constancia"):
                 z.writestr(f"{periodo}_{fu}_{cuit}.xlsx", excel(cuit, nombre, periodo, [fu]))
             for r in sorted(glob.glob(os.path.join(datos.DATOS, cuit, "biblioteca", periodo, fu, "archivos", "*"))):
                 z.write(r, f"{periodo}_{fu}_importar/{os.path.basename(r)}")      # TXT tal como lo baja el organismo

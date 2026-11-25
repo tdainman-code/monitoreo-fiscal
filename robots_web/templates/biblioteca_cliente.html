@@ -35,7 +35,8 @@
     <td class="num" data-l="Comprobantes">{{ f.n if f.estado in ('bajado', 'sin_mov') else '' }}</td>
     <td class="num" data-l="Importe">{{ f.importe|pesos if f.estado == 'bajado' else '' }}</td>
     <td data-l="Totales" class="sutil">{% for k, t in f.totales.items() %}{{ k }}: {{ t.cantidad }} · {{ t.importe|pesos }}<br>{% endfor %}</td>
-    <td>{% if f.estado in ('bajado', 'sin_mov') %}<a class="boton chico" href="{{ url_for('biblioteca_excel', cuit=c.cuit, periodo=m.periodo, fuente=f.id) }}">⬇ Excel</a>{% endif %}</td></tr>{% endfor %}
+    <td>{% if f.estado in ('bajado', 'sin_mov') and not f.id.startswith('constancia') %}<a class="boton chico" href="{{ url_for('biblioteca_excel', cuit=c.cuit, periodo=m.periodo, fuente=f.id) }}">⬇ Excel</a>{% endif %}
+      {% for a in f.archivos %}<br><a class="sutil" href="{{ url_for('biblioteca_archivo', cuit=c.cuit, periodo=m.periodo, fuente=f.id, nombre=a) }}">⬇ {{ a }}</a>{% endfor %}</td></tr>{% endfor %}
   </tbody></table>
   {% else %}<p class="sutil">No hay fuentes elegidas para este cliente.</p>{% endif %}
   {% if m.saldos %}<p class="sutil"><b>Saldos del mes anterior:</b>

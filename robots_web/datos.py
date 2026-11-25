@@ -458,7 +458,9 @@ def completar_desde_registral(cuit: str) -> list[str]:
     Devuelve los campos completados."""
     from . import usuarios as _u
     r = registral(cuit)
-    nuevos = r.get("ficha") or {}
+    nuevos = dict(r.get("ficha") or {})
+    cm = _leer(_ultimo(os.path.join(DATOS, cuit, "padron_cm", "*.json"))) or {}
+    nuevos.update(cm.get("ficha") or {})                # Padrón Web de COMARB: régimen y jurisdicciones de IIBB
     if not nuevos:
         return []
     d = _u.datos_cliente(cuit) or {}

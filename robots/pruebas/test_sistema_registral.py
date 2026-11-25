@@ -64,5 +64,30 @@ ok(f.get("condicion_iva") == "Responsable inscripto" and f.get("condicion_gananc
    and f.get("bienes_personales") == "Responsable sustituto", "ficha: IVA, Ganancias, CM, empleador, cierre, BP acciones")
 ok(f.get("emails") == "estudio@ejemplo.com.ar" and f.get("importador", "").startswith("IMPORTADOR/EXPORTADOR"), "ficha: mails e importador")
 ok("25" not in {i["codigo"] for i in r["impuestos"] if i["estado"] == "ACTIVO"}, "los impuestos dados de baja no cuentan")
+# Padrón Web de COMARB: constancia de inscripción en Convenio Multilateral (texto del PDF de Nabajuma)
+from robots import robot_padron_cm as pcm  # noqa: E402
+CONST = """                                   CONSTANCIA DE INSCRIPCIÓN
+       Fecha y Hora Emisión                                     Jurisdicción Sede
+         25/11/2026 20:16                                   901 - CAPITAL FEDERAL
+            Nº de CUIT                       Nº de Inscripción                              Tipo de Contribuyente
+          30-71222757-1                                                                              Resto
+230-Sociedad Anónima / Nro. I.G.J.: 1850715 / Fecha. I.G.J.: 2011-11-21 / Fecha Cierre Ejercicio: 2012-12-31 / Duración Años: 99
+Actividades
+Tipo     Art.    CUAC Descripción                                                                      Fecha Alta       Fecha Baja
+  S      002     152040 Fabricación de partes de calzado                                               01/01/2018
+  P      002     464130 Venta al por mayor de calzado excepto el ortopédico                            01/04/2012
+  S      002     513130 Venta al por mayor de calzado excepto el ortopédico                            01/04/2012        31/12/2017
+Jurisdicciones
+Jurisdicción                             Fecha          Fecha      Jurisdicción                              Fecha          Fecha
+901 - CAPITAL FEDERAL                  01/04/2012                  902 - BUENOS AIRES                     01/04/2012
+Señor Contribuyente: Los datos aquí consignados son los declarados por Usted.
+"""
+c = pcm.leer_constancia(CONST)
+ok(c["sede"] == "901" and [j["codigo"] for j in c["jurisdicciones"]] == ["901", "902"] and not c["jurisdicciones"][1]["baja"]
+   and c["mes_cierre"] == 12, "constancia CM: sede, jurisdicciones y cierre")
+ok(len(c["actividades"]) == 3 and c["actividades"][2]["baja"] == "31/12/2017" and c["actividades"][1]["tipo"] == "Principal",
+   "constancia CM: actividades con alta y baja")
+ok(pcm.resumen_ficha(c) == {"regimen_iibb": "Convenio Multilateral", "jurisdicciones_iibb": "CABA, Buenos Aires"},
+   "ficha: Convenio Multilateral con CABA y Buenos Aires")
 print(f"\n{sum(res)}/{len(res)} OK")
 sys.exit(0 if all(res) else 1)

@@ -1097,7 +1097,7 @@ def biblioteca_cliente(cuit):
             if e == "no":
                 continue
             det = bib.detalle(cuit, p, f[0])
-            fu.append({"id": f[0], "nombre": bib.NOMBRE[f[0]], "estado": e, "n": len(det),
+            fu.append({"id": f[0], "nombre": bib.NOMBRE[f[0]], "estado": e, "n": len(det), "archivos": bib.archivos(cuit, p, f[0]),
                        "importe": round(sum(x["Importe"] for x in det), 2), "totales": bib.totales(det)})
         meses.append({"periodo": p, "fuentes": fu, "saldos": bib.saldos_anteriores(cuit, p)})
     elegidas = bib.elegidas(cuit, dc)
@@ -1119,6 +1119,19 @@ def biblioteca_excel(cuit, periodo, fuente):
     return send_file(BytesIO(bib.excel(cuit, info.get("razon_social") or cuit, periodo, [fuente])), as_attachment=True,
                      download_name=f"{periodo}_{fuente}_{cuit}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.route("/cliente/<cuit>/biblioteca/<periodo>/<fuente>/archivo/<nombre>")
+@requiere_login
+def biblioteca_archivo(cuit, periodo, fuente, nombre):
+    """Archivo tal como lo bajó el organismo (TXT para importar, constancia en PDF), 25/11/2026."""
+    from . import biblioteca as bib
+    _cliente_info(cuit)
+    if not _periodo_ok(periodo) or fuente not in bib.NOMBRE or nombre not in bib.archivos(cuit, periodo, fuente):
+        abort(404)
+    usuarios.registrar(session["usuario"], "bajó archivo de la biblioteca", f"{cuit} {periodo} {fuente} {nombre}", _ip())
+    return send_file(os.path.join(datos.DATOS, cuit, "biblioteca", periodo, fuente, "archivos", nombre), as_attachment=True,
+                     download_name=nombre)
 
 
 @app.route("/cliente/<cuit>/biblioteca/<periodo>.zip")

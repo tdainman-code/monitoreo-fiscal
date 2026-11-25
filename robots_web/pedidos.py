@@ -28,6 +28,7 @@ ROBOTS = {
     "arba_dfe": "ARBA (domicilio fiscal electrónico)",
     "arba_retenciones": "ARBA: retenciones y percepciones (2 últimos meses)",
     "sistema_registral": "Datos registrales ARCA (impuestos inscriptos, importador) → completa la ficha",
+    "padron_cm": "Constancia de Convenio Multilateral (Padrón Web COMARB) → régimen y jurisdicciones",
 }
 MAX_PENDIENTES = 30
 
