@@ -904,6 +904,20 @@ _r = cl2.post("/alertas", data={"csrf": token(_d), "accion": "restaurar", "cuit"
               follow_redirects=True)
 ok(_cl4 and "La alerta volvió a la lista" in _r.text and "IVA 03/2018" in cl2.get("/alertas").text,
    "'Volver a mostrar' también trae de vuelta lo de antes de 2020")
+
+# Clave cargada después del aviso de la corrida (25/11/2026): el aviso "sin CIT / sin Clave Ciudad" deja de figurar
+_C9 = "30712227571"
+escribir(os.path.join(D, _C9, "corrida_todo_2026-11-20.json"), {"cuit": _C9, "fecha": "2026-11-20", "modo": "completo",
+         "errores": {}, "arba": "sin CIT cargada", "agip": "sin Clave Ciudad cargada"})
+_pub = json.load(open(os.path.join(datos.PUBLICO, "clientes.json"), encoding="utf-8"))
+_pub = [x for x in _pub if x["cuit"] != _C9] + [{"cuit": _C9, "razon_social": "NABAJUMA SA", "accesos": []}]
+escribir(os.path.join(datos.PUBLICO, "clientes.json"), _pub)
+ok({f["parte"] for f in datos.fallas(_C9)} >= {"arba", "agip"}, "sin clave cargada: avisa ARBA y AGIP")
+_pub[-1]["accesos"] = [{"organismo": "ARBA", "estado": "Sin verificar", "actualizado": "2026-11-25T18:00:00"},
+                       {"organismo": "AGIP", "estado": "Sin verificar", "actualizado": "2026-11-25T18:01:00"}]
+escribir(os.path.join(datos.PUBLICO, "clientes.json"), _pub)
+ok(not {f["parte"] for f in datos.fallas(_C9)} & {"arba", "agip"} and datos.claves_al_dia(_C9)["AGIP"]["estado"] == "cargada",
+   "clave cargada después del aviso: deja de decir 'sin clave' y muestra que está cargada")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

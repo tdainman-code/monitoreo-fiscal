@@ -30,8 +30,9 @@ JUR_NOMBRE = {"901": "CABA", "902": "Buenos Aires", "903": "Catamarca", "904": "
               "923": "Tierra del Fuego", "924": "Tucumán"}
 # id, organismo, nombre, robot disponible, se usa en
 FUENTES = [
+    ("constancia", "ARCA", "Constancia de inscripción (se renueva cada mes)", False, "Datos fiscales del cliente"),
     ("arca_mr", "ARCA", "Mis Retenciones (SICORE / SIRE)", True, "IVA"),
-    ("arca_aduana", "ARCA", "Percepciones aduaneras", True, "IVA y Ganancias"),
+    ("arca_aduana", "Aduana", "Percepciones aduaneras (IVA y Ganancias)", True, "IVA y Ganancias"),
     ("arca_piva", "ARCA", "Portal IVA: retenciones y percepciones precargadas", False, "IVA (control cruzado)"),
     ("arba", "ARBA", "Retenciones y percepciones sufridas", False, "IIBB PBA (902)"),
     ("agip", "AGIP", "Retenciones y percepciones sufridas", False, "IIBB CABA (901)"),
@@ -45,6 +46,16 @@ NOMBRE = {f[0]: f"{f[1]} · {f[2]}" for f in FUENTES}
 DISPONIBLE = {f[0]: f[3] for f in FUENTES}
 ESTADOS = {"bajado": "Bajado", "sin_mov": "Sin movimientos", "pendiente": "Pendiente", "error": "Error",
            "robot": "Robot pendiente", "no": "—"}
+
+
+MESES_BIBLIOTECA = 2          # Gabriel, 25/11/2026: siempre los 2 últimos meses cerrados, nunca más
+
+
+def periodos(hoy: date | None = None) -> list[str]:
+    hoy = hoy or date.today()
+    p1 = hoy.replace(day=1) - timedelta(days=1)
+    p2 = p1.replace(day=1) - timedelta(days=1)
+    return [p1.strftime("%Y-%m"), p2.strftime("%Y-%m")]
 
 
 def periodo_anterior(hoy: date | None = None) -> str:
@@ -134,7 +145,9 @@ def detalle(cuit: str, periodo: str, fuente: str) -> list[dict]:
     if fuente not in ("arca_mr", "arca_aduana"):
         return []
     out = []
-    for f in _filas_mr(cuit):
+    vs = versiones(cuit, periodo, fuente)
+    nuevos = {_clave_fila(f) for f in cambios(cuit, periodo, fuente)["nuevos"]} if len(vs) > 1 else set()
+    for f in (vs[-1]["filas"] if vs else _filas_mr(cuit)):
         es_aduana = f.get("agente") == ADUANA
         if (fuente == "arca_aduana") != es_aduana or not _en_periodo(f.get("fecha"), periodo):
             continue
@@ -144,8 +157,57 @@ def detalle(cuit: str, periodo: str, fuente: str) -> list[dict]:
                     "Impuesto": imp, "Jurisdicción": "", "Comprobante": f.get("desc_comprobante", ""),
                     "Número": f.get("comprobante", ""), "Fecha comprobante": f.get("fecha_comprobante", ""),
                     "Certificado": f.get("certificado", ""), "Base imponible": None, "Importe": f.get("importe") or 0.0,
-                    "Registrado por el agente": f.get("fecha_dj", "")})
+                    "Registrado por el agente": f.get("fecha_dj", ""),
+                    "Cambio": "NUEVO" if _clave_fila(f) in nuevos else ""})
     return out
+
+
+def versiones(cuit: str, periodo: str, fuente: str) -> list[dict]:
+    """Versiones guardadas por el robot (la más nueva al final)."""
+    out = []
+    for r in sorted(glob.glob(os.path.join(datos.DATOS, cuit, "biblioteca", periodo, fuente, "[0-9]*.json"))):
+        v = _leer(r)
+        if isinstance(v, dict):
+            out.append(v)
+    return out
+
+
+def _clave_fila(f: dict) -> tuple:
+    return (f.get("agente", ""), f.get("comprobante") or f.get("certificado") or "", f.get("fecha", ""), f.get("operacion", ""))
+
+
+def cambios(cuit: str, periodo: str, fuente: str) -> dict:
+    """Última versión contra la anterior: lo que apareció, desapareció o cambió de importe."""
+    vs = versiones(cuit, periodo, fuente)
+    if len(vs) < 2:
+        return {"hay": False, "nuevos": [], "desaparecidos": [], "cambiados": [], "desde": "", "hasta": vs[-1]["fecha"] if vs else ""}
+    a = {_clave_fila(f): f for f in vs[-2].get("filas") or []}
+    b = {_clave_fila(f): f for f in vs[-1].get("filas") or []}
+    nuevos = [b[k] for k in b if k not in a]
+    desap = [a[k] for k in a if k not in b]
+    camb = [{**b[k], "importe_anterior": a[k].get("importe")} for k in b if k in a and a[k].get("importe") != b[k].get("importe")]
+    return {"hay": bool(nuevos or desap or camb), "nuevos": nuevos, "desaparecidos": desap, "cambiados": camb,
+            "desde": vs[-2]["fecha"], "hasta": vs[-1]["fecha"]}
+
+
+def diagnostico(cuit: str, fuente: str) -> dict:
+    """Pedido de Gabriel (25/11/2026): por listado, si bajó o no, en qué paso falló, el error y la captura."""
+    if not DISPONIBLE.get(fuente):
+        return {"estado": "sin robot", "texto": "Todavía no hay robot para este listado: falta que Gabriel muestre dónde está "
+                "en el portal y en qué formato se exporta.", "capturas": [], "fecha": ""}
+    r = sorted(glob.glob(os.path.join(datos.DATOS, cuit, "corrida_todo_*.json")))
+    ult = (_leer(r[-1]) if r else None) or {}
+    err = (ult.get("errores") or {}).get("mis_retenciones")
+    mr = _ultimo_mr(cuit)
+    caps = sorted((os.path.basename(x) for x in glob.glob(os.path.join(datos.DATOS, cuit, "capturas", "error_mis_retenciones*.png"))),
+                  reverse=True)[:3]
+    if err:
+        return {"estado": "error", "texto": str(err)[:400], "paso": "Mis Retenciones", "capturas": caps, "fecha": ult.get("fecha", "")}
+    if mr:
+        return {"estado": "ok", "texto": f"Bajó el {mr.get('fecha', '')}: {len(mr.get('filas') or [])} comprobantes en 12 meses "
+                f"({ult.get('mis_retenciones') or 'corrida completa'}).", "capturas": [], "fecha": mr.get("fecha", "")}
+    return {"estado": "nunca", "texto": "Todavía no se corrió para este cliente (va en la corrida completa del fin de semana "
+            "o con «Probar ahora»).", "capturas": caps, "fecha": ""}
 
 
 def estado(cuit: str, periodo: str, fuente: str, dc: dict | None = None, errores: dict | None = None) -> str:
@@ -217,7 +279,7 @@ def excel(cuit: str, nombre: str, periodo: str, fuentes: list[str]) -> bytes:
     wb = Workbook()
     wb.remove(wb.active)
     cols = ["CUIT agente", "Fecha", "Operación", "Régimen", "Impuesto", "Jurisdicción", "Comprobante", "Número",
-            "Fecha comprobante", "Certificado", "Base imponible", "Importe", "Registrado por el agente"]
+            "Fecha comprobante", "Certificado", "Base imponible", "Importe", "Registrado por el agente", "Cambio"]
     for fu in fuentes:
         ws = wb.create_sheet(re.sub(r"[\[\]:*?/\\]", "", NOMBRE[fu])[:31])
         ws.append([f"{NOMBRE[fu]} — {nombre} — CUIT {datos.cuit_fmt(cuit)} — {periodo}"])
@@ -232,9 +294,18 @@ def excel(cuit: str, nombre: str, periodo: str, fuentes: list[str]) -> bytes:
             ws.append([f[k] for k in cols])
         if filas:
             ws.append([None] * 10 + ["Total", round(sum(f["Importe"] for f in filas), 2)])
+        ca = cambios(cuit, periodo, fu)
+        for f in ca["desaparecidos"]:
+            ws.append([f.get("agente"), f.get("fecha"), f.get("operacion"), f.get("regimen"), f.get("impuesto"), "",
+                       f.get("desc_comprobante"), f.get("comprobante"), f.get("fecha_comprobante"), f.get("certificado"), None,
+                       f.get("importe"), f.get("fecha_dj"), f"DESAPARECIÓ (estaba el {ca['desde']})"])
+        for f in ca["cambiados"]:
+            ws.append([f.get("agente"), f.get("fecha"), f.get("operacion"), f.get("regimen"), f.get("impuesto"), "",
+                       f.get("desc_comprobante"), f.get("comprobante"), f.get("fecha_comprobante"), f.get("certificado"), None,
+                       f.get("importe"), f.get("fecha_dj"), f"CAMBIÓ (antes {f.get('importe_anterior')})"])
         else:
             ws.append(["Sin movimientos" if DISPONIBLE[fu] else "Fuente todavía sin robot"])
-        for i, w in enumerate((14, 11, 22, 10, 9, 10, 26, 18, 12, 18, 12, 14, 14), 1):
+        for i, w in enumerate((14, 11, 22, 10, 9, 10, 26, 18, 12, 18, 12, 14, 14, 26), 1):
             ws.column_dimensions[chr(64 + i)].width = w
         for r in ws.iter_rows(min_row=4, min_col=12, max_col=12):
             for c in r:

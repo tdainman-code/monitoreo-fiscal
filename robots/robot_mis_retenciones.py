@@ -321,6 +321,37 @@ def leer(ctx, page, cuit: str, hoy: date) -> dict:
     return {"desde": t[0][0].isoformat(), "hasta": t[-1][1].isoformat(), "consultas": consultas, "filas": filas}
 
 
+ADUANA = "33693450239"
+
+
+def guardar_versiones(cuit: str, filas: list[dict], hoy: date) -> list[str]:
+    """Biblioteca de archivos (pedido de Gabriel, 25/11/2026): de los DOS últimos meses cerrados guarda una versión por
+    fuente cada vez que cambia lo informado (presentaciones tardías o rectificativas de los agentes). La web compara la
+    última con la anterior y marca lo que apareció, desapareció o cambió. DATOS/<cuit>/biblioteca/<AAAA-MM>/<fuente>/<fecha>.json"""
+    guardadas = []
+    p1 = hoy.replace(day=1) - timedelta(days=1)
+    p2 = p1.replace(day=1) - timedelta(days=1)
+    for per in (p2.strftime("%Y-%m"), p1.strftime("%Y-%m")):
+        for fuente, es_aduana in (("arca_mr", False), ("arca_aduana", True)):
+            del_mes = sorted((f for f in filas if (f.get("agente") == ADUANA) == es_aduana
+                              and re.match(r"\d{2}/(\d{2})/(\d{4})", f.get("fecha") or "")
+                              and f"{f['fecha'][6:10]}-{f['fecha'][3:5]}" == per),
+                             key=lambda f: (f.get("fecha"), f.get("agente"), f.get("comprobante"), f.get("importe")))
+            d = os.path.join(DATOS, cuit, "biblioteca", per, fuente)
+            previas = sorted(x for x in (os.listdir(d) if os.path.isdir(d) else []) if x.endswith(".json"))
+            if previas:
+                with open(os.path.join(d, previas[-1]), encoding="utf-8") as f:
+                    if json.load(f).get("filas") == del_mes:
+                        continue                        # igual a la última versión: no se guarda otra
+            os.makedirs(d, exist_ok=True)
+            ruta = os.path.join(d, f"{hoy.isoformat()}.json")
+            with open(ruta, "w", encoding="utf-8") as f:
+                json.dump({"cuit": cuit, "periodo": per, "fuente": fuente, "fecha": hoy.isoformat(), "filas": del_mes},
+                          f, ensure_ascii=False, indent=1)
+            guardadas.append(ruta)
+    return guardadas
+
+
 def paso(cuit: str, estado: dict):
     def fn(ctx, portal):
         hoy = date.today()
@@ -340,6 +371,7 @@ def paso(cuit: str, estado: dict):
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, f"{hoy.isoformat()}.json"), "w", encoding="utf-8") as f:
             json.dump(r, f, ensure_ascii=False, indent=1)
+        guardar_versiones(cuit, r["filas"], hoy)
         from . import percepciones
         cr = percepciones.cruzar(cuit)
         n_p = sum(1 for x in r["filas"] if x["operacion"].startswith("PERCEP"))

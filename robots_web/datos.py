@@ -791,6 +791,38 @@ def que_hacer(msg: str) -> str:
     return "avisar para revisar el robot (copiar este texto)"
 
 
+def claves_al_dia(cuit: str) -> dict:
+    """Por organismo, qué pasa con la clave (sin mostrar valores):
+    {"ARCA": {"estado": "cargada"|"pendiente"|"rechazada"|"invalida", "fecha", "texto"}}.
+    "pendiente" = cargada en la pantalla, el robot todavía no la tomó de la bandeja."""
+    out: dict[str, dict] = {}
+    c = next((x for x in _lista_clientes() if x.get("cuit") == cuit), {}) or {}
+    for a in c.get("accesos") or []:
+        org, est, f = a.get("organismo"), a.get("estado") or "", a.get("actualizado") or ""
+        if est == "Clave inválida":
+            out[org] = {"estado": "invalida", "fecha": f, "texto": f"la clave de {org} no anda (probada el {f[:10]}): cargar la nueva"}
+        else:
+            out[org] = {"estado": "cargada", "fecha": f, "texto": f"clave de {org} cargada el {f[:10]} ({est or 'sin verificar'})"}
+    try:
+        from . import claves as _cl
+        for r in _cl.resultados():                    # lo más nuevo primero
+            if r.get("cuit") != cuit or r.get("organismo") not in ("ARCA", "ARBA", "AGIP"):
+                continue
+            org = r["organismo"]
+            if r.get("estado") == "rechazado" and (r.get("fecha") or "") >= (out.get(org, {}).get("fecha") or ""):
+                out[org] = {"estado": "rechazada", "fecha": r.get("fecha", ""),
+                            "texto": f"la clave de {org} cargada el {(r.get('fecha') or '')[:10]} no se pudo guardar "
+                                     f"({r.get('motivo') or 'sin detalle'}): volver a cargarla"}
+        for p in _cl.pendientes():
+            if p.get("cuit") == cuit and p.get("organismo") in ("ARCA", "ARBA", "AGIP"):
+                out[p["organismo"]] = {"estado": "pendiente", "fecha": p.get("fecha", ""),
+                                       "texto": f"clave de {p['organismo']} cargada el {(p.get('fecha') or '')[:16].replace('T', ' ')}: "
+                                                "el robot la toma en unos minutos"}
+    except Exception:
+        pass
+    return out
+
+
 def fallas(cuit: str) -> list[dict]:
     """Lo que falló o falta en las últimas corridas del cliente: [{parte, nombre, boton, fecha, texto, que_hacer}].
     Se recorren las corridas 'todo' de las últimas semanas: una parte que salió bien después ya no figura."""
@@ -826,6 +858,15 @@ def fallas(cuit: str) -> list[dict]:
             estado["clave"] = ((ult.get("fecha") or "")[:10], f"{ult['estado']}: {ult.get('detalle') or ''}")
     except OSError:
         pass
+    # Clave cargada DESPUÉS del aviso (25/11/2026, Gabriel cargó AGIP/ARBA de Nabajuma y seguía diciendo "sin clave"):
+    # el aviso viene de la última corrida; si la clave ya está, deja de ser una falla.
+    al_dia = claves_al_dia(cuit)
+    for k, org in (("arba", "ARBA"), ("arba_dfe", "ARBA"), ("agip", "AGIP"), ("clave", "ARCA")):
+        v = estado.get(k)
+        a = al_dia.get(org) or {}
+        if v and a.get("estado") in ("cargada", "pendiente") and (a.get("fecha") or "")[:10] >= (v[0] or "")[:10] \
+                and (k == "clave" or re.search(r"sin CIT|sin Clave Ciudad|clave inv|rechaz", v[1], re.I)):
+            estado[k] = None
     try:                                               # organismos que no le corresponden (22/11/2026)
         from . import usuarios as _u
         nc = {x.strip().upper() for x in ((_u.datos_cliente(cuit) or {}).get("no_corresponde") or "").split(",") if x.strip()}

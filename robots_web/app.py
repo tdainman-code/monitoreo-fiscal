@@ -280,10 +280,11 @@ def cliente(cuit):
         pass
     s = datos.ficha(cuit)
     usuarios.registrar(session["usuario"], "consulta cliente", cuit, _ip())
-    mal = any(x.get("estado") == "Clave inválida" for x in info.get("accesos", []))
+    al_dia = datos.claves_al_dia(cuit)
+    mal = any(v["estado"] in ("invalida", "rechazada") for v in al_dia.values())
     pend = [p for p in pedidos.pendientes() if p.get("cuit") == cuit]
     ult = [p for p in pedidos.estado() if p.get("cuit") == cuit][:3]
-    return render_template("cliente.html", c=info, s=s, n_notas=len(usuarios.notas(cuit)), claves_mal=mal,
+    return render_template("cliente.html", c=info, s=s, n_notas=len(usuarios.notas(cuit)), claves_mal=mal, claves_al_dia=al_dia,
                            robots_pedir=pedidos.ROBOTS, pedidos_pend=pend, pedidos_ult=ult, pedir_listo=pedidos.listo(),
                            dc=usuarios.datos_cliente(cuit), dia_corrida=analisis.dia_de_corrida(
                                cuit, monotributo=bool(s.get("categoria")) and not str(s.get("categoria")).startswith("Responsable")))

@@ -20,6 +20,7 @@
     <span class="titulo">📝 Notas del equipo</span><span class="numero">{{ n_notas }}</span><span class="sub">notas</span></a>
   <a class="boton-ficha {{ 'rojo' if claves_mal or s.fallas_claves else 'gris' }}" href="{{ url_for('cliente_claves', cuit=c.cuit) }}">
     <span class="titulo">🔐 Claves</span><span class="numero">{{ 'Actualizar' if claves_mal else 'Cambiar' }}</span><span class="sub">{{ 'Clave inválida, actualizar' if claves_mal else 'cargar o cambiar una clave' }}</span>
+    {% for org in ('ARCA', 'ARBA', 'AGIP') %}{% set k = claves_al_dia.get(org) %}{% if k %}<span class="sub {{ 'falla' if k.estado in ('invalida', 'rechazada') else '' }}">{{ '⚠' if k.estado in ('invalida', 'rechazada') else ('⏳' if k.estado == 'pendiente' else '✓') }} {{ k.texto }}</span>{% endif %}{% endfor %}
     {% for f in s.fallas_claves or [] %}<span class="sub falla" title="{{ f.texto }}">⚠ {{ f.nombre }}: {{ f.texto[:110] }} → {{ f.que_hacer }}</span>{% endfor %}</a>
   <a class="boton-ficha gris" href="{{ url_for('biblioteca_cliente', cuit=c.cuit) }}">
     <span class="titulo">📚 Biblioteca</span><span class="numero">Importables</span><span class="sub">retenciones, percepciones y saldos por mes</span></a>
