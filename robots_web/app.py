@@ -847,12 +847,15 @@ def alertas():
                 elif motivo == "Otro" and not nota:
                     flash("Con el motivo 'Otro' escribí una nota", "error")
                 else:
+                    siempre = request.form.get("siempre") == "1"
                     for a in actuales:
                         usuarios.descartar(cuit, a["tipo"], a["texto"], motivo, nota, session["usuario"], session.get("nombre", ""),
-                                           a.get("items"))
-                    usuarios.registrar(session["usuario"], f"cliente descartado en alertas ({motivo})", cuit, _ip())
-                    flash(f"{len(actuales)} alerta(s) del cliente descartadas: {motivo}. Las que sigan igual vuelven en "
-                          f"{usuarios.DIAS_DESCARTE} días; si aparece una nueva, se muestra enseguida.", "ok")
+                                           a.get("items"), siempre=siempre)
+                    usuarios.registrar(session["usuario"], f"cliente descartado en alertas ({motivo}"
+                                       + (", para siempre)" if siempre else ")"), cuit, _ip())
+                    flash(f"{len(actuales)} alerta(s) del cliente descartadas: {motivo}. "
+                          + ("No vuelven nunca más; si aparece una nueva, se muestra enseguida." if siempre else
+                             f"Las que sigan igual vuelven en {usuarios.DIAS_DESCARTE} días; si aparece una nueva, se muestra enseguida."), "ok")
             return redirect(url_for("alertas", ver=request.args.get("ver", ""), enc=request.args.get("enc", "")))
         if accion == "restaurar":
             clave = request.form.get("clave", "")
@@ -873,10 +876,13 @@ def alertas():
             elif motivo == "Otro" and not request.form.get("nota", "").strip():
                 flash("Con el motivo 'Otro' escribí una nota", "error")
             else:
+                siempre = request.form.get("siempre") == "1"
                 usuarios.descartar(cuit, tipo, texto, motivo, request.form.get("nota", "").strip(), session["usuario"],
-                                   session.get("nombre", ""), a_.get("items"))
-                usuarios.registrar(session["usuario"], f"alerta descartada ({motivo})", f"{cuit} {tipo}"[:120], _ip())
-                flash(f"Alerta descartada: {motivo}. Si en {usuarios.DIAS_DESCARTE} días sigue igual, vuelve a aparecer.", "ok")
+                                   session.get("nombre", ""), a_.get("items"), siempre=siempre)
+                usuarios.registrar(session["usuario"], f"alerta descartada ({motivo}" + (", para siempre)" if siempre else ")"),
+                                   f"{cuit} {tipo}"[:120], _ip())
+                flash(f"Alerta descartada para siempre: {motivo}. No vuelve a aparecer." if siempre else
+                      f"Alerta descartada: {motivo}. Si en {usuarios.DIAS_DESCARTE} días sigue igual, vuelve a aparecer.", "ok")
         return redirect(url_for("alertas", ver=request.args.get("ver", ""), enc=request.args.get("enc", "")))
     desc = usuarios.descartes_vigentes()
     items_d = usuarios.items_descartados()
@@ -895,7 +901,7 @@ def alertas():
                 clave = ult["clave"]
             if d:
                 nuevas = [x for x in its if x and not x["permanente"]] if its else None
-                vuelve = (None if its and not nuevas else
+                vuelve = (None if d.get("siempre") or (its and not nuevas) else
                           date.fromisoformat(max(x["fecha"] for x in nuevas)[:10] if nuevas else d["fecha"][:10])
                           + timedelta(days=usuarios.DIAS_DESCARTE))
                 descartadas.append({**a, **d, "cuit": g["cuit"], "nombre_cliente": g["nombre"], "vuelve": vuelve,
@@ -928,6 +934,48 @@ def alertas():
                            motivos=usuarios.MOTIVOS_DESCARTE, anio_perm=usuarios.ANIO_DESCARTE_PERMANENTE,
                            dias=usuarios.DIAS_DESCARTE, ver=request.args.get("ver", ""), enc=enc, quienes=quienes,
                            nombres=nombres, sin_nadie=sin_nadie)
+
+
+# ---------------------------------------------------------------- Revisiones diarias (Tomás, 25/11/2026)
+@app.route("/revisiones", methods=["GET", "POST"])
+@requiere_login
+def revisiones_diarias():
+    from . import revisiones as rv
+    es_admin = session.get("rol") == "admin"
+    con_rev = rv.usuarios_con_revisiones()
+    quien = request.args.get("u") if es_admin and request.args.get("u") else session["usuario"]
+    if es_admin and quien == session["usuario"] and session["usuario"] not in con_rev and con_rev:
+        quien = con_rev[0]
+    hoy = date.today()
+    mes = _periodo_ok(request.args.get("mes")) or hoy.strftime("%Y-%m")
+    if request.method == "POST":
+        _controlar_csrf()
+        if request.form.get("accion") == "usuarios" and es_admin:
+            rv.fijar_usuarios([u for u in request.form.getlist("usuarios") if u in {x[0] for x in usuarios.listar()}])
+            usuarios.registrar(session["usuario"], "usuarios con revisiones diarias", ", ".join(request.form.getlist("usuarios")), _ip())
+            flash("Usuarios con revisiones diarias guardados", "ok")
+        else:
+            cuit, hecho = request.form.get("cuit", ""), request.form.get("hecho") == "1"
+            if quien != session["usuario"] and not es_admin:
+                abort(403)
+            if rv.marcar(quien, mes, cuit, hecho, session["usuario"], request.form.get("nota", "").strip()):
+                usuarios.registrar(session["usuario"], "revisión " + ("hecha" if hecho else "desmarcada"), f"{cuit} ({quien})", _ip())
+        return redirect(url_for("revisiones_diarias", u=request.args.get("u", ""), mes=request.args.get("mes", "")))
+    nombres = {c["cuit"]: c.get("razon_social") or "" for c in datos.lista_clientes()}
+    filas = rv.plan(quien, mes) if quien in con_rev or not es_admin else []
+    for f in filas:
+        f["nombre"] = nombres.get(f["cuit"], "")
+    hoy_iso = hoy.isoformat()
+    atras = [f for f in filas if not f["hecho"] and f["dia"] < hoy_iso]
+    de_hoy = [f for f in filas if f["dia"] == hoy_iso]
+    proximos = [f for f in filas if f["dia"] > hoy_iso]
+    hechos = [f for f in filas if f["hecho"] and f["dia"] < hoy_iso]
+    us = usuarios.listar()
+    return render_template("revisiones.html", quien=quien, mes=mes, hoy=hoy, atras=atras, de_hoy=de_hoy, proximos=proximos,
+                           hechos=hechos, total=len(filas), n_hechos=sum(1 for f in filas if f["hecho"]),
+                           habiles=len(rv.dias_habiles(mes)), es_admin=es_admin, con_rev=con_rev,
+                           usuarios_todos=[(u[0], u[1] or u[0]) for u in us if u[3]],
+                           nombre_quien=next((u[1] or u[0] for u in us if u[0] == quien), quien))
 
 
 # ---------------------------------------------------------------- Biblioteca de importables (Gaby, 25/11/2026)

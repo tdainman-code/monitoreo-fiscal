@@ -758,6 +758,55 @@ usuarios.guardar_datos_cliente("20999999990", {"encargado": "ana", "emails": "x@
 usuarios.descartar("20999999990", "Deuda vencida", "t", "Otro", "n", "gabriel", "G", [("IVA||201801", 2018)])
 ok(usuarios.borrar_cliente("20999999990", "gabriel") >= 3 and usuarios.datos_cliente("20999999990") == {}
    and "cliente dado de baja" in cl2.get("/actividad").text, "baja en la web: datos y descartes del cliente, queda en Actividad")
+# alertas: eliminar para siempre (25/11/2026)
+_al = cl2.get("/alertas").text
+_m = re.search(r'name="cuit" value="(\d{11})">\s*<input type="hidden" name="tipo" value="([^"]*)"><input type="hidden" name="texto" value="([^"]*)">', _al)
+if _m:
+    _cs, _ts, _xs = _m[1], _html.unescape(_m[2]), _html.unescape(_m[3])
+    _r = cl2.post("/alertas", data={"csrf": token(_al), "cuit": _cs, "tipo": _ts, "texto": _xs, "motivo": "Alerta sin relevancia",
+                                    "siempre": "1"}, follow_redirects=True)
+    ok("descartada para siempre" in _r.text, "alertas: descartar para siempre")
+    _con = usuarios.conectar()
+    with _con:
+        _con.execute("UPDATE descartes SET fecha='2020-01-01T00:00:00'")
+        _con.execute("UPDATE descartes_items SET fecha='2020-01-01T00:00:00'")
+    _con.close()
+    _d = cl2.get("/alertas?ver=descartadas").text
+    ok(_xs[:30] not in cl2.get("/alertas").text.split("Descartadas")[0] or "eliminada para siempre" in _d,
+       "alertas: la eliminada para siempre no vuelve a los 30 días")
+    ok("eliminada para siempre" in _d, "descartadas: dice 'eliminada para siempre'")
+ok("Eliminar para siempre" in _al, "alertas: opción eliminar para siempre")
+
+# revisiones diarias (25/11/2026)
+from robots_web import revisiones as _rv  # noqa: E402
+usuarios.crear("guido", "Guido", "claveguido12345")
+for _cu in (C, C2, C3):
+    _dd = usuarios.datos_cliente(_cu) or {}
+    _dd = {k: v for k, v in _dd.items() if not k.startswith("_")}
+    _dd["equipo"] = ", ".join(sorted(set(x.strip() for x in str(_dd.get("equipo") or "").split(",") if x.strip()) | {"guido"}))
+    usuarios.guardar_datos_cliente(_cu, _dd, "gabriel")
+ok(_rv.usuarios_con_revisiones() == ["guido"], "revisiones: Guido por defecto")
+_hab = _rv.dias_habiles("2026-12")
+ok("2026-12-08" not in [d.isoformat() for d in _hab] and "2026-12-25" not in [d.isoformat() for d in _hab]
+   and all(d.weekday() < 5 for d in _hab) and len(_hab) == 20, f"revisiones: días hábiles de diciembre sin feriados ({len(_hab)})")
+_pl = _rv.plan("guido", "2026-12")
+ok(sorted(f["cuit"] for f in _pl) == sorted({C, C2, C3}) and all(f["dia"] in [d.isoformat() for d in _hab] for f in _pl),
+   "revisiones: cada cliente una vez en el mes, en días hábiles")
+ok([f["dia"] for f in _rv.plan("guido", "2026-12")] == [f["dia"] for f in _pl], "revisiones: el reparto no cambia")
+ok(_rv.marcar("guido", "2026-12", C, True, "guido", "todo ok"), "revisiones: tildar revisado")
+_at = _rv.atrasados("guido", _dtm.date(2026, 12, 31))
+ok(C not in [f["cuit"] for f in _at] and len(_at) == 2, "revisiones: atrasados = los no tildados de días pasados")
+_asu, _cue, _tot = _rv.texto_reporte(_dtm.date(2026, 12, 31))
+ok(_tot >= 2 and "Guido" in _cue and "sin revisar" in _asu, "revisiones: texto del reporte")
+_antes = set(os.listdir(os.path.join(BANDEJA, "pedidos")))
+_rv.reporte(_dtm.date(2026, 12, 31), forzar=True)
+_nuevo = [json.load(open(os.path.join(BANDEJA, "pedidos", n))) for n in set(os.listdir(os.path.join(BANDEJA, "pedidos"))) - _antes if n.endswith(".json")]
+ok(_nuevo and _nuevo[0]["robot"] == "reporte_revisiones" and "para" not in _nuevo[0], "revisiones: el reporte va a la bandeja (destino fijo en el robot)")
+_cg = app.test_client()
+login(_cg, "guido", "claveguido12345")
+_pg = _cg.get("/revisiones").text
+ok("Revisiones diarias" in _pg and "Revisados en el mes" in _pg, "revisiones: bandeja de Guido")
+ok("Ver las de:" in cl2.get("/revisiones").text, "revisiones: el admin elige de quién ver")
 # Biblioteca de importables (especificación de Gaby, 25/11/2026)
 from robots_web import biblioteca as _bib  # noqa: E402
 _pa = _bib.periodo_anterior()

@@ -52,6 +52,11 @@ def conectar():
         con.execute("ALTER TABLE usuarios ADD COLUMN email TEXT")
     except sqlite3.OperationalError:
         pass
+    for t in ("descartes", "descartes_items"):     # alertas eliminadas para siempre (25/11/2026)
+        try:
+            con.execute(f"ALTER TABLE {t} ADD COLUMN siempre INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
     with con:                              # el rol "empleado" pasó a llamarse "colaborador" (18/11/2026)
         con.execute("UPDATE usuarios SET rol='colaborador' WHERE rol='empleado'")
     return con
@@ -257,17 +262,20 @@ def clave_alerta(cuit: str, tipo: str, texto: str) -> str:
     return hashlib.sha1(f"{cuit}|{tipo}|{texto}".encode("utf-8")).hexdigest()[:20]
 
 
-def descartar(cuit, tipo, texto, motivo, nota, usuario, nombre, items=None):
+def descartar(cuit, tipo, texto, motivo, nota, usuario, nombre, items=None, siempre: bool = False):
     """items: [(período/obligación, año), ...] que forman la alerta (deuda, faltas de presentación). Se recuerdan uno por
-    uno: los de antes de ANIO_DESCARTE_PERMANENTE quedan descartados para siempre; los demás, DIAS_DESCARTE días."""
+    uno: los de antes de ANIO_DESCARTE_PERMANENTE quedan descartados para siempre; los demás, DIAS_DESCARTE días.
+    siempre=True (25/11/2026): la alerta (y sus períodos) no vuelve nunca, salvo que alguien la "vuelva a mostrar"."""
     clave, f = clave_alerta(cuit, tipo, texto), ahora()
     con = conectar()
     with con:
-        con.execute("INSERT OR REPLACE INTO descartes VALUES (?,?,?,?,?,?,?,?,?)",
-                    (clave, cuit, tipo[:200], texto[:1000], motivo, nota[:300], f, usuario, nombre))
+        con.execute("INSERT OR REPLACE INTO descartes (clave, cuit, tipo, texto, motivo, nota, fecha, usuario, nombre, siempre) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (clave, cuit, tipo[:200], texto[:1000], motivo, nota[:300], f, usuario, nombre, int(bool(siempre))))
         for item, anio in items or []:
-            con.execute("INSERT OR REPLACE INTO descartes_items VALUES (?,?,?,?,?,?,?,?,?)",
-                        (clave, cuit, tipo[:200], str(item)[:300], anio, f, motivo, usuario, nombre))
+            con.execute("INSERT OR REPLACE INTO descartes_items (clave, cuit, tipo, item, anio, fecha, motivo, usuario, nombre, "
+                        "siempre) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (clave, cuit, tipo[:200], str(item)[:300], anio, f, motivo, usuario, nombre, int(bool(siempre))))
     con.close()
 
 
@@ -284,8 +292,9 @@ def items_descartados() -> dict:
     limite = (dt.datetime.now() - dt.timedelta(days=DIAS_DESCARTE)).isoformat(timespec="seconds")
     con = conectar()
     r = {}
-    for f in con.execute("SELECT clave, cuit, tipo, item, anio, fecha, motivo, usuario, nombre FROM descartes_items"):
-        permanente = f[4] is not None and f[4] < ANIO_DESCARTE_PERMANENTE
+    for f in con.execute("SELECT clave, cuit, tipo, item, anio, fecha, motivo, usuario, nombre, siempre FROM descartes_items"):
+        permanente = bool(f[9]) or (f[4] is not None and f[4] < ANIO_DESCARTE_PERMANENTE)
+        f = f[:9]
         if permanente or f[5] >= limite:
             r[(f[1], f[2], f[3])] = dict(zip(("clave", "anio", "fecha", "motivo", "usuario", "nombre"), (f[0],) + f[4:]),
                                          permanente=permanente)
@@ -297,9 +306,9 @@ def descartes_vigentes() -> dict:
     """Descartes de los últimos 30 días (pedido del 18/11/2026: pasado ese plazo, si sigue igual, la alerta vuelve)."""
     limite = (dt.datetime.now() - dt.timedelta(days=DIAS_DESCARTE)).isoformat(timespec="seconds")
     con = conectar()
-    r = {f[0]: dict(zip(("cuit", "tipo", "texto", "motivo", "nota", "fecha", "usuario", "nombre"), f[1:]))
-         for f in con.execute("SELECT clave, cuit, tipo, texto, motivo, nota, fecha, usuario, nombre FROM descartes WHERE fecha >= ?",
-                              (limite,))}
+    r = {f[0]: dict(zip(("cuit", "tipo", "texto", "motivo", "nota", "fecha", "usuario", "nombre", "siempre"), f[1:]))
+         for f in con.execute("SELECT clave, cuit, tipo, texto, motivo, nota, fecha, usuario, nombre, siempre FROM descartes "
+                              "WHERE fecha >= ? OR siempre = 1", (limite,))}
     con.close()
     return r
 

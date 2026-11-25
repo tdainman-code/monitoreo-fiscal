@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% block titulo %}Revisiones diarias{% endblock %}
+{% block cuerpo %}
+<h1>Revisiones diarias <span class="sutil">· {{ nombre_quien }}</span></h1>
+<p class="sutil">Cada cliente se revisa una vez por mes. Los clientes se reparten al azar entre los {{ habiles }} días hábiles de {{ mes[5:] }}/{{ mes[:4] }}
+ (sin fines de semana ni feriados). Tildá cada uno cuando lo revisaste: abrís la ficha, mirás alertas, deuda, vencimientos y notificaciones.
+ Cada dos días se manda un reporte con los que quedaron sin revisar.</p>
+{% if es_admin %}
+<form method="get" class="filtros"><label>Ver las de:
+  <select name="u" onchange="this.form.submit()">{% for u in con_rev %}<option value="{{ u }}" {{ 'selected' if u == quien }}>{{ (usuarios_todos|selectattr(0, 'equalto', u)|first or [u, u])[1] }}</option>{% endfor %}</select></label></form>
+{% endif %}
+<div class="tarjetas">
+  <div class="tarjeta"><span class="sutil">Revisados en el mes</span><b>{{ n_hechos }} de {{ total }}</b></div>
+  <div class="tarjeta"><span class="sutil">Para hoy ({{ hoy.strftime('%d/%m') }})</span><b>{{ de_hoy|length }}</b></div>
+  <div class="tarjeta"><span class="sutil">Atrasados</span><b class="{{ 'txt-rojo' if atras }}">{{ atras|length }}</b></div>
+</div>
+{% macro lista(filas, titulo, vacio) %}
+<h2>{{ titulo }}</h2>
+{% if filas %}<table class="tabla revisiones"><thead><tr><th>Día</th><th>Cliente</th><th>Revisado</th></tr></thead><tbody>
+{% for f in filas %}<tr class="{{ 'hecho' if f.hecho }}"><td data-l="Día">{{ f.dia[8:10] }}/{{ f.dia[5:7] }}</td>
+  <td data-l="Cliente"><a href="{{ url_for('cliente', cuit=f.cuit) }}" target="_blank"><b>{{ f.nombre or cuit_fmt(f.cuit) }}</b></a><div class="sutil">{{ cuit_fmt(f.cuit) }}</div></td>
+  <td data-l="Revisado"><form method="post" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="cuit" value="{{ f.cuit }}">
+    {% if f.hecho %}<input type="hidden" name="hecho" value="0">✔ {{ f.hecho[8:10] }}/{{ f.hecho[5:7] }} {{ f.hecho[11:16] }}{% if f.nota %} · <span class="sutil">{{ f.nota }}</span>{% endif %}
+      <button class="link-boton">deshacer</button>
+    {% else %}<input type="hidden" name="hecho" value="1"><input type="text" name="nota" maxlength="300" placeholder="Nota (opcional)">
+      <button class="chico">✔ Revisado</button>{% endif %}</form></td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="sutil">{{ vacio }}</p>{% endif %}
+{% endmacro %}
+{{ lista(atras, "Atrasados (tenías que revisarlos antes)", "Nada atrasado. ¡Bien!") }}
+{{ lista(de_hoy, "Para hoy", "Hoy no hay clientes para revisar (fin de semana o feriado).") }}
+<details class="plegado"><summary>Próximos días del mes ({{ proximos|length }})</summary>{{ lista(proximos, "", "No quedan días en el mes.") }}</details>
+<details class="plegado"><summary>Ya revisados ({{ hechos|length }})</summary>{{ lista(hechos, "", "Todavía ninguno.") }}</details>
+{% if es_admin %}
+<details class="plegado"><summary>Quiénes tienen revisiones diarias</summary>
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="usuarios">
+  {% for u, n in usuarios_todos %}<label class="en-linea"><input type="checkbox" name="usuarios" value="{{ u }}" {{ 'checked' if u in con_rev }}> {{ n }}</label> {% endfor %}
+  <p><button>Guardar</button> <span class="sutil">Cada uno revisa los clientes que lleva (encargado o equipo).</span></p></form></details>
+{% endif %}
+{% endblock %}

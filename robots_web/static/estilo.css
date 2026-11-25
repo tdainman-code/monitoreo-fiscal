@@ -249,3 +249,4 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .estado-bib{padding:2px 8px;border-radius:6px;font-size:12px}.estado-bib.bajado{background:#e8f5ee}.estado-bib.sin_mov{background:#f1f5f9}
 .estado-bib.pendiente{background:#fffbeb}.estado-bib.error{background:#fef2f2}
 .mes-bib{margin:18px 0}.mes-bib h2 .boton{margin-left:10px;vertical-align:middle}
+.tabla.revisiones tr.hecho td{opacity:.6}.tabla.revisiones input[type=text]{padding:5px 8px;border:1px solid var(--borde);border-radius:8px;width:180px}

@@ -40,6 +40,9 @@ ROBOTS_PERMITIDOS = {
 }
 AVISOS = {"aviso_enviar", "aviso_vep"}
 ROBOTS_PERMITIDOS["mail_dfe"] = "Mail de una comunicación del domicilio fiscal electrónico"
+ROBOTS_PERMITIDOS["reporte_revisiones"] = "Reporte de revisiones diarias sin hacer"
+# 25/11/2026 (Tomás): el reporte de revisiones va SIEMPRE a esta casilla (la web solo manda asunto y texto)
+REPORTE_REVISIONES_PARA = ["tdainman@gmail.com"]
 ROBOTS_PERMITIDOS["vep_deuda"] = "VEP de deuda (conceptos tildados en la web)"
 MAX_ESTADO = 50
 
@@ -74,6 +77,9 @@ def _anotar(p: dict, estado: str, detalle: str = "") -> None:
 def _valido(p: dict) -> bool:
     ok = (isinstance(p, dict) and re.fullmatch(r"\d{11}", str(p.get("cuit", ""))) is not None
           and p.get("robot") in ROBOTS_PERMITIDOS and re.fullmatch(r"[0-9a-f]{8,32}", str(p.get("id", ""))) is not None)
+    if ok and p["robot"] == "reporte_revisiones":
+        ok = isinstance(p.get("asunto"), str) and isinstance(p.get("cuerpo"), str) and len(p["asunto"]) <= 200 \
+            and len(p["cuerpo"]) <= 100_000
     if ok and p["robot"] == "mail_dfe":
         ok = p.get("a") in ("cliente", "admin") and isinstance(p.get("notif"), dict)
     if ok and p["robot"] == "vep_deuda":
@@ -112,6 +118,15 @@ def _procesar_avisos(lista) -> list:
     from . import avisos
     resto = []
     for ruta, p in lista:
+        if p["robot"] == "reporte_revisiones":
+            os.remove(ruta)
+            try:
+                avisos.encolar_mail(REPORTE_REVISIONES_PARA, p["asunto"], p["cuerpo"], motivo="reporte de revisiones")
+                avisos.enviar_cola()
+                _anotar(p, "terminado", "OK reporte encolado")
+            except Exception as e:
+                _anotar(p, "error", f"{type(e).__name__}: {e}")
+            continue
         if p["robot"] == "mail_dfe":
             os.remove(ruta)
             try:

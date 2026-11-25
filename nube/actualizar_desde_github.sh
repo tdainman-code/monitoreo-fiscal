@@ -85,6 +85,12 @@ instalar_desde() {   # $1 = carpeta con robots/ y robots_web/
   /opt/robots-web/venv/bin/python -c "import openpyxl" 2>/dev/null || /opt/robots-web/venv/bin/pip install -q openpyxl \
       || /opt/robots-web/venv/bin/pip install -q --no-cache-dir openpyxl \
       || echo "$(date) ERROR: no se pudo instalar openpyxl en la web" >> "$LOG"
+  # 25/11/2026: reporte de revisiones diarias (todos los días 8:30; manda día por medio) — corre como el usuario de la web
+  cat > /etc/cron.d/monitoreo-revisiones <<'CRON'
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 8 * * * root systemd-run --quiet --wait --uid=web --gid=web -p SupplementaryGroups=robotsweb -p WorkingDirectory=/opt/robots-web -E ROBOTS_RAIZ=/var/lib/robots -E ROBOTS_WEB_DATOS=/var/lib/robots-web -E ROBOTS_BANDEJA=/var/lib/robots-bandeja /opt/robots-web/venv/bin/python -m robots_web.revisiones reporte >> /var/log/monitoreo-revisiones.log 2>&1
+CRON
+  chmod 644 /etc/cron.d/monitoreo-revisiones
   systemctl restart robots-web
   flock -u 9
 }

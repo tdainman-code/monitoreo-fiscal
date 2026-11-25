@@ -97,6 +97,21 @@ def encolar_mail_dfe(cuit: str, a: str, notif: dict, por: str, nombre: str) -> s
     return p["id"]
 
 
+def encolar_reporte_revisiones(asunto: str, cuerpo: str) -> str:
+    """Reporte de revisiones diarias (25/11/2026): el robot lo manda a la casilla fija de Tomás."""
+    if not listo():
+        raise ErrorPedido("Los pedidos todavía no están habilitados en el servidor")
+    p = {"id": uuid.uuid4().hex, "fecha": dt.datetime.now().isoformat(timespec="seconds"), "por": "sistema",
+         "cuit": "00000000000", "robot": "reporte_revisiones", "asunto": asunto[:200], "cuerpo": cuerpo[:100_000]}
+    ruta = os.path.join(PEDIDOS, f"{p['fecha'].replace(':', '')}_{p['id'][:8]}.json")
+    tmp = ruta + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o660)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(p, f, ensure_ascii=False)
+    os.replace(tmp, ruta)
+    return p["id"]
+
+
 def avisos() -> list[dict]:
     try:
         with open(os.path.join(datos.PUBLICO, "avisos.json"), encoding="utf-8") as f:
