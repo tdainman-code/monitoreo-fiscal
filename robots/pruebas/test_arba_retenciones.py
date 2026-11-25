@@ -50,5 +50,22 @@ c = "30712227571"
 ok(bib.guardar_version(c, "2026-08", "arba", f, date(2026, 11, 25)), "primera versión guardada")
 ok(bib.guardar_version(c, "2026-08", "arba", list(reversed(f)), date(2026, 11, 26)) is None, "mismo contenido: no guarda otra")
 ok(bib.guardar_version(c, "2026-08", "arba", f[:-1], date(2026, 12, 11)), "cambió: guarda versión nueva")
+# AGIP Gestión-AR (25/11/2026): CSV de "Descargar Excel" de las tres solapas (encabezados reales de Nabajuma)
+from robots import robot_agip_retenciones as ag  # noqa: E402
+_ret = ag.leer_csv("Retenciones", 'sep=,\n\nCUIT,N\xb0 Ader,Razon Social,N\xb0 Certificado,Norma,Fecha Retencion,Tipo Comprobante,'
+                   'N\xb0 Comprobante,Fecha Comprobante,Monto Retenido,Base Calculo\n"30111111112","16616","UNA SRL",'
+                   '"0000000000002273","29","05/08/2026","O","15148","05/08/2026","210000.00","7000000.00",\n')
+ok(len(_ret) == 1 and _ret[0]["operacion"] == "RETENCION" and _ret[0]["importe"] == 210000.0 and _ret[0]["certificado"] == "2273"
+   and _ret[0]["base"] == 7000000.0 and _ret[0]["fecha"] == "05/08/2026", "AGIP retenciones: importe, base, certificado")
+_per = ag.leer_csv("Percepciones", 'sep=,\nCUIT,N\xb0 Ader,Razon Social,N\xb0 Certificado,Norma,Fecha Percepcion,Tipo Comprobante,'
+                   'N\xb0 Comprobante,Fecha Comprobante,Monto Percibido,Base Calculo\n"30222222223","7139","OTRA SA",'
+                   '"0000000000000000","29","31/08/2026","F","A0   1100077722","31/08/2026","148511.25","4950375.00",\n')
+ok(len(_per) == 1 and _per[0]["operacion"] == "PERCEPCION" and _per[0]["comprobante"] == "A01100077722"
+   and _per[0]["importe"] == 148511.25, "AGIP percepciones: comprobante e importe")
+_ban = ag.leer_csv("Retenciones Bancarias", 'sep=,\ncuit,razonSocial,fechaPresentacion,importeCR,importeRecaudado,'
+                   'coeficienteJurisdiccion,importeRecaudadoPorJuris,tipoCuenta,CBU\n"30333333334","UN BANCO","13/08/2026",'
+                   '"49507099.9","693099.38","0.02","15941.28","2","1910072855007201390246",\n')
+ok(len(_ban) == 1 and _ban[0]["importe"] == 15941.28 and _ban[0]["cbu"] == "1910072855007201390246"
+   and _ban[0]["operacion"] == "RETENCION", "AGIP bancarias: lo recaudado para CABA y el CBU")
 print(f"\n{sum(res)}/{len(res)} OK")
 sys.exit(0 if all(res) else 1)

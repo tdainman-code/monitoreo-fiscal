@@ -1097,7 +1097,8 @@ def biblioteca_cliente(cuit):
         meses.append({"periodo": p, "fuentes": fu, "saldos": bib.saldos_anteriores(cuit, p)})
     elegidas = bib.elegidas(cuit, dc)
     diag = [{"id": f, "nombre": bib.NOMBRE[f], "robot": bib.ROBOT_PEDIDO.get(f), **bib.diagnostico(cuit, f)}
-            for f in ("arca_mr", "arba", "agip") if f in elegidas or f == "arba" and bib.versiones_alguna(cuit, "arba")]
+            for f in ("arca_mr", "arba", "agip") if f in elegidas or bib.versiones_alguna(cuit, f)
+            or os.path.exists(os.path.join(datos.DATOS, cuit, "biblioteca", "_diagnostico", f + ".json"))]
     return render_template("biblioteca_cliente.html", c=info, meses=meses, fuentes=bib.FUENTES, elegidas=elegidas, diag=diag,
                            por_defecto=not isinstance(dc.get("importables"), list), estados=bib.ESTADOS)
 
@@ -1524,6 +1525,19 @@ def _procesar_claves(cuit, razon, hay_razon):
         usuarios.registrar(session["usuario"], "clave enviada" if not hay_razon else "alta de cliente / clave enviada",
                            f"{cuit} {org}", _ip())
         enviados.append(org)
+    km, um = request.form.get("k_AGIP_MIBA", ""), request.form.get("u_AGIP_MIBA", "").strip()
+    if km and not err:                                     # cuenta miBA de AGIP: usuario CUIL o mail (25/11/2026)
+        if not um or len(um) > 60 or not (claves.cuit_valido("".join(ch for ch in um if ch.isdigit()))
+                                          or re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", um)):
+            return enviados, "AGIP miBA: completá el usuario (CUIL o mail) de la cuenta miBA"
+        if um.replace("-", "").isdigit():
+            um = um.replace("-", "")
+        try:
+            claves.encolar(cuit, razon, "AGIP", um, km, session["usuario"], detalle="miba")
+        except claves.ErrorClaves as e:
+            return enviados, str(e)
+        usuarios.registrar(session["usuario"], "clave enviada", f"{cuit} AGIP miBA", _ip())
+        enviados.append("AGIP miBA")
     return enviados, err
 
 

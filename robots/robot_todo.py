@@ -106,7 +106,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
     # AGIP (Ciudad): ingreso propio con Clave Ciudad, ventana visible (en el servidor: xvfb-run)
     if agip:
         try:
-            robot_agip.paso(agip[0], agip[1], cuit, est["agip"])()
+            robot_agip.paso(agip[0], agip[1], cuit, est["agip"], miba=agip[2] if len(agip) > 2 else None)()
         except arca.ClaveInvalida as e:
             r["_errores"]["agip"] = f"Clave Ciudad rechazada: {e}"
         except Exception as e:

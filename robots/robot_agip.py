@@ -78,6 +78,39 @@ def leer_csv_percepciones(texto: str) -> list[dict]:
     return out
 
 
+MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+
+def elegir_mes(pag, campo, anio: int, mes: int) -> None:
+    """Mes/Año de Gestión-AR (Gaby, 25/11/2026): el campo NO deja escribir, se elige en el calendario de meses
+    («  2026  » arriba; Ene..Dic). Se abre el calendario, se va al año y se hace clic en el mes."""
+    campo.click()
+    pag.wait_for_timeout(500)
+    caja = pag.locator(".datepicker-months, .datepicker").filter(visible=True).last
+    for _ in range(15):
+        try:
+            cab = caja.locator(".datepicker-switch, th.switch").filter(visible=True).first.inner_text(timeout=3000)
+            actual = int(re.search(r"\d{4}", cab)[0])
+        except Exception:
+            break
+        if actual == anio:
+            break
+        caja.locator(".prev" if actual > anio else ".next").filter(visible=True).first.click()
+        pag.wait_for_timeout(300)
+    m = caja.locator("span.month, .month").filter(has_text=re.compile(rf"^\s*{MESES_CORTOS[mes - 1]}\s*$", re.I)).filter(visible=True)
+    if m.count():
+        m.first.click()
+        pag.wait_for_timeout(500)
+    valor = f"{mes:02d}/{anio}"
+    if campo.input_value().strip() != valor:            # respaldo: el datepicker de jQuery por código
+        campo.evaluate("""(e, v) => { try { if (window.jQuery && jQuery(e).datepicker) {
+              jQuery(e).datepicker('setDate', new Date(Number(v.slice(3)), Number(v.slice(0, 2)) - 1, 1)); } } catch (x) {}
+            if (e.value !== v) { e.value = v; ['input', 'change'].forEach(t => e.dispatchEvent(new Event(t, {bubbles: true}))); } }""", valor)
+    pag.keyboard.press("Escape")
+    if campo.input_value().strip() != valor:
+        raise arca.ErrorRobot(f"AGIP Gestión-AR: no se pudo elegir {valor} en el calendario (quedó '{campo.input_value()}')")
+
+
 def leer_percepciones(pag, cuit: str, hoy: date) -> list[dict]:
     """Gestión-AR: Régimen 'Percepciones' de los últimos 13 meses -> Descargar Excel (CSV). Si la descarga falla, lee
     la tabla de la pantalla."""
@@ -95,8 +128,8 @@ def leer_percepciones(pag, cuit: str, hoy: date) -> list[dict]:
             vals["hasta"] = c
     if "desde" not in vals or "hasta" not in vals:
         raise arca.ErrorRobot("AGIP Gestión-AR: no se encontraron los campos Mes/Año desde/hasta")
-    vals["desde"].fill(f"{m:02d}/{a}")
-    vals["hasta"].fill(f"{hoy.month:02d}/{hoy.year}")
+    elegir_mes(pag, vals["desde"], a, m)
+    elegir_mes(pag, vals["hasta"], hoy.year, hoy.month)
     sel = pag.locator("select").filter(has=pag.locator("option", has_text=re.compile(r"^\s*Percepciones\s*$", re.I)))
     if sel.count():
         sel.first.select_option(label=next(o for o in sel.first.locator("option").all_inner_texts()
@@ -264,11 +297,26 @@ def login_miba(ctx, usuario: str, clave: str):
     return page
 
 
-def login(ctx, usuario: str, clave: str):
-    """Clave Ciudad; si AGIP la rechaza, se prueba la misma clave como cuenta miBA (hay quien entra así)."""
+def login(ctx, usuario: str, clave: str, miba: tuple | None = None):
+    """Clave Ciudad (CUIT del administrador de relaciones + clave); si AGIP la rechaza, la cuenta miBA cargada aparte
+    (Gaby 25/11/2026: dos casilleros, usuario CUIL o mail) o, si no hay, la misma clave como cuenta miBA."""
+    if not usuario and miba:
+        return login_miba(ctx, miba[0], miba[1])
     try:
         return _login_clave_ciudad(ctx, usuario, clave)
     except arca.ClaveInvalida as e:
+        if miba:
+            for p in list(ctx.pages):
+                try:
+                    p.close()
+                except Exception:
+                    pass
+            try:
+                return login_miba(ctx, miba[0], miba[1])
+            except arca.RequiereIntervencion:
+                raise
+            except Exception as e2:
+                raise arca.ClaveInvalida(f"{e} y la cuenta miBA tampoco entró ({e2})")
         for p in list(ctx.pages):
             try:
                 p.close()
@@ -447,7 +495,7 @@ def deuda_de(tablas: list[dict]) -> float | None:
     return total
 
 
-def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True):
+def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True, miba: tuple | None = None):
     """Ingresa a AGIP con su propia sesión (como ARBA). usuario = CUIT de quien tiene la Clave Ciudad."""
     def fn():
         hoy = date.today().isoformat()
@@ -457,7 +505,7 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
              "fiscalizacion": [], "servicios": {}, "alertas": []}
         with arca.navegador(visible=visible) as ctx:
             try:
-                page = login(ctx, usuario, clave)
+                page = login(ctx, usuario, clave, miba)
                 _elegir_representado_portal(page, cuit)
                 inicio = page.url
                 for clave_srv, textos in SERVICIOS:
@@ -468,7 +516,13 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                             continue
                         if not _elegir_cuit(pag, cuit):
                             r["servicios"][clave_srv] = f"no se pudo confirmar que muestre el CUIT {arca.cuit_fmt(cuit)}"
-                            arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), f"agip_{clave_srv}_cuit")
+                            caps = arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), f"agip_{clave_srv}_cuit")
+                            if clave_srv == "percepciones":
+                                from . import biblioteca_archivos as _bib
+                                _bib.guardar_diagnostico(cuit, "agip", {"estado": "error", "pasos": [
+                                    {"paso": "Clave Ciudad -> Gestión-AR", "ok": True},
+                                    {"paso": "Seleccione Representado / elegir el CUIT del cliente", "ok": False}],
+                                    "error": r["servicios"][clave_srv], "captura": os.path.basename(caps[-1]) if caps else ""})
                         else:
                             tablas = _tablas(pag)
                             if clave_srv == "dfe":
@@ -480,7 +534,21 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                                 pag.wait_for_timeout(3000)               # la página arma los importes con JavaScript
                                 r["cct"] = leer_cct(pag.inner_text("body"))
                             elif clave_srv == "percepciones":
-                                r["percepciones"] = leer_percepciones(pag, cuit, date.today())
+                                # 25/11/2026 (Gabriel): todas las solapas, 2 meses, archivos y diagnóstico
+                                from . import robot_agip_retenciones
+                                try:
+                                    rr = robot_agip_retenciones.bajar(ctx, pag, cuit)
+                                    r["percepciones"] = rr["percepciones"]
+                                    r["retenciones_percepciones"] = rr["meses"]
+                                except arca.CuitEquivocado:
+                                    raise
+                                except Exception as e:           # el diagnóstico y la captura ya quedaron guardados
+                                    r["servicios"][clave_srv] = f"error: {str(e).splitlines()[0][:160] if str(e) else type(e).__name__}"
+                                    if pag is not page:
+                                        pag.close()
+                                    else:
+                                        page.goto(inicio, wait_until="domcontentloaded")
+                                    continue
                             else:
                                 r["fiscalizacion"] = [f for t in tablas for f in t["filas"]]
                                 r["fiscalizacion_tablas"] = tablas
@@ -497,8 +565,13 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                     except Exception as e:
                         r["servicios"][clave_srv] = f"error: {str(e).splitlines()[0][:160]}"
                         arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), f"agip_{clave_srv}")
-            except Exception:
-                arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), "agip")
+            except Exception as e:
+                caps = arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), "agip")
+                if not r["servicios"]:                        # no llegó a entrar: queda en el diagnóstico de la Biblioteca
+                    from . import biblioteca_archivos as _bib
+                    _bib.guardar_diagnostico(cuit, "agip", {"estado": "error", "pasos": [
+                        {"paso": "Ingreso a AGIP (Clave Ciudad / miBA)", "ok": False}],
+                        "error": f"{type(e).__name__}: {e}"[:300], "captura": os.path.basename(caps[-1]) if caps else ""})
                 raise
         sin_abrir = [c for c in r["comunicaciones"] if not c["leida"]]
         altas = [c for c in sin_abrir if c["importancia"] == "ALTA"]

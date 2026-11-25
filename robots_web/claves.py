@@ -18,6 +18,7 @@ from . import datos
 BANDEJA = os.environ.get("ROBOTS_BANDEJA", "/var/lib/robots-bandeja")
 PUB = os.environ.get("ROBOTS_SOBRES_PUB", os.path.join(datos.PUBLICO, "sobres_publica.pem"))
 ORGANISMOS = {"ARCA": "ARCA (clave fiscal)", "ARBA": "ARBA (CIT)", "AGIP": "AGIP"}
+# AGIP tiene dos formas de entrar (Gaby, 25/11/2026): Clave Ciudad vieja (detalle "") y cuenta miBA (detalle "miba")
 MAX_CLAVE = 100
 
 

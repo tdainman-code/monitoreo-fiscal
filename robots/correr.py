@@ -293,15 +293,29 @@ def correr_arba(cuit: str, periodo: str, visible: bool, meses=None, forzar=False
         clave = None  # noqa: F841
 
 
-def correr_agip(cuit: str) -> str:
-    """Solo AGIP (Ciudad), con la Clave Ciudad del almacén. No entra a ARCA."""
+def claves_agip(cuit: str, motivo: str):
+    """(usuario, clave, miba) — Clave Ciudad vieja (detalle '') y/o cuenta miBA (detalle 'miba'). None si no hay ninguna."""
     try:
-        usuario, clave, _ = alm.obtener_clave(cuit, "AGIP", motivo="agip (DFE, deuda, fiscalización)")
+        u, c, _ = alm.obtener_clave(cuit, "AGIP", motivo=motivo)
     except alm.ErrorAlmacen:
+        u = c = ""
+    try:
+        mu, mc, _ = alm.obtener_clave(cuit, "AGIP", motivo=motivo + " (miBA)", detalle="miba")
+        miba = (mu, mc)
+    except alm.ErrorAlmacen:
+        miba = None
+    return (u, c, miba) if (u or miba) else None
+
+
+def correr_agip(cuit: str) -> str:
+    """Solo AGIP (Ciudad), con la Clave Ciudad y/o la cuenta miBA del almacén. No entra a ARCA."""
+    cred = claves_agip(cuit, "agip (DFE, deuda, fiscalización)")
+    if not cred:
         return "SIN CLAVE CIUDAD de AGIP cargada (cargarla en la web: Claves)"
+    usuario, clave, miba = cred
     try:
         estado: dict = {}
-        robot_agip.paso(usuario, clave, cuit, estado)()
+        robot_agip.paso(usuario, clave, cuit, estado, miba=miba)()
         alm.marcar_estado(cuit, "AGIP", "OK")
         registrar({"robot": "agip", "cuit": cuit, "estado": "OK", "servicios": estado.get("servicios")})
         return f"OK\n     agip: {estado.get('servicios')} · {estado.get('sin_abrir', 0)} comunicaciones sin abrir"
@@ -351,11 +365,7 @@ def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, 
                 arba = (u_arba, c_arba) if "ARBA" not in fuera else None
             except alm.ErrorAlmacen:
                 arba = None
-            try:
-                u_agip, c_agip, _ = alm.obtener_clave(cuit, "AGIP", motivo="todo (AGIP)")
-                agip = (u_agip, c_agip) if "AGIP" not in fuera else None
-            except alm.ErrorAlmacen:
-                agip = None
+            agip = claves_agip(cuit, "todo (AGIP)") if "AGIP" not in fuera else None
             res = robot_todo.correr(cuit, periodo, usuario, clave, metodo, visible, meses=meses or 12,
                                     forzar=forzar, arba=arba, agip=agip, modo=modo)
             if "Clave Ciudad rechazada" in str((res.get("errores") or {}).get("agip", "")):
