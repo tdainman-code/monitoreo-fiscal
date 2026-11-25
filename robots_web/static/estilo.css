@@ -239,3 +239,4 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .tabla.chica td{font-size:.85em}
 .mail-modelo{width:100%;font:14px/1.5 system-ui,sans-serif;padding:12px;border:1px solid var(--borde);border-radius:12px;background:#fff;white-space:pre-wrap}
 .filtro-enc{margin-left:auto}.filtro-enc select{padding:6px 10px;border:1px solid var(--borde);border-radius:10px;font:inherit;background:#fff;margin-left:6px}
+.tabla.proyeccion{max-width:760px}.tabla.proyeccion td:first-child{width:60%}

@@ -373,7 +373,8 @@ def cliente_seccion(cuit, seccion):
 
 # ---------------------------------------------------------------- traído de Radar fiscal (17/11/2026)
 VISTAS = {"dfe": "Domicilio fiscal electrónico", "deudas": "Deudas vencidas", "por_vencer": "Por vencer", "planes": "Planes de pago",
-          "faltas": "Falta de presentación", "iva": "Débito / crédito", "proyeccion": "Proyección de IVA",
+          "faltas": "Falta de presentación", "iva": "Débito / crédito", "iva_mes": "IVA del mes en curso",
+          "proyeccion": "Proyección de IVA (tendencia)",
           "resultado": "Relación débito crédito", "fiscalizaciones": "Fiscalizaciones y verificaciones"}
 
 
@@ -474,6 +475,24 @@ def cartera(vista):
             elegido = next((x for x in filas if x["cuit"] == request.args.get("c")), filas[0] if filas else None)
             extra["elegido"] = elegido
             extra["grafico"] = analisis.grafico_iva(elegido["f"]["iva"], elegido["proy"]) if elegido else ""
+    elif vista == "iva_mes":
+        # 25/11/2026 (especificación de Gaby, parte 2): todos los clientes, ordenados por lo estimado a pagar del mes
+        enc = request.args.get("enc", "")
+        nombres = {u[0]: (u[1] or u[0]) for u in usuarios.listar()}
+        quienes = set()
+        for c in todos:
+            ec = [m for m in c["f"].get("iva_en_curso") or [] if m.get("en_curso")]
+            if not ec:
+                continue
+            d_ = usuarios.datos_cliente(c["cuit"]) or {}
+            lleva = ({d_.get("encargado") or ""} | {x.strip() for x in str(d_.get("equipo") or "").split(",")}) - {""}
+            quienes |= lleva
+            if enc and (enc not in lleva if enc != "-" else lleva):
+                continue
+            filas.append({**c, "m": ec[0], "encargado": nombres.get(d_.get("encargado") or "", d_.get("encargado") or "")})
+        filas.sort(key=lambda x: -x["m"]["estimado"])
+        extra.update(enc=enc, quienes=sorted(quienes, key=lambda u: nombres.get(u, u).upper()), nombres=nombres,
+                     total=round(sum(x["m"]["estimado"] for x in filas if x["m"]["estimado"] > 0), 2))
     elif vista == "resultado":
         for c in todos:
             r = c["f"].get("resultado")

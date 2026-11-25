@@ -736,8 +736,23 @@ _ec = [x for x in _an.iva_en_curso(C2) if x["periodo"] == _hoy]
 ok(_ec and _ec[0]["debito"] == 2310.0 and _ec[0]["credito"] == 1050.0 and _ec[0]["saldo"] == 1260.0,
    f"IVA en curso: débito A + IVA de las B (21%), crédito de las A ({_ec})")
 _iv = cl.get(f"/cliente/{C2}/iva").text
-ok("Cómo viene el IVA" in _iv and "a pagar" in _iv and "(en curso)" in _iv, "sección IVA: mes en curso provisorio")
-ok("Mis Comprobantes, provisorio" in cl.get(f"/cliente/{C2}").text, "tarjeta IVA: saldo del mes en curso")
+ok("Proyección de IVA" in _iv and "(en curso)" in _iv and "Provisorio" in _iv, "sección IVA: mes en curso provisorio")
+ok("estimado" in cl.get(f"/cliente/{C2}").text and "(provisorio)" in cl.get(f"/cliente/{C2}").text, "tarjeta IVA: estimado del mes en curso")
+# proyección: saldos del mes anterior (Cuentas Tributarias) y retenciones de IVA del mes (Mis Retenciones)
+_ant = (_dtm.date.today().replace(day=1) - _dtm.timedelta(days=1))
+escribir(f"{D}/{C2}/sct_historico/2026-11-20.json", {"fecha": "2026-11-20", "movimientos": [
+    {"impuesto": "30", "periodo": _ant.strftime("%Y%m") + "00", "concepto": "DDJJ", "saldo_tecnico": 300.0, "sld": 50.0},
+    {"impuesto": "30", "periodo": "20200100", "concepto": "DDJJ", "saldo_tecnico": 999.0, "sld": 0.0}]})
+escribir(f"{D}/{C2}/mis_retenciones/2026-11-21.json", {"fecha": "2026-11-21", "filas": [
+    {"impuesto": "767", "fecha": _dtm.date.today().strftime("01/%m/%Y"), "importe": 100.0, "operacion": "PERCEPCION"},
+    {"impuesto": "217", "fecha": _dtm.date.today().strftime("01/%m/%Y"), "importe": 7777.0, "operacion": "PERCEPCION"}]})
+_ec = [x for x in _an.iva_en_curso(C2) if x["periodo"] == _hoy][0]
+ok(_ec["saldo_tecnico_ant"] == 300.0 and _ec["sld_ant"] == 50.0 and _ec["retenciones"] == 100.0 and _ec["estimado"] == 1260.0 - 450.0,
+   f"proyección: IVA del mes − saldo técnico − retenciones de IVA (sin Ganancias) − S.L.D. ({_ec['estimado']})")
+_iv = cl.get(f"/cliente/{C2}/iva").text
+ok("Proyección de IVA" in _iv and "A pagar estimado" in _iv and "no se le manda al cliente" in _iv, "sección IVA: cuadro de proyección")
+_cv = cl.get("/cartera/iva_mes").text
+ok("IVA del mes en curso" in _cv and "a pagar" in _cv and "Total estimado a pagar" in _cv, "cartera: IVA del mes de todos los clientes")
 # alertas: filtro por encargado / equipo (25/11/2026)
 _ag = cl2.get("/alertas").text
 ok("Encargado / equipo" in _ag, "alertas: filtro por encargado")

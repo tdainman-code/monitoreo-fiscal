@@ -147,13 +147,60 @@ def iva_en_curso(cuit: str, hoy=None) -> list[dict]:
         b_emit = _num(em.get("Comprobantes B/C (sin IVA discriminado)"))
         deb = _num(em.get("Total IVA")) + round(b_emit * 21 / 121, 2)
         cred = _num(rc.get("Total IVA"))
+        # 25/11/2026 (especificación de Gaby, parte 2): saldos del mes anterior y retenciones / percepciones del mes
+        ant_iva = _saldos_iva_anteriores(cuit, per)
+        ret = _retenciones_iva_mes(cuit, per)
+        ano_ant = liva.get(f"{int(per[:4]) - 1}{per[4:]}") or {}
+        vaa, caa = ano_ant.get("ventas") or {}, ano_ant.get("compras") or {}
+        neto = deb - cred
+        estimado = neto - (ant_iva["saldo_tecnico"] or 0) - (ret["importe"] or 0) - (ant_iva["sld"] or 0)
         out.append({"periodo": per, "al": d.get("fecha", ""), "debito": round(deb, 2), "credito": round(cred, 2),
+                    "saldo_tecnico_ant": ant_iva["saldo_tecnico"], "sld_ant": ant_iva["sld"], "saldos_de": ant_iva["periodo"],
+                    "saldos_al": ant_iva["al"], "retenciones": ret["importe"], "retenciones_al": ret["al"],
+                    "estimado": round(estimado, 2),
+                    "ano_anterior": ({"debito": _num(vaa.get("Total IVA")), "credito": _num(caa.get("Crédito fiscal computable")
+                                      or caa.get("Total IVA")), "ventas": _num(vaa.get("Neto gravado total")) + _num(vaa.get("No gravado"))
+                                      + _num(vaa.get("Exento")), "compras": _num(caa.get("Neto gravado total"))} if ano_ant else None),
                     "saldo": round(deb - cred, 2), "b_estimado": round(b_emit * 21 / 121, 2),
                     "ventas": round(_num(em.get("Neto gravado total")) + _num(em.get("No gravado")) + _num(em.get("Exento"))
                                     + b_emit / 1.21, 2),
                     "compras": round(_num(rc.get("Neto gravado total")) + _num(rc.get("No gravado")) + _num(rc.get("Exento")), 2),
                     "en_curso": per == hoy.strftime("%Y-%m")})
     return out
+
+
+def _saldos_iva_anteriores(cuit: str, per: str) -> dict:
+    """Saldo técnico a favor y saldo de libre disponibilidad de IVA del último período ANTERIOR a 'per', como los muestra
+    Cuentas Tributarias (estado de cumplimiento, que refleja la DJ presentada): lo lee el robot de deuda histórica."""
+    rutas = sorted(glob.glob(os.path.join(datos.DATOS, cuit, "sct_historico", "[0-9]*.json")))
+    d = _leer(rutas[-1]) if rutas else None
+    vacio = {"saldo_tecnico": None, "sld": None, "periodo": "", "al": ""}
+    if not isinstance(d, dict):
+        return vacio
+    tope = per.replace("-", "") + "00"
+    filas = [m for m in d.get("movimientos") or [] if m.get("impuesto") == "30" and str(m.get("periodo", "")) < tope]
+    if not filas:
+        return {**vacio, "saldo_tecnico": 0.0, "sld": 0.0, "al": d.get("fecha", "")}
+    ult = max(str(m["periodo"]) for m in filas)
+    del_mes = [m for m in filas if str(m["periodo"]) == ult]
+    return {"saldo_tecnico": round(sum(_num(m.get("saldo_tecnico")) for m in del_mes), 2),
+            "sld": round(sum(_num(m.get("sld")) for m in del_mes), 2),
+            "periodo": f"{ult[:4]}-{ult[4:6]}", "al": d.get("fecha", "")}
+
+
+def _retenciones_iva_mes(cuit: str, per: str) -> dict:
+    """Retenciones y percepciones de IVA sufridas en el mes (Mis Retenciones: SICORE 767 y SIRE 216, también aduaneras)."""
+    rutas = sorted(glob.glob(os.path.join(datos.DATOS, cuit, "mis_retenciones", "[0-9]*.json")))
+    d = _leer(rutas[-1]) if rutas else None
+    if not isinstance(d, dict):
+        return {"importe": None, "al": ""}
+    mm, aa = per[5:7], per[:4]
+    tot = 0.0
+    for f in d.get("filas") or []:
+        fecha = str(f.get("fecha") or "")
+        if str(f.get("impuesto", "")).strip()[:3] in ("767", "216") and fecha[3:5] == mm and fecha[6:10] == aa:
+            tot += _num(f.get("importe"))
+    return {"importe": round(tot, 2), "al": d.get("fecha", "")}
 
 
 def nivel_ratio(ratio: float) -> str:

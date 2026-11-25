@@ -530,8 +530,8 @@ def ficha(cuit: str) -> dict:
     s["iva"], s["proyeccion"] = iva, analisis.proyectar_iva(iva)
     s["iva_en_curso"] = analisis.iva_en_curso(cuit)
     _ec = s["iva_en_curso"][-1] if s["iva_en_curso"] else None
-    _ec_txt = (f"{_periodo_corto(_ec['periodo'])} al {_fecha_txt(_ec['al'])}: " + (f"a pagar {_pesos_txt(_ec['saldo'])}"
-               if _ec["saldo"] > 0 else f"a favor {_pesos_txt(-_ec['saldo'])}") + " (Mis Comprobantes, provisorio)") if _ec else ""
+    _ec_txt = (f"{_periodo_corto(_ec['periodo'])} al {_fecha_txt(_ec['al'])}: " + (f"a pagar estimado {_pesos_txt(_ec['estimado'])}"
+               if _ec["estimado"] > 0 else f"a favor estimado {_pesos_txt(-_ec['estimado'])}") + " (provisorio)") if _ec else ""
     if iva or _ec:
         rt = s["ratio"]
         # 20/11/2026: es débito fiscal ÷ crédito fiscal de IVA, NO la utilidad (la utilidad está en "Relación débito

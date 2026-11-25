@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block titulo %}{{ titulo }}{% endblock %}
 {% block cuerpo %}
 <nav class="menu-cartera">
-{% for k, t in [('dfe','Domicilio fiscal'),('deudas','Deudas vencidas'),('por_vencer','Por vencer'),('planes','Planes de pago'),('faltas','Falta de presentación'),('iva','Débito / crédito'),('proyeccion','Proyección de IVA'),('resultado','Resultado mensual'),('fiscalizaciones','Fiscalizaciones')] %}
+{% for k, t in [('dfe','Domicilio fiscal'),('deudas','Deudas vencidas'),('por_vencer','Por vencer'),('planes','Planes de pago'),('faltas','Falta de presentación'),('iva','Débito / crédito'),('iva_mes','IVA del mes'),('proyeccion','Proyección (tendencia)'),('resultado','Resultado mensual'),('fiscalizaciones','Fiscalizaciones')] %}
   <a class="{{ 'activo' if vista == k }}" href="{{ url_for('cartera', vista=k) }}">{{ t }}</a>
 {% endfor %}
 </nav>
@@ -97,6 +97,24 @@
     <td class="num {{ 'txt-rojo' if r.credito and r.ratio < 1 }}" data-l="D/C − 1">{{ r.ratio|utilidad if r.credito else '—' }}</td><td data-l="Nivel" class="nivel-{{ r.nivel }}">{{ r.nivel }}</td>
     <td class="num" data-l="Saldo">{{ d.ultimo.saldo|pesos }} <span class="sutil">{{ periodo_txt(d.ultimo.periodo) }}</span></td></tr>
   {% else %}<tr><td colspan="8" class="sutil">Todavía no hay meses del Libro IVA bajados.</td></tr>{% endfor %}
+  </tbody></table>
+
+{% elif vista == 'iva_mes' %}
+  <p class="sutil">Proyección de IVA del mes en curso de cada cliente (uso interno: no se le manda al cliente). Mis Comprobantes del mes − saldo técnico y
+   S.L.D. del mes anterior − retenciones y percepciones de IVA. Provisorio. Ordenado por lo estimado a pagar.</p>
+  <form method="get" class="filtros"><label>Encargado / equipo:
+    <select name="enc" onchange="this.form.submit()"><option value="">Todos</option>
+      {% for u in x.quienes %}<option value="{{ u }}" {{ 'selected' if x.enc == u }}>{{ x.nombres.get(u, u) }}</option>{% endfor %}
+      <option value="-" {{ 'selected' if x.enc == '-' }}>Sin encargado ni equipo</option></select></label>
+    <span class="sutil">Total estimado a pagar: <b>{{ x.total|pesos }}</b></span></form>
+  <table class="tabla"><thead><tr><th>Cliente</th><th>Encargado</th><th class="num">IVA del mes</th><th class="num">Saldos y retenciones</th><th class="num">Estimado</th><th>Datos al</th></tr></thead><tbody>
+  {% for d in filas %}{% set m = d.m %}<tr><td><a href="{{ url_for('cliente_seccion', cuit=d.cuit, seccion='iva') }}">{{ d.nombre }}</a></td>
+    <td data-l="Encargado">{{ d.encargado or '—' }}</td>
+    <td class="num" data-l="IVA del mes">{{ m.saldo|pesos }}</td>
+    <td class="num" data-l="Saldos y retenciones">− {{ ((m.saldo_tecnico_ant or 0) + (m.sld_ant or 0) + (m.retenciones or 0))|pesos }}</td>
+    <td class="num" data-l="Estimado"><b class="{{ 'txt-rojo' if m.estimado > 0 }}">{{ ('a pagar ' ~ m.estimado|pesos) if m.estimado > 0 else ('a favor ' ~ (-m.estimado)|pesos) }}</b></td>
+    <td data-l="Datos al">{{ m.al|fecha }}</td></tr>
+  {% else %}<tr><td colspan="6" class="sutil">Todavía no hay Mis Comprobantes del mes en curso (se baja en la corrida de cada noche).</td></tr>{% endfor %}
   </tbody></table>
 
 {% elif vista == 'proyeccion' %}

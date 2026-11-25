@@ -195,17 +195,32 @@
 {% elif sec == 'iva' %}
   {% set r = s.ratio %}{% set p = s.proyeccion %}
   {% if s.iva_en_curso %}
-  <h2>Cómo viene el IVA (meses sin DJ presentada)</h2>
-  <table class="tabla"><thead><tr><th>Período</th><th class="num">Débito</th><th class="num">Crédito</th><th class="num">Saldo</th><th class="num">Ventas netas</th><th class="num">Compras netas</th><th>Datos al</th></tr></thead><tbody>
-  {% for m in s.iva_en_curso|reverse %}<tr><td><b>{{ periodo_txt(m.periodo) }}</b>{% if m.en_curso %} <span class="sutil">(en curso)</span>{% endif %}</td>
-    <td class="num" data-l="Débito">{{ m.debito|pesos }}</td><td class="num" data-l="Crédito">{{ m.credito|pesos }}</td>
-    <td class="num" data-l="Saldo"><b class="{{ 'txt-rojo' if m.saldo > 0 }}">{{ ('a pagar ' ~ m.saldo|pesos) if m.saldo > 0 else ('a favor ' ~ (-m.saldo)|pesos) }}</b></td>
-    <td class="num" data-l="Ventas netas">{{ m.ventas|pesos }}</td><td class="num" data-l="Compras netas">{{ m.compras|pesos }}</td>
-    <td data-l="Datos al">{{ m.al|fecha }}</td></tr>{% endfor %}
+  <h2>Proyección de IVA <span class="sutil">(uso interno del estudio: no se le manda al cliente)</span></h2>
+  {% macro fila(t, v, aa=None, neg=False, b=False) %}<tr{% if b %} class="total"{% endif %}><td>{% if b %}<b>{{ t }}</b>{% else %}{{ t }}{% endif %}</td>
+    <td class="num">{% if v is none %}<span class="nada">sin dato</span>{% else %}{{ ('− ' if neg and v else '') ~ v|pesos }}{% endif %}</td>
+    <td class="num sutil">{% if aa is not none %}{{ aa|pesos }}{% endif %}</td></tr>{% endmacro %}
+  {% for m in s.iva_en_curso|reverse %}
+  {% set aa = m.ano_anterior or {} %}
+  <h3>{{ periodo_txt(m.periodo) }}{% if m.en_curso %} <span class="sutil">(en curso)</span>{% else %} <span class="sutil">(DJ todavía no presentada)</span>{% endif %}</h3>
+  <table class="tabla proyeccion"><thead><tr><th>Renglón</th><th class="num">{{ periodo_txt(m.periodo) }}</th><th class="num">Mismo mes {{ m.periodo[:4]|int - 1 }}</th></tr></thead><tbody>
+    {{ fila("Ventas netas (neto gravado, no gravado y exento)", m.ventas, aa.ventas) }}
+    {{ fila("Débito fiscal", m.debito, aa.debito) }}
+    {{ fila("Compras netas (sin facturas B ni C)", m.compras, aa.compras) }}
+    {{ fila("Crédito fiscal", m.credito, aa.credito) }}
+    {{ fila("IVA del mes (débito − crédito)", m.saldo, (aa.debito - aa.credito) if aa else none, b=True) }}
+    {{ fila("Saldo técnico a favor del mes anterior" ~ (" (" ~ periodo_txt(m.saldos_de) ~ ")" if m.saldos_de else ""), m.saldo_tecnico_ant, neg=True) }}
+    {{ fila("Retenciones y percepciones de IVA del mes" ~ (" (al " ~ m.retenciones_al|fecha ~ ")" if m.retenciones_al else ""), m.retenciones, neg=True) }}
+    {{ fila("Saldo de libre disponibilidad del mes anterior", m.sld_ant, neg=True) }}
+    <tr class="total"><td><b>{{ 'A pagar estimado' if m.estimado > 0 else 'Saldo a favor estimado' }}</b></td>
+      <td class="num"><b class="{{ 'txt-rojo' if m.estimado > 0 }}">{{ (m.estimado if m.estimado > 0 else -m.estimado)|pesos }}</b></td><td></td></tr>
   </tbody></table>
-  <p class="sutil">Provisorio, con Mis Comprobantes (se actualiza todas las noches de lunes a viernes). Crédito: IVA de las facturas A recibidas (las B no se computan).
-   Débito: IVA de las facturas A emitidas más el IVA contenido en las B emitidas, estimado al 21%. No incluye percepciones, retenciones ni saldos a favor anteriores,
-   ni comprobantes que no están en Mis Comprobantes (despachos de importación, algunos servicios públicos).</p>
+  <p class="sutil">Provisorio · Mis Comprobantes al {{ m.al|fecha }}{% if m.saldos_al %} · saldos de Cuentas Tributarias al {{ m.saldos_al|fecha }}{% endif %}.
+   {% if m.en_curso and not m.saldos_de %}Los saldos del mes anterior se toman cuando se lea la deuda histórica (corrida completa).{% endif %}</p>
+  {% endfor %}
+  <p class="sutil">Mis Comprobantes del mes en curso no es del todo fiable: le pueden faltar comprobantes (despachos de importación, algunos servicios públicos).
+   Crédito: IVA de las facturas A recibidas (las B y C no dan crédito; las C siguen contando como gasto en la Relación débito crédito).
+   Débito: IVA de las A emitidas más el IVA contenido en las B, estimado al 21%. Retenciones y percepciones: Mis Retenciones (se lee en la corrida completa del fin de semana).
+   Todavía no se suma el IVA de los despachos de importación.</p>
   {% endif %}
   {% if r %}
   <div class="tarjetas">
