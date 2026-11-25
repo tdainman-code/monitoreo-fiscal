@@ -31,6 +31,7 @@ JUR_NOMBRE = {"901": "CABA", "902": "Buenos Aires", "903": "Catamarca", "904": "
 # id, organismo, nombre, robot disponible, se usa en
 FUENTES = [
     ("constancia", "ARCA", "Constancia de inscripción (se renueva cada mes)", False, "Datos fiscales del cliente"),
+    ("constancia_arba", "ARBA", "Constancia de inscripción Ingresos Brutos (PDF)", True, "Régimen de IIBB"),
     ("constancia_cm", "COMARB", "Constancia de inscripción Convenio Multilateral (Padrón Web)", True, "Régimen y jurisdicciones de IIBB"),
     ("arca_mr", "ARCA", "Mis Retenciones (SICORE / SIRE)", True, "IVA"),
     ("arca_aduana", "Aduana", "Percepciones aduaneras (IVA y Ganancias)", True, "IVA y Ganancias"),
@@ -98,7 +99,7 @@ def por_defecto(cuit: str, dc: dict) -> list[str]:
         if "buenos aires" in jur or "pba" in jur:
             out += ["arba"]
         out += ["sircreb", "sirtac", "sircupa"]
-    for fu in ("arba", "agip", "constancia_cm"):
+    for fu in ("arba", "agip", "constancia_cm", "constancia_arba"):
         if glob.glob(os.path.join(datos.DATOS, cuit, "biblioteca", "*", fu)):
             out += [fu]
     if _filas_mr(cuit) and any(f.get("agente") == ADUANA for f in _filas_mr(cuit)):
@@ -267,7 +268,7 @@ def estado(cuit: str, periodo: str, fuente: str, dc: dict | None = None, errores
         return "no"
     if not DISPONIBLE.get(fuente):
         return "robot"
-    if fuente == "constancia_cm":
+    if fuente in ("constancia_cm", "constancia_arba"):
         return "bajado" if glob.glob(os.path.join(datos.DATOS, cuit, "biblioteca", periodo, fuente, "archivos", "*.pdf")) else "pendiente"
     if fuente in ("arba", "agip"):
         if versiones(cuit, periodo, fuente):

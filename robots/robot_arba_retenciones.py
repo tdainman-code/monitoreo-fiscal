@@ -242,6 +242,16 @@ def paso(cuit: str, cit: str, estado: dict):
                                                        "captura": os.path.basename(caps[-1]) if caps else ""})
                 raise
             page.wait_for_timeout(2000)
+            inicio = page.url
+            try:                                         # constancia de inscripción de IIBB (25/11/2026)
+                from . import robot_arba_constancia
+                cons = robot_arba_constancia.bajar(ctx, page, cuit)
+                estado["constancia"] = "OK" + ("" if cons.get("pdf") else " (sin PDF)")
+            except Exception as e:
+                estado["constancia"] = f"error: {str(e).splitlines()[0][:160] if str(e) else type(e).__name__}"
+            if page.url != inicio:
+                page.goto(inicio, wait_until="domcontentloaded")
+                page.wait_for_timeout(2000)
             r = bajar(ctx, page, cuit)
         estado.update({"retenciones": f"OK ({r['filas']} comprobantes en {len(r['meses'])} meses)", **r})
         try:

@@ -89,5 +89,13 @@ ok(len(c["actividades"]) == 3 and c["actividades"][2]["baja"] == "31/12/2017" an
    "constancia CM: actividades con alta y baja")
 ok(pcm.resumen_ficha(c) == {"regimen_iibb": "Convenio Multilateral", "jurisdicciones_iibb": "CABA, Buenos Aires"},
    "ficha: Convenio Multilateral con CABA y Buenos Aires")
+# ARBA: constancia de inscripción de IIBB (pantalla de Goncalves, 25/11/2026)
+from robots import robot_arba_constancia as rac  # noqa: E402
+_c = rac.leer_campos({"CUIT/CUIL/CDI": "20-33116278-8", "Régimen de Pago": "MENSUAL", "Tipo de contribuyente": "CENTRALIZADO",
+                      "Inicio de Actividades": "1 feb. 2026", "Distrito": "117"}, "Convenio\nContribuyente directo de la Provincia de Buenos Aires")
+ok(_c["directo"] and not _c["convenio_multilateral"] and rac.resumen_ficha(_c) == {"regimen_iibb": "Local", "jurisdicciones_iibb": "Buenos Aires"},
+   "constancia ARBA: contribuyente directo -> régimen local Buenos Aires")
+ok(rac.resumen_ficha(rac.leer_campos({"Convenio": "901-123456-7"}, "")) == {"regimen_iibb": "Convenio Multilateral"},
+   "constancia ARBA con número de convenio -> Convenio Multilateral")
 print(f"\n{sum(res)}/{len(res)} OK")
 sys.exit(0 if all(res) else 1)

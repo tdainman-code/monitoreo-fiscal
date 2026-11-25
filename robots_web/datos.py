@@ -461,6 +461,10 @@ def completar_desde_registral(cuit: str) -> list[str]:
     nuevos = dict(r.get("ficha") or {})
     cm = _leer(_ultimo(os.path.join(DATOS, cuit, "padron_cm", "*.json"))) or {}
     nuevos.update(cm.get("ficha") or {})                # Padrón Web de COMARB: régimen y jurisdicciones de IIBB
+    if not (cm.get("ficha") or {}):                     # constancia de ARBA: local si no está en Convenio
+        ab = _leer(_ultimo(os.path.join(DATOS, cuit, "arba_constancia", "*.json"))) or {}
+        for k, v in (ab.get("ficha") or {}).items():
+            nuevos.setdefault(k, v)
     if not nuevos:
         return []
     d = _u.datos_cliente(cuit) or {}
