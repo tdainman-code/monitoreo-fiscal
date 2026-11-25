@@ -209,7 +209,6 @@
     {{ fila("Crédito fiscal", m.credito, aa.credito) }}
     {{ fila("IVA del mes (débito − crédito)", m.saldo, (aa.debito - aa.credito) if aa else none, b=True) }}
     {{ fila("Saldo técnico a favor del mes anterior" ~ (" (" ~ periodo_txt(m.saldos_de) ~ ")" if m.saldos_de else ""), m.saldo_tecnico_ant, neg=True) }}
-    {{ fila("Retenciones y percepciones de IVA del mes" ~ (" (al " ~ m.retenciones_al|fecha ~ ")" if m.retenciones_al else ""), m.retenciones, neg=True) }}
     {{ fila("Saldo de libre disponibilidad del mes anterior", m.sld_ant, neg=True) }}
     <tr class="total"><td><b>{{ 'A pagar estimado' if m.estimado > 0 else 'Saldo a favor estimado' }}</b></td>
       <td class="num"><b class="{{ 'txt-rojo' if m.estimado > 0 }}">{{ (m.estimado if m.estimado > 0 else -m.estimado)|pesos }}</b></td><td></td></tr>
@@ -219,7 +218,7 @@
   {% endfor %}
   <p class="sutil">Mis Comprobantes del mes en curso no es del todo fiable: le pueden faltar comprobantes (despachos de importación, algunos servicios públicos).
    Crédito: IVA de las facturas A recibidas (las B y C no dan crédito; las C siguen contando como gasto en la Relación débito crédito).
-   Débito: IVA de las A emitidas más el IVA contenido en las B, estimado al 21%. Retenciones y percepciones: Mis Retenciones (se lee en la corrida completa del fin de semana).
+   Débito: IVA de las A emitidas más el IVA contenido en las B, estimado al 21%. Las retenciones y percepciones del mes no se restan: en el mes en curso todavía no aparecen.
    Todavía no se suma el IVA de los despachos de importación.</p>
   {% endif %}
   {% if r %}

@@ -153,7 +153,8 @@ def iva_en_curso(cuit: str, hoy=None) -> list[dict]:
         ano_ant = liva.get(f"{int(per[:4]) - 1}{per[4:]}") or {}
         vaa, caa = ano_ant.get("ventas") or {}, ano_ant.get("compras") or {}
         neto = deb - cred
-        estimado = neto - (ant_iva["saldo_tecnico"] or 0) - (ret["importe"] or 0) - (ant_iva["sld"] or 0)
+        # retenciones y percepciones del mes: NO se restan (Tomás, 25/11/2026: en el mes en curso no aparecen todavía)
+        estimado = neto - (ant_iva["saldo_tecnico"] or 0) - (ant_iva["sld"] or 0)
         out.append({"periodo": per, "al": d.get("fecha", ""), "debito": round(deb, 2), "credito": round(cred, 2),
                     "saldo_tecnico_ant": ant_iva["saldo_tecnico"], "sld_ant": ant_iva["sld"], "saldos_de": ant_iva["periodo"],
                     "saldos_al": ant_iva["al"], "retenciones": ret["importe"], "retenciones_al": ret["al"],
