@@ -8,7 +8,9 @@
 #                         monotributistas semana por medio): deuda, planes, DFE, Libro IVA, F.931, SIFERE,
 #                         fiscalizaciones, ARBA, AGIP e informes
 #   domingo 20:00         repechaje: los que dieron error en la semana (cortes, portal caído), hasta las 5:00
-#   cada 3 minutos        claves cargadas desde la web (bandeja de sobres)
+#   cada 3 minutos        claves cargadas desde la web (bandeja de sobres); si hay una corrida en curso se guardan sin
+#                         verificar (las prueba la corrida misma) para no tener dos navegadores compitiendo (25/11/2026)
+#   corridas automáticas: hasta 3 clientes a la vez, según la memoria del servidor (con 2 GB, de a uno)
 #   cada minuto           corridas pedidas desde la web
 #   cada 30 minutos       avisos de cuotas impagas (4 días: al encargado; 15 días: al cliente) y envío de mails
 # Todas usan el mismo candado (/tmp/robots_todo.lock): nunca corren dos robots a la vez.
@@ -20,7 +22,7 @@ PY="$HOME/venv/bin/python"
 mkdir -p "$HOME/logs"
 [ "$(date +%Z)" = "-03" ] || echo "AVISO: la zona horaria no es la de Argentina ($(date +%Z)); revisar con: timedatectl"
 TAG="# robots-nube"
-CMD="cd \$HOME/app && flock -w 172800 /tmp/robots_todo.lock xvfb-run -a $PY -m robots.correr todo --todos"
+CMD="cd \$HOME/app && flock -w 172800 /tmp/robots_todo.lock xvfb-run -a $PY -m robots.correr todo --todos --trabajadores 3"
 NUEVAS=$(cat <<EOT
 $TAG corrida diaria liviana de todos los clientes (lun-vie 20:00, no arranca clientes nuevos despues de las 6:00)
 0 20 * * 1-5 $CMD --modo diaria --urgentes-primero --horas 10 --hasta 06:00 >> \$HOME/logs/diaria_\$(date +\%F).log 2>&1 $TAG
@@ -30,7 +32,7 @@ $TAG corrida completa de fin de semana (sabado y domingo 6:00; cada cliente tien
 $TAG repechaje de la semana (domingo 20:00)
 0 20 * * 0 $CMD --modo completo --solo-fallidos --horas 9 --hasta 05:00 >> \$HOME/logs/repechaje_\$(date +\%F).log 2>&1 $TAG
 $TAG claves cargadas desde la web
-*/3 * * * * cd \$HOME/app && $PY -m robots.almacen_claves procesar-bandeja >> \$HOME/logs/bandeja.log 2>&1 $TAG
+*/3 * * * * cd \$HOME/app && if flock -n /tmp/robots_todo.lock true; then $PY -m robots.almacen_claves procesar-bandeja; else $PY -m robots.almacen_claves procesar-bandeja --sin-verificar; fi >> \$HOME/logs/bandeja.log 2>&1 $TAG
 $TAG corridas pedidas desde la web
 * * * * * cd \$HOME/app && flock -n /tmp/robots_pedidos.lock xvfb-run -a $PY -m robots.pedidos >> \$HOME/logs/pedidos.log 2>&1 $TAG
 $TAG avisos de cuotas impagas (4 y 15 dias) y cola de mails

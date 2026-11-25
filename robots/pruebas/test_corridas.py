@@ -84,5 +84,20 @@ chk(llamadas == [], "--hasta: pasada la hora no arranca clientes nuevos y los de
 # clientes en pausa: las corridas automáticas no los toman
 open(correr.PAUSADOS, "w").write("20-33116000-0\n2033116000\n")   # el segundo está mal escrito: se ignora
 chk(correr.pausados() == {cuits[0]}, "lista de clientes en pausa")
+# trabajadores en paralelo: los limita la memoria
+chk(correr.trabajadores_posibles(3, 1961) == 1, "con 2 GB corre de a uno aunque se pidan 3")
+chk(correr.trabajadores_posibles(3, 7940) == 3, "con 8 GB corre 3 a la vez")
+chk(correr.trabajadores_posibles(3, 3900) == 2, "con 4 GB dos a la vez")
+# reparto real en 3 procesos (sin entrar a ARCA)
+import subprocess  # noqa: E402
+os.environ.update(ROBOTS_CORRER_FALSO="1", HOME=T)
+correr.trabajadores_posibles = lambda p: p
+_t0 = correr.time.time
+correr.time.sleep = lambda s: None
+correr.main(["todo", "--cuit"] + cuits[:7] + ["--trabajadores", "3", "--hasta", "23:59"])
+_logs = sorted(os.listdir(os.path.join(T, "logs")))
+_txt = "".join(open(os.path.join(T, "logs", x)).read() for x in _logs)
+chk(len(_logs) == 3 and all(c in _txt for c in cuits[:7]) and _txt.count("OK (prueba)") == 7,
+    f"3 trabajadores en paralelo se reparten los 7 clientes ({len(_logs)} logs)")
 print("OK" if all(res) else "FALLÓ")
 sys.exit(0 if all(res) else 1)

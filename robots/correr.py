@@ -387,6 +387,8 @@ def main(argv=None):
     ap.add_argument("--urgentes-primero", action="store_true",
                     help="primero los que tenían deuda vencida o DDJJ sin presentar, después los de datos más viejos")
     ap.add_argument("--grupos", type=int, default=5, help="en cuántos días se reparten los clientes (5 = lunes a viernes)")
+    ap.add_argument("--trabajadores", type=int, default=1,
+                    help="clientes en paralelo (navegadores a la vez); se limita solo según la memoria del servidor")
     ap.add_argument("--modo", choices=["diaria", "planes", "semanal", "completo"], default="completo",
                     help="todo: diaria (deuda + e-ventanilla), planes (Mis Facilidades), semanal/completo (todo)")
     a = ap.parse_args(argv)
@@ -431,7 +433,11 @@ def main(argv=None):
                    "solo_fallidos": bool(getattr(a, "solo_fallidos", False)), "horas": a.horas, "total": len(cuits),
                    "inicio": dt.datetime.now().isoformat(timespec="seconds"), "i": 0, "cuit": "", "pid": os.getpid()})
     try:
-        _recorrer(a, cuits, partes, inicio, seguidos)
+        n_trab = trabajadores_posibles(a.trabajadores) if len(cuits) > 1 else 1
+        if n_trab > 1:
+            _en_paralelo(a, cuits, n_trab)
+        else:
+            _recorrer(a, cuits, partes, inicio, seguidos)
     finally:
         if a.todos:
             _progreso(None)
@@ -454,6 +460,51 @@ def _progreso(d: dict | None) -> None:
     except Exception as e:                      # la web es secundaria: nunca frena a los robots
         print(f"(aviso: no se pudo publicar el avance: {e})")
 
+
+
+MEMORIA_POR_NAVEGADOR_MB = 1100       # navegador + Python del robot, con margen (servidor de 2 GB: ~1,4 GB usados con uno)
+
+
+def trabajadores_posibles(pedidos: int, mem_mb: int | None = None) -> int:
+    """Cuántos clientes a la vez (25/11/2026): los pedidos, pero no más de los que entran en la memoria del servidor
+    (con 2 GB, uno solo; con 8 GB, hasta 3 dejando 1,5 GB para la web y el sistema)."""
+    if pedidos <= 1:
+        return 1
+    if mem_mb is None:
+        try:
+            with open("/proc/meminfo") as f:
+                mem_mb = int(next(x for x in f if x.startswith("MemTotal")).split()[1]) // 1024
+        except (OSError, StopIteration, ValueError):
+            return 1
+    return max(1, min(pedidos, (mem_mb - 1500) // MEMORIA_POR_NAVEGADOR_MB))
+
+
+def _en_paralelo(a, cuits: list[str], n: int) -> None:
+    """Reparte los clientes (en el orden que traen: urgentes primero) entre N procesos, cada uno con su navegador y
+    su log (~/logs/trabajador_<k>_<fecha>.log). El candado de la corrida lo sigue teniendo este proceso."""
+    import subprocess
+    partes_ = [cuits[k::n] for k in range(n)]
+    extra = ["--modo", a.modo]
+    for opt, val in (("--hasta", a.hasta), ("--horas", a.horas), ("--periodo", a.periodo), ("--meses", a.meses),
+                     ("--solo", a.solo)):
+        if val:
+            extra += [opt, str(val)]
+    if a.forzar:
+        extra.append("--forzar")
+    logs = os.path.join(os.path.expanduser("~"), "logs")
+    os.makedirs(logs, exist_ok=True)
+    procs = []
+    for k, sub in enumerate(partes_, 1):
+        ruta = os.path.join(logs, f"trabajador_{k}_{dt.date.today().isoformat()}.log")
+        print(f"trabajador {k}: {len(sub)} cliente(s) -> {ruta}", flush=True)
+        f = open(ruta, "a", encoding="utf-8")
+        procs.append((subprocess.Popen([sys.executable, "-m", "robots.correr", a.robot, "--cuit", *sub, *extra],
+                                       stdout=f, stderr=subprocess.STDOUT, env={**os.environ, "ROBOTS_TRABAJADOR": str(k)}), f))
+        time.sleep(30)                                   # que no entren todos a ARCA en el mismo segundo
+    for p_, f in procs:
+        p_.wait()
+        f.close()
+    print(f"terminaron los {n} trabajadores", flush=True)
 
 
 def _recorrer(a, cuits, partes, inicio, seguidos):
@@ -502,6 +553,9 @@ def _publicar():
 
 
 if __name__ == "__main__":
+    if os.environ.get("ROBOTS_CORRER_FALSO") == "1":      # solo pruebas: no entra a ARCA
+        correr_uno = lambda robot, cuit, *a, **k: "OK (prueba)"  # noqa: E731
+        time.sleep = lambda s: None
     try:
         sys.exit(main())
     finally:
