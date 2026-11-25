@@ -150,9 +150,29 @@ def _procesar_avisos(lista) -> list:
     return resto
 
 
+def _limpiar_cortados() -> None:
+    """Un pedido quedó 'corriendo' pero ningún proceso lo está corriendo (se cortó: actualización, reinicio, falta de
+    memoria). Solo se llama con el candado tomado, o sea, cuando seguro no hay otro pedido en curso (25/11/2026)."""
+    lista = _estado_leer()
+    cambio = False
+    for x in lista:
+        if x.get("estado") == "corriendo":
+            x.update(estado="se cortó", detalle="la corrida se interrumpió sin terminar (reinicio o actualización del "
+                     "servidor): volver a pedirla", actualizado=dt.datetime.now().isoformat(timespec="seconds"))
+            cambio = True
+    if cambio:
+        _estado_guardar(lista)
+
+
 def procesar() -> int:
     lista = _procesar_avisos(pendientes())
     if not lista:
+        try:                                                 # sin pedidos: igual se limpian los que quedaron colgados
+            with open(CANDADO, "a") as candado:
+                fcntl.flock(candado, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _limpiar_cortados()
+        except (BlockingIOError, OSError):
+            pass
         return 0
     with open(CANDADO, "a") as candado:
         try:
@@ -162,6 +182,7 @@ def procesar() -> int:
                 if not any(x.get("id") == p["id"] and x.get("estado") == "en espera" for x in _estado_leer()):
                     _anotar(p, "en espera", "hay otra corrida en curso; se toma apenas termine")
             return 0
+        _limpiar_cortados()
         from .correr import _publicar, correr_uno
         hechos = 0
         for ruta, p in lista:
