@@ -274,6 +274,10 @@ def _cliente_info(cuit):
 @requiere_login
 def cliente(cuit):
     info = _cliente_info(cuit)
+    try:
+        datos.completar_regimen(cuit)               # régimen de IIBB deducido (SIFERE / ARBA) si estaba vacío (25/11/2026)
+    except Exception:
+        pass
     s = datos.ficha(cuit)
     usuarios.registrar(session["usuario"], "consulta cliente", cuit, _ip())
     mal = any(x.get("estado") == "Clave inválida" for x in info.get("accesos", []))
@@ -943,9 +947,13 @@ def listado_clientes():
     nombres = {u[0]: (u[1] or u[0]) for u in usuarios.listar()}
     filas = []
     for c in sorted(datos.lista_clientes(_solo()), key=lambda x: (x.get("razon_social") or x["cuit"]).upper()):
+        try:
+            datos.completar_regimen(c["cuit"])
+        except Exception:
+            pass
         dc = usuarios.datos_cliente(c["cuit"]) or {}
         arca = next((a for a in c.get("accesos") or [] if a.get("organismo") == "ARCA"), {})
-        filas.append({**c, "condicion": dc.get("condicion_iva") or "", "encargado": nombres.get(dc.get("encargado") or "", dc.get("encargado") or ""),
+        filas.append({**c, "condicion": dc.get("condicion_iva") or "", "iibb": " · ".join(x for x in (dc.get("regimen_iibb"), dc.get("jurisdicciones_iibb")) if x), "encargado": nombres.get(dc.get("encargado") or "", dc.get("encargado") or ""),
                       "equipo": ", ".join(nombres.get(x.strip(), x.strip()) for x in str(dc.get("equipo") or "").split(",") if x.strip()),
                       "clave": arca.get("estado") or ("sin clave" if not arca else "")})
     return render_template("clientes.html", filas=filas, es_admin=session.get("rol") == "admin")

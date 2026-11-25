@@ -6,17 +6,18 @@
 </div>
 <div class="buscar-grande" style="margin:12px 0"><input id="c-buscar" type="search" placeholder="🔍  Buscar por nombre, CUIT o encargado…" autocomplete="off"></div>
 <div class="panel">
-<table class="tabla" id="c-tabla"><thead><tr><th>Cliente</th><th>CUIT</th><th>Condición IVA</th><th>Encargado</th><th>Equipo</th><th>Clave ARCA</th>{% if es_admin %}<th></th>{% endif %}</tr></thead><tbody>
+<table class="tabla" id="c-tabla"><thead><tr><th>Cliente</th><th>CUIT</th><th>Condición IVA</th><th>IIBB</th><th>Encargado</th><th>Equipo</th><th>Clave ARCA</th>{% if es_admin %}<th></th>{% endif %}</tr></thead><tbody>
 {% for c in filas %}<tr data-buscar="{{ ((c.razon_social or '') ~ ' ' ~ c.cuit ~ ' ' ~ cuit_fmt(c.cuit) ~ ' ' ~ c.encargado ~ ' ' ~ c.equipo)|lower }}">
   <td><a href="{{ url_for('cliente', cuit=c.cuit) }}"><b>{{ c.razon_social or '(sin nombre)' }}</b></a></td>
   <td data-l="CUIT">{{ cuit_fmt(c.cuit) }}</td>
   <td data-l="Condición IVA">{{ c.condicion or '—' }}</td>
+  <td data-l="IIBB" class="sutil">{{ c.iibb or '—' }}</td>
   <td data-l="Encargado">{{ c.encargado or '—' }}</td>
   <td data-l="Equipo" class="sutil">{{ c.equipo or '—' }}</td>
   <td data-l="Clave ARCA" class="{{ 'txt-rojo' if c.clave in ('Clave inválida', 'Requiere intervención', 'sin clave') }}">{{ c.clave or '—' }}</td>
   {% if es_admin %}<td><a class="baja-x" href="{{ url_for('baja_cliente', cuit=c.cuit) }}" title="Dar de baja a {{ c.razon_social or c.cuit }}">✕</a></td>{% endif %}
 </tr>{% endfor %}
-<tr id="c-vacio" hidden><td colspan="7" class="sutil">No hay clientes que coincidan.</td></tr>
+<tr id="c-vacio" hidden><td colspan="8" class="sutil">No hay clientes que coincidan.</td></tr>
 </tbody></table></div>
 <script>
 (function () {

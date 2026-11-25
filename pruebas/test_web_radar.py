@@ -823,6 +823,15 @@ ok("dado de baja" in _r.text and _sb and _sb[0]["tipo"] == "baja" and _sb[0]["cu
    and C3 not in [c["cuit"] for c in datos.lista_clientes()], "baja: va al robot y el cliente desaparece de la web enseguida")
 for _n in set(os.listdir(BANDEJA)) - _antes:
     os.remove(os.path.join(BANDEJA, _n))
+# régimen de IIBB deducido y registrado (25/11/2026)
+_cr = "20777777771"
+escribir(f"{D}/{_cr}/sifere/2026-10.json", {"jurisdicciones": {"901": {"determinado": 1.0}, "902": {"determinado": 2.0}}})
+ok(datos.completar_regimen(_cr) and usuarios.datos_cliente(_cr).get("regimen_iibb") == "Convenio Multilateral"
+   and usuarios.datos_cliente(_cr).get("jurisdicciones_iibb") == "CABA, Buenos Aires", "régimen de IIBB: Convenio deducido de SIFERE y registrado")
+_d = {k: v for k, v in usuarios.datos_cliente(_cr).items() if not k.startswith("_")}
+_d["regimen_iibb"] = "Local"
+usuarios.guardar_datos_cliente(_cr, _d, "gabriel")
+ok(not datos.completar_regimen(_cr) and usuarios.datos_cliente(_cr)["regimen_iibb"] == "Local", "régimen de IIBB: no pisa lo cargado a mano")
 # Biblioteca de importables (especificación de Gaby, 25/11/2026)
 from robots_web import biblioteca as _bib  # noqa: E402
 _pa = _bib.periodo_anterior()

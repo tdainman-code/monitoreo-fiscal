@@ -158,6 +158,44 @@ def hora_limite(hhmm: str, ahora: dt.datetime | None = None) -> dt.datetime:
     return lim if ahora - lim < dt.timedelta(hours=8) else lim + dt.timedelta(days=1)
 
 
+def regimen_iibb(cuit: str) -> dict:
+    """Régimen de Ingresos Brutos del cliente (25/11/2026): lo cargado en la web y, si está vacío, lo que se deduce de lo
+    bajado (DDJJ de SIFERE = Convenio Multilateral con sus jurisdicciones; solo DJ de ARBA = local Buenos Aires)."""
+    import glob
+    try:
+        from . import avisos
+        c = avisos.contactos().get(cuit) or {}
+    except Exception:
+        c = {}
+    reg, jur = (c.get("regimen_iibb") or "").strip(), (c.get("jurisdicciones_iibb") or "").strip()
+    fuente = "cargado en la web"
+    if not reg:
+        sif = [os.path.basename(x)[:7] for x in glob.glob(os.path.join(DATOS, cuit, "sifere", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json"))]
+        arba = glob.glob(os.path.join(DATOS, cuit, "arba", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json"))
+        if sif:
+            reg, fuente = "Convenio Multilateral", "deducido: tiene DDJJ en SIFERE"
+        elif arba:
+            reg, jur, fuente = "Local", jur or "Buenos Aires", "deducido: tiene DJ local en ARBA"
+        else:
+            fuente = ""
+    return {"regimen": reg, "jurisdicciones": jur, "no_corresponde": (c.get("no_corresponde") or "").upper(), "fuente": fuente}
+
+
+def organismos_que_no_van(cuit: str) -> set[str]:
+    """ARBA / AGIP a los que el robot NO entra: marcados 'No corresponde', o el cliente es local de la otra jurisdicción."""
+    r = regimen_iibb(cuit)
+    fuera = {o for o in ("ARBA", "AGIP") if o in r["no_corresponde"]}
+    if r["regimen"].lower().startswith("local"):
+        j = r["jurisdicciones"].lower()
+        caba = "caba" in j or "ciudad" in j or "capital" in j
+        pba = "buenos aires" in j or "pba" in j or "provincia" in j
+        if caba and not pba:
+            fuera.add("ARBA")
+        if pba and not caba:
+            fuera.add("AGIP")
+    return fuera
+
+
 def le_toca_hoy(cuit: str, asig: dict, hoy: dt.date | None = None) -> bool:
     hoy = hoy or dt.date.today()
     if asig["dia"] != hoy.weekday():
@@ -303,14 +341,15 @@ def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, 
             res = ROBOTS[robot].correr(cuit, None, usuario, clave, metodo, visible,
                                        periodos=arca.periodos_ultimos(meses, periodo))
         elif robot == "todo":
+            fuera = organismos_que_no_van(cuit)          # régimen local: no entra a la otra jurisdicción (25/11/2026)
             try:
                 u_arba, c_arba, _ = alm.obtener_clave(cuit, "ARBA", motivo="todo (IIBB local)")
-                arba = (u_arba, c_arba)
+                arba = (u_arba, c_arba) if "ARBA" not in fuera else None
             except alm.ErrorAlmacen:
                 arba = None
             try:
                 u_agip, c_agip, _ = alm.obtener_clave(cuit, "AGIP", motivo="todo (AGIP)")
-                agip = (u_agip, c_agip)
+                agip = (u_agip, c_agip) if "AGIP" not in fuera else None
             except alm.ErrorAlmacen:
                 agip = None
             res = robot_todo.correr(cuit, periodo, usuario, clave, metodo, visible, meses=meses or 12,

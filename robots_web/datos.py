@@ -429,6 +429,42 @@ def veps_deuda(cuit: str) -> dict:
     return {"generados": gen, "pedidos": ped[:10]}
 
 
+JUR_CM = {"901": "CABA", "902": "Buenos Aires", "903": "Catamarca", "904": "Córdoba", "905": "Corrientes", "906": "Chaco",
+          "907": "Chubut", "908": "Entre Ríos", "909": "Formosa", "910": "Jujuy", "911": "La Pampa", "912": "La Rioja",
+          "913": "Mendoza", "914": "Misiones", "915": "Neuquén", "916": "Río Negro", "917": "Salta", "918": "San Juan",
+          "919": "San Luis", "920": "Santa Cruz", "921": "Santa Fe", "922": "Santiago del Estero", "923": "Tierra del Fuego",
+          "924": "Tucumán"}
+
+
+def regimen_detectado(cuit: str) -> dict | None:
+    """Régimen de IIBB que se deduce de lo bajado (25/11/2026): DDJJ en SIFERE = Convenio Multilateral (con las
+    jurisdicciones de la última CM03); solo DJ de ARBA = local Buenos Aires. None si no se puede saber."""
+    sif = sorted(glob.glob(os.path.join(DATOS, cuit, "sifere", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json")))
+    if sif:
+        jur = (_leer(sif[-1]) or {}).get("jurisdicciones") or {}
+        return {"regimen_iibb": "Convenio Multilateral", "jurisdicciones_iibb": ", ".join(JUR_CM.get(j, j) for j in sorted(jur))}
+    if glob.glob(os.path.join(DATOS, cuit, "arba", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json")):
+        return {"regimen_iibb": "Local", "jurisdicciones_iibb": "Buenos Aires"}
+    return None
+
+
+def completar_regimen(cuit: str) -> bool:
+    """Si en Datos del cliente el régimen de IIBB está vacío y se puede deducir, lo registra (no pisa lo cargado)."""
+    from . import usuarios as _u
+    d = _u.datos_cliente(cuit) or {}
+    if (d.get("regimen_iibb") or "").strip():
+        return False
+    det = regimen_detectado(cuit)
+    if not det:
+        return False
+    nuevo = {k: v for k, v in d.items() if not k.startswith("_")}
+    nuevo["regimen_iibb"] = det["regimen_iibb"]
+    if not (nuevo.get("jurisdicciones_iibb") or "").strip():
+        nuevo["jurisdicciones_iibb"] = det["jurisdicciones_iibb"]
+    _u.guardar_datos_cliente(cuit, nuevo, "robot (detectado)")
+    return True
+
+
 def _periodo_corto(p: str) -> str:
     m = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
     return f"{m[int(p[5:7]) - 1]}-{p[2:4]}" if p and len(p) >= 7 else p

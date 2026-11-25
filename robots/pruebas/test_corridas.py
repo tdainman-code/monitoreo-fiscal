@@ -113,5 +113,21 @@ def _mc(fecha):
 chk(rmc._incompleto(_mc("2026-10-20"), "2026-10"), "octubre bajado el 20/10 (en curso): se vuelve a bajar")
 chk(rmc._incompleto(_mc("2026-11-05"), "2026-10"), "octubre bajado el 5/11: se vuelve a bajar (pueden faltar comprobantes)")
 chk(not rmc._incompleto(_mc("2026-11-20"), "2026-10"), "octubre bajado el 20/11: queda")
+# régimen de IIBB: local de una jurisdicción -> no entra a la otra (25/11/2026)
+from robots import avisos as _av  # noqa: E402
+_cont = {}
+_av.contactos = lambda: _cont
+_cont.update({cuits[10]: {"regimen_iibb": "Local", "jurisdicciones_iibb": "CABA"},
+              cuits[11]: {"regimen_iibb": "Local", "jurisdicciones_iibb": "Buenos Aires"},
+              cuits[12]: {"regimen_iibb": "Convenio Multilateral", "jurisdicciones_iibb": "CABA, Buenos Aires"},
+              cuits[13]: {"no_corresponde": "AGIP"}})
+chk(correr.organismos_que_no_van(cuits[10]) == {"ARBA"} and correr.organismos_que_no_van(cuits[11]) == {"AGIP"},
+    "local CABA no entra a ARBA; local Buenos Aires no entra a AGIP")
+chk(correr.organismos_que_no_van(cuits[12]) == set() and correr.organismos_que_no_van(cuits[13]) == {"AGIP"},
+    "Convenio entra a las dos; 'No corresponde' se respeta")
+os.makedirs(os.path.join(correr.DATOS, cuits[14], "arba"), exist_ok=True)
+open(os.path.join(correr.DATOS, cuits[14], "arba", "2026-10.json"), "w").write("{}")
+chk(correr.regimen_iibb(cuits[14])["regimen"] == "Local" and correr.organismos_que_no_van(cuits[14]) == {"AGIP"},
+    "sin datos cargados: solo DJ de ARBA = local Buenos Aires (deducido)")
 print("OK" if all(res) else "FALLÓ")
 sys.exit(0 if all(res) else 1)

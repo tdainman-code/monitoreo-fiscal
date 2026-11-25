@@ -32,7 +32,6 @@ JUR_NOMBRE = {"901": "CABA", "902": "Buenos Aires", "903": "Catamarca", "904": "
 FUENTES = [
     ("arca_mr", "ARCA", "Mis Retenciones (SICORE / SIRE)", True, "IVA"),
     ("arca_aduana", "ARCA", "Percepciones aduaneras", True, "IVA y Ganancias"),
-    ("arca_25413", "ARCA", "Impuesto a los débitos y créditos (25.413)", False, "Pago a cuenta de Ganancias"),
     ("arca_piva", "ARCA", "Portal IVA: retenciones y percepciones precargadas", False, "IVA (control cruzado)"),
     ("arba", "ARBA", "Retenciones y percepciones sufridas", False, "IIBB PBA (902)"),
     ("agip", "AGIP", "Retenciones y percepciones sufridas", False, "IIBB CABA (901)"),
@@ -76,7 +75,7 @@ def por_defecto(cuit: str, dc: dict) -> list[str]:
         return []
     out = []
     if es_ri:
-        out += ["arca_mr", "arca_25413", "arca_piva"]
+        out += ["arca_mr", "arca_piva"]
     reg = (dc.get("regimen_iibb") or "").lower()
     jur = (dc.get("jurisdicciones_iibb") or "").lower()
     if reg or jur:
