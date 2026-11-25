@@ -19,10 +19,12 @@ FILAS = [  # impuesto, concepto, subconcepto, periodo, cuota, venc, saldo, int
     ("10 - GANANCIAS SOCIEDADES", "19 - DECLARACIÓN JURADA", "19 - DECLARACIÓN JURADA", "2025", "0", "14/05/2026", "$ 230.823,55", "$ 39.355,56"),
     ("10 - GANANCIAS SOCIEDADES", "191 - ANTICIPOS", "191 - ANTICIPOS", "2026", "7", "14/12/2026", "$ 124.181,64", "$ 0,00"),
     ("30 - IVA", "19 - DECLARACIÓN JURADA", "19 - DECLARACIÓN JURADA", "202609", "0", "19/10/2026", "$ 5.885.010,61", "$ 167.232,99"),
-]
+] + [("301 - EMPLEADOR-APORTES SEG. SOCIAL", "19 - DECLARACIÓN JURADA", "19 - DECLARACIÓN JURADA", f"2025{m:02d}", "0",
+      f"10/{m:02d}/2025", "$ 1.000,00", "$ 10,00") for m in range(1, 13)]   # 16 filas: la 13 y la 15 se tildan abajo
 CUIT_PANTALLA = {"v": "30-11111111-8"}
 HTML = r"""<html><head><style>img{display:inline-block;width:80px;height:40px;border:1px solid #888}</style></head><body>
 <div role="tablist"><a role="tab">Vencimientos</a><a role="tab" onclick="ver('deudas')">$ Deudas 17</a></div>
+<div id="venc" style="display:none"><table><tbody>OCULTAS</tbody></table></div>
 <div id="deudas" class="tab-pane active" style="display:none">
  <p>Fecha de consulta: 11/20/2026</p><button onclick="pagar()">PAGAR SELECCIONADO</button>
  <table id="t"><thead><tr><th></th><th>Establecimiento</th><th></th><th>Impuesto</th><th>Concepto</th><th>Subconcepto</th>
@@ -58,7 +60,8 @@ function fin(){document.getElementById('imp').innerText='Importe: $ '+total.toLo
 def pagina():
     filas = "".join(f"<tr><td><input type='checkbox'></td><td>0</td><td>!</td>" + "".join(f"<td>{x}</td>" for x in f) + "</tr>"
                     for f in FILAS)
-    return HTML.replace("FILAS", filas).replace("CUITPANT", CUIT_PANTALLA["v"])
+    ocultas = "".join(f"<tr><td><input type='checkbox' disabled></td><td>oculta {i}</td></tr>" for i in range(6))
+    return HTML.replace("FILAS", filas).replace("OCULTAS", ocultas).replace("CUITPANT", CUIT_PANTALLA["v"])
 
 
 ok = True
@@ -82,7 +85,15 @@ with sync_playwright() as p:
     chk(abs(v["importe"] - (890.90 + 230823.55 + 39355.56)) < 0.01 and abs(v["total_confirmacion"] - v["importe"]) < 0.01,
         f"importe del VEP = total de la confirmación ({v['importe']})")
     marcadas = pg.evaluate("[...document.querySelectorAll('#t tbody tr')].map(r=>r.querySelector('input').checked)")
-    chk(marcadas == [True, True, False, False], "tildó exactamente los conceptos pedidos")
+    chk(marcadas == [True, True] + [False] * 14, "tildó exactamente los conceptos pedidos")
+    # 25/11/2026 (VEP de Gaby que falló): filas más abajo de la 12 con otra tabla con casillas antes en la página
+    pg.set_content(pagina())
+    c13 = {"impuesto": "301 - EMPLEADOR-APORTES SEG. SOCIAL", "concepto": "19 - DECLARACIÓN JURADA", "periodo": "202509", "cuota": "0"}
+    c15 = dict(c13, periodo="202511")
+    pg.evaluate("ver('deudas')")
+    n = rv.tildar(pg.main_frame, [c13, c15])
+    marcadas = pg.evaluate("[...document.querySelectorAll('#t tbody tr')].map(r=>r.querySelector('input').checked)")
+    chk(n == 2 and [i for i, x in enumerate(marcadas) if x] == [12, 14], "tilda filas de más abajo aunque haya otra tabla con casillas")
     # concepto que ya no está (pagado): no genera nada
     pg.set_content(pagina())
     try:

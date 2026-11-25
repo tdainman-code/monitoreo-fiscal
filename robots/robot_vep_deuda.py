@@ -50,7 +50,8 @@ JS_FILAS = r"""() => {
               && x.querySelector('input[type=checkbox]'));
   if (!t) return null;
   const cab = [...t.querySelectorAll('thead th')].map(h => h.innerText.replace(/\s+/g, ' ').trim());
-  return {cab, filas: [...t.querySelectorAll('tbody tr')].map((r, i) => ({i,
+  document.querySelectorAll('[data-robot-fila]').forEach(r => r.removeAttribute('data-robot-fila'));
+  return {cab, filas: [...t.querySelectorAll('tbody tr')].map((r, i) => (r.setAttribute('data-robot-fila', i), {i,
      celdas: [...r.cells].map(c => c.innerText.replace(/\s+/g, ' ').trim()),
      tiene_casilla: !!r.querySelector('input[type=checkbox]'),
      tildada: !!(r.querySelector('input[type=checkbox]') || {}).checked}))};
@@ -92,12 +93,24 @@ def tildar(fr, conceptos: list[dict]) -> int:
             raise arca.ErrorRobot(f"VEP: no encontré en Deudas el concepto {' · '.join(x for x in b if x)} "
                                   "(¿ya se pagó o cambió?). No se generó nada.")
         elegidas.append(i)
-    filas_loc = fr.locator("table:has(input[type=checkbox]) tbody tr")
+    # 25/11/2026: cada fila se busca por la marca que le puso JS_FILAS en la tabla de Deudas. Antes se contaba con
+    # nth() sobre TODAS las tablas con casillas de la página (había otras ocultas) y la fila 13 no era la de Deudas.
+    def casilla(i):
+        return fr.locator(f'tr[data-robot-fila="{i}"] input[type=checkbox]').first
+
+    def poner(i, valor):
+        c = casilla(i)
+        try:
+            c.scroll_into_view_if_needed(timeout=10_000)
+            c.set_checked(valor, timeout=15_000)
+        except Exception:                                 # casilla con estilo propio (input oculto): clic por JS
+            if c.evaluate("e => e.checked") != valor:
+                c.evaluate("e => e.click()")
     for f in t["filas"]:                                  # primero se destilda todo lo que no corresponde
         if f["tildada"] and f["i"] not in elegidas:
-            filas_loc.nth(f["i"]).locator("input[type=checkbox]").first.uncheck()
+            poner(f["i"], False)
     for i in elegidas:
-        filas_loc.nth(i).locator("input[type=checkbox]").first.check()
+        poner(i, True)
     arca.pausa(0.5, 1.0)
     marcadas = sum(1 for f in fr.evaluate(JS_FILAS)["filas"] if f["tildada"])
     if marcadas != len(elegidas):
