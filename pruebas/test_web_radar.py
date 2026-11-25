@@ -842,7 +842,7 @@ escribir(f"{D}/{C2}/mis_retenciones/2026-11-22.json", {"fecha": "2026-11-22", "d
               {"agente": "33693450239", "impuesto": "767", "regimen": "1", "fecha": _fx, "operacion": "PERCEPCION", "importe": 99.0,
                "comprobante": "", "desc_comprobante": "DESPACHO", "fecha_comprobante": _fx, "certificado": "", "fecha_dj": ""}]})
 _b = cl2.get(f"/biblioteca?periodo={_pa}").text
-ok("Biblioteca de importables" in _b and "Robot pendiente" in _b and "Bajado" in _b, "biblioteca: grilla de clientes por fuente con estados")
+ok("Biblioteca de archivos" in _b and "Robot pendiente" in _b and "Bajado" in _b, "biblioteca: grilla de clientes por fuente con estados")
 _bc = cl2.get(f"/cliente/{C2}/biblioteca").text
 ok("1.500,50" in _bc and "Todo el mes (.zip)" in _bc and "Fuentes que se bajan" in _bc, "biblioteca del cliente: totales, Excel y zip")
 _x = cl2.get(f"/cliente/{C2}/biblioteca/{_pa}/arca_mr.xlsx")
@@ -918,6 +918,31 @@ _pub[-1]["accesos"] = [{"organismo": "ARBA", "estado": "Sin verificar", "actuali
 escribir(os.path.join(datos.PUBLICO, "clientes.json"), _pub)
 ok(not {f["parte"] for f in datos.fallas(_C9)} & {"arba", "agip"} and datos.claves_al_dia(_C9)["AGIP"]["estado"] == "cargada",
    "clave cargada después del aviso: deja de decir 'sin clave' y muestra que está cargada")
+
+# Biblioteca de archivos · ARBA (25/11/2026): versión del mes, diagnóstico por listado y TXT para importar en el zip
+from robots_web import biblioteca as _bib
+_per = _bib.periodos()[1]
+escribir(os.path.join(D, _C9, "biblioteca", _per, "arba", "2026-11-25.json"), {"cuit": _C9, "periodo": _per, "fuente": "arba",
+         "fecha": "2026-11-25", "filas": [{"agente": "30111111112", "regimen": "PERCEPCION", "operacion": "PERCEPCION",
+         "fecha": "03/" + _per[5:] + "/" + _per[:4], "punto_venta": "00003", "comprobante": "667069", "desc_comprobante": "FACTURA A",
+         "importe": 5600.28}]})
+os.makedirs(os.path.join(D, _C9, "biblioteca", _per, "arba", "archivos"), exist_ok=True)
+open(os.path.join(D, _C9, "biblioteca", _per, "arba", "archivos", _C9 + "CP.txt"), "w").write("linea")
+escribir(os.path.join(D, _C9, "biblioteca", "_diagnostico", "arba.json"), {"fecha": "2026-11-25T20:10:00", "estado": "ok",
+         "pasos": [{"paso": "Descarga para Importar " + _per, "ok": True, "detalle": "1 comprobantes"}], "meses": {_per: {"filas": 1}}})
+_h = cl2.get(f"/cliente/{_C9}/biblioteca").text
+ok("Biblioteca de archivos" in _h and "Diagnóstico por listado" in _h and "Descarga para Importar" in _h and "5.600,28" in _h,
+   "biblioteca ARBA: muestra el mes bajado y el diagnóstico paso a paso")
+import zipfile as _zf, io as _io
+_rz = cl2.get(f"/cliente/{_C9}/biblioteca/{_per}.zip")
+_z = _zf.ZipFile(_io.BytesIO(_rz.data))
+ok(any(n.endswith(_C9 + "CP.txt") for n in _z.namelist()) and any("arba" in n and n.endswith(".xlsx") for n in _z.namelist()),
+   "zip del mes: Excel + TXT para importar de ARBA")
+escribir(os.path.join(D, _C9, "biblioteca", "_diagnostico", "arba.json"), {"fecha": "2026-11-25T20:10:00", "estado": "error",
+         "pasos": [{"paso": "Autogestión -> Deducciones informadas por los Agentes", "ok": True}, {"paso": "siguiente paso", "ok": False}],
+         "error": "ErrorRobot: no apareció Régimen de Retenciones", "captura": "error_arba_retenciones_x_0.png"})
+_h = cl2.get(f"/cliente/{_C9}/biblioteca").text
+ok("Falló" in _h and "no apareció Régimen de Retenciones" in _h and "error_arba_retenciones_x_0.png" in _h, "diagnóstico con error y captura")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

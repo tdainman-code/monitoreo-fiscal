@@ -33,7 +33,7 @@ import traceback
 from contextlib import closing
 
 from . import almacen_claves as alm
-from . import arca, robot_agip, robot_arba, robot_arba_dfe, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_situacion_fiscal, robot_todo
+from . import arca, robot_agip, robot_arba, robot_arba_dfe, robot_arba_retenciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_situacion_fiscal, robot_todo
 from . import robot_ccma, robot_fiscalizaciones, robot_sct_historico, robot_mis_retenciones
 
 REGISTRO = os.environ.get("ROBOTS_REGISTRO", "/var/lib/robots/ejecuciones.jsonl")
@@ -41,7 +41,7 @@ ROBOTS = {"mis_comprobantes": robot_mis_comprobantes, "situacion_fiscal": robot_
           "f931": robot_f931, "sifere": robot_sifere, "dfe": robot_dfe, "todo": robot_todo, "arba": robot_arba,
           "libro_iva": robot_libro_iva, "observados": robot_observados, "arba_dfe": robot_arba_dfe,
           "agip": robot_agip, "fiscalizaciones": robot_fiscalizaciones, "ccma": robot_ccma, "sct_historico": robot_sct_historico,
-          "mis_retenciones": robot_mis_retenciones}
+          "mis_retenciones": robot_mis_retenciones, "arba_retenciones": robot_arba_retenciones}
 
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -265,7 +265,11 @@ def correr_arba(cuit: str, periodo: str, visible: bool, meses=None, forzar=False
     periodos = arca.periodos_ultimos(meses or 12, periodo)
     try:
         estado: dict = {}
-        if robot == "arba_dfe":
+        if robot == "arba_retenciones":
+            from . import robot_arba_retenciones
+            robot_arba_retenciones.paso(usuario, clave, estado)()
+            txt = estado.get("retenciones", "")
+        elif robot == "arba_dfe":
             from . import robot_arba_dfe
             robot_arba_dfe.paso(usuario, clave, estado)()
             txt = (f"{estado.get('total', 0)} comunicaciones, {estado.get('nuevas_leidas', 0)} leídas hoy, "
@@ -318,7 +322,7 @@ def correr_agip(cuit: str) -> str:
 
 def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, meses=None, forzar=False,
                modo: str = "completo") -> str:
-    if robot in ("arba", "arba_dfe"):
+    if robot in ("arba", "arba_dfe", "arba_retenciones"):
         return correr_arba(cuit, periodo, visible, meses, forzar, robot)
     if robot == "agip":
         return correr_agip(cuit)

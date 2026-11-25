@@ -400,13 +400,16 @@ def paso(cuit: str, cit: str, estado: dict):
                     page.bring_to_front()
                     if page.url != inicio_autogestion:
                         page.goto(inicio_autogestion, wait_until="domcontentloaded")
-                    percep = leer_deducciones(ctx, page, cuit, date.today())
+                    from . import robot_arba_retenciones      # 25/11/2026: 2 meses, 3 regímenes, archivos y diagnóstico
+                    rr = robot_arba_retenciones.bajar(ctx, page, cuit, date.today())
+                    percep = []                                # el cruce las toma de la biblioteca
+                    estado["deducciones"] = f"OK ({rr['filas']} comprobantes en {len(rr['meses'])} meses)"
                 except arca.CuitEquivocado:
                     raise
                 except Exception as e:
                     percep = None
                     estado["deducciones"] = f"error: {str(e).splitlines()[0][:160]}"
-                    arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), "arba_deducciones")
+                    # la captura y el diagnóstico ya los guardó robot_arba_retenciones
             except Exception:
                 arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), "arba_dfe")
                 with open(ruta_reg, "w", encoding="utf-8") as fh:

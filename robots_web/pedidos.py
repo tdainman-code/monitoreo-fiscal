@@ -26,6 +26,7 @@ ROBOTS = {
     "sct_historico": "Deuda histórica (Cuentas Tributarias, estado de cumplimiento)",
     "agip": "AGIP (DFE, deuda, fiscalización)",
     "arba_dfe": "ARBA (domicilio fiscal electrónico)",
+    "arba_retenciones": "ARBA: retenciones y percepciones (2 últimos meses)",
 }
 MAX_PENDIENTES = 30
 

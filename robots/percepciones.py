@@ -199,6 +199,18 @@ def cruzar(cuit: str, hoy: date | None = None) -> dict | None:
         if isinstance(d, dict) and d.get("percepciones") is not None:
             arba = d
             break
+    # Biblioteca (robot_arba_retenciones, 25/11/2026): los 2 últimos meses con percepciones y aduaneras; reemplaza esos
+    # meses de lo que trajo la ventanilla DFE (que leía solo percepciones de 13 meses)
+    bib_arba = {}
+    for d in glob.glob(os.path.join(DATOS, cuit, "biblioteca", "[0-9]*", "arba")):
+        vs = sorted(glob.glob(os.path.join(d, "[0-9]*.json")))
+        v = _leer(vs[-1]) if vs else None
+        if isinstance(v, dict):
+            bib_arba[v.get("periodo") or os.path.basename(os.path.dirname(d))] = v.get("filas") or []
+    if bib_arba:
+        viejas = [x for x in (arba or {}).get("percepciones") or []
+                  if f"{str(x.get('fecha', ''))[6:10]}-{str(x.get('fecha', ''))[3:5]}" not in bib_arba]
+        arba = dict(arba or {}, percepciones=viejas + [x for fs in bib_arba.values() for x in fs])
     if not isinstance(mr, dict) and not agip and not arba:
         return None
     mr = mr if isinstance(mr, dict) else {}

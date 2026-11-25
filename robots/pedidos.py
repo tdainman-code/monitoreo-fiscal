@@ -34,6 +34,7 @@ ROBOTS_PERMITIDOS = {
     "sct_historico": "Deuda histórica (Cuentas Tributarias, estado de cumplimiento)",
     "agip": "AGIP (DFE, deuda, fiscalización)",
     "arba_dfe": "ARBA (domicilio fiscal electrónico)",
+    "arba_retenciones": "ARBA: retenciones y percepciones (2 últimos meses)",
     # botones de la pantalla Avisos (cuotas impagas): no entran a ARCA salvo para el VEP
     "aviso_enviar": "Aviso de cuota impaga al cliente",
     "aviso_vep": "Aviso de cuota impaga al cliente + VEP",

@@ -1,7 +1,19 @@
 {% extends "base.html" %}{% block titulo %}Biblioteca · {{ c.razon_social or cuit_fmt(c.cuit) }}{% endblock %}
 {% block cuerpo %}
 <p><a href="{{ url_for('cliente', cuit=c.cuit) }}">← {{ c.razon_social or cuit_fmt(c.cuit) }}</a> · <a href="{{ url_for('biblioteca_general') }}">Biblioteca de todos los clientes</a></p>
-<h1>Biblioteca de importables</h1>
+<h1>Biblioteca de archivos</h1>
+<p class="sutil">Retenciones, percepciones y más · AGIP · ARCA · ARBA · Otros — siempre los 2 últimos meses</p>
+{% if diag %}<section class="mes-bib"><h2>Diagnóstico por listado</h2>
+<table class="tabla"><thead><tr><th>Listado</th><th>Último intento</th><th>Resultado</th><th>Pasos</th><th></th></tr></thead><tbody>
+{% for d in diag %}<tr><td>{{ d.nombre }}</td><td class="sutil" data-l="Último intento">{{ d.fecha or '—' }}</td>
+  <td class="estado-celda {{ {'ok': 'bajado', 'error': 'error', 'nunca': 'pendiente', 'sin robot': 'robot'}.get(d.estado, '') }}" data-l="Resultado">
+    {{ {'ok': 'Bajó', 'error': 'Falló', 'nunca': 'Sin correr', 'sin robot': 'Sin robot'}.get(d.estado, d.estado) }}<br>
+    <span class="sutil">{% if d.paso %}Falló en: <b>{{ d.paso }}</b> — {% endif %}{{ d.texto }}</span>
+    {% for cap in d.capturas %}<br><a href="{{ url_for('captura_robot', cuit=c.cuit, archivo=cap) }}" target="_blank">📷 ver lo que mostró la página</a>{% endfor %}</td>
+  <td class="sutil" data-l="Pasos">{% for p in d.pasos or [] %}{{ '✓' if p.ok else '✗' }} {{ p.paso }}{% if p.detalle %}: {{ p.detalle }}{% endif %}<br>{% endfor %}</td>
+  <td>{% if d.robot %}<form method="post" action="{{ url_for('pedir_corrida', cuit=c.cuit) }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+    <input type="hidden" name="robot" value="{{ d.robot }}"><button class="chico">Probar ahora</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table></section>{% endif %}
 <details class="plegado"><summary>Fuentes que se bajan para este cliente ({{ elegidas|length }}){% if por_defecto %} · valores por defecto según su condición{% endif %}</summary>
   <form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}">
   <table class="tabla"><thead><tr><th></th><th>Organismo</th><th>Fuente</th><th>Se usa en</th><th>Robot</th></tr></thead><tbody>
@@ -13,7 +25,6 @@
     <input type="hidden" name="robot" value="mis_retenciones"><button class="chico">Bajar ahora (ARCA · Mis Retenciones)</button></form>
 </details>
 {% for m in meses %}
-{% if loop.index == 4 %}<details class="plegado"><summary>Meses anteriores</summary>{% endif %}
 <section class="mes-bib">
   <h2>{{ m.periodo[5:] }}/{{ m.periodo[:4] }}
     {% if m.fuentes|selectattr('estado', 'equalto', 'bajado')|list or m.fuentes|selectattr('estado', 'equalto', 'sin_mov')|list %}
@@ -30,7 +41,6 @@
   {% if m.saldos %}<p class="sutil"><b>Saldos del mes anterior:</b>
     {% for x in m.saldos %}{{ x.impuesto }} {{ x.detalle }}: {{ x.importe|pesos if x.importe is not none else 'sin dato' }} <i>({{ x.fuente }})</i>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
 </section>
-{% if loop.last and loop.length >= 4 %}</details>{% endif %}
 {% endfor %}
 <p class="sutil">"Pendiente": todavía no se bajó ese período (Mis Retenciones se lee en la corrida completa del fin de semana o con "Bajar ahora").
  "Sin movimientos": el organismo respondió y no hay nada. Cada descarga queda registrada en Actividad.</p>

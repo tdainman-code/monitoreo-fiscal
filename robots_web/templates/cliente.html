@@ -23,7 +23,7 @@
     {% for org in ('ARCA', 'ARBA', 'AGIP') %}{% set k = claves_al_dia.get(org) %}{% if k %}<span class="sub {{ 'falla' if k.estado in ('invalida', 'rechazada') else '' }}">{{ '⚠' if k.estado in ('invalida', 'rechazada') else ('⏳' if k.estado == 'pendiente' else '✓') }} {{ k.texto }}</span>{% endif %}{% endfor %}
     {% for f in s.fallas_claves or [] %}<span class="sub falla" title="{{ f.texto }}">⚠ {{ f.nombre }}: {{ f.texto[:110] }} → {{ f.que_hacer }}</span>{% endfor %}</a>
   <a class="boton-ficha gris" href="{{ url_for('biblioteca_cliente', cuit=c.cuit) }}">
-    <span class="titulo">📚 Biblioteca</span><span class="numero">Importables</span><span class="sub">retenciones, percepciones y saldos por mes</span></a>
+    <span class="titulo">📚 Biblioteca de archivos</span><span class="numero">2 meses</span><span class="sub">Retenciones, percepciones y más · AGIP · ARCA · ARBA · Otros</span></a>
   <a class="boton-ficha gris" href="{{ url_for('datos_del_cliente', cuit=c.cuit) }}">
     <span class="titulo">🗂 Datos del cliente</span><span class="numero">{{ dc.condicion_iva or 'Completar' }}</span>
     <span class="sub">{{ dc.contadores or 'condiciones, contadores, mails' }}</span></a>

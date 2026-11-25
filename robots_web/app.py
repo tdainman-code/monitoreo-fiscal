@@ -1082,8 +1082,7 @@ def biblioteca_cliente(cuit):
         usuarios.registrar(session["usuario"], "importables del cliente", f"{cuit} {' '.join(cambios)}"[:300], _ip())
         flash("Fuentes de la biblioteca guardadas", "ok")
         return redirect(url_for("biblioteca_cliente", cuit=cuit))
-    hoy = date.today()
-    periodos = list(dict.fromkeys((hoy.replace(day=1) - timedelta(days=1 + 28 * i)).strftime("%Y-%m") for i in range(13)))
+    periodos = bib.periodos()                        # Gabriel (25/11/2026): siempre los 2 últimos meses, nunca más
     err = bib.errores_corrida(cuit)
     meses = []
     for p in periodos:
@@ -1097,7 +1096,9 @@ def biblioteca_cliente(cuit):
                        "importe": round(sum(x["Importe"] for x in det), 2), "totales": bib.totales(det)})
         meses.append({"periodo": p, "fuentes": fu, "saldos": bib.saldos_anteriores(cuit, p)})
     elegidas = bib.elegidas(cuit, dc)
-    return render_template("biblioteca_cliente.html", c=info, meses=meses, fuentes=bib.FUENTES, elegidas=elegidas,
+    diag = [{"id": f, "nombre": bib.NOMBRE[f], "robot": bib.ROBOT_PEDIDO.get(f), **bib.diagnostico(cuit, f)}
+            for f in ("arca_mr", "arba", "agip") if f in elegidas or f == "arba" and bib.versiones_alguna(cuit, "arba")]
+    return render_template("biblioteca_cliente.html", c=info, meses=meses, fuentes=bib.FUENTES, elegidas=elegidas, diag=diag,
                            por_defecto=not isinstance(dc.get("importables"), list), estados=bib.ESTADOS)
 
 
@@ -1501,11 +1502,20 @@ def _procesar_claves(cuit, razon, hay_razon):
         k = request.form.get("k_" + org, "")
         if not k:
             continue
-        u = request.form.get("u_" + org, "") if org == "ARCA" else ""
+        u = request.form.get("u_" + org, "") if org in ("ARCA", "AGIP") else ""
         if u and not claves.cuit_valido("".join(ch for ch in u if ch.isdigit())):
-            err = "El usuario de ARCA, si lo completás, tiene que ser un CUIT válido"
+            err = f"El usuario de {org}, si lo completás, tiene que ser un CUIT válido"
             break
         u = "".join(ch for ch in u if ch.isdigit())
+        if org == "AGIP" and not u:
+            # AGIP (Gaby, 25/11/2026): una persona jurídica entra con el CUIT del REPRESENTANTE (persona física)
+            ant = next((a.get("usuario") for a in (_cliente_info(cuit).get("accesos") or []) if a.get("organismo") == "AGIP"), "")
+            if ant and ant != cuit:
+                u = ant                                   # se mantiene el representante ya cargado
+            elif cuit[:2] in ("30", "33", "34"):
+                err = ("AGIP: para una sociedad hay que completar el CUIT del representante (persona física) con el que "
+                       "se entra con Clave Ciudad")
+                break
         try:
             claves.encolar(cuit, razon, org, u or cuit, k, session["usuario"])
         except claves.ErrorClaves as e:
