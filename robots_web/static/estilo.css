@@ -240,3 +240,12 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .mail-modelo{width:100%;font:14px/1.5 system-ui,sans-serif;padding:12px;border:1px solid var(--borde);border-radius:12px;background:#fff;white-space:pre-wrap}
 .filtro-enc{margin-left:auto}.filtro-enc select{padding:6px 10px;border:1px solid var(--borde);border-radius:10px;font:inherit;background:#fff;margin-left:6px}
 .tabla.proyeccion{max-width:760px}.tabla.proyeccion td:first-child{width:60%}
+/* Biblioteca de importables (25/11/2026) */
+.tabla-ancha{overflow-x:auto}.tabla.biblioteca th{font-size:11px;text-align:center;min-width:86px}.tabla.biblioteca th small{font-weight:400;text-transform:none;letter-spacing:0}
+.estado-celda{text-align:center;font-size:12.5px;white-space:nowrap}
+.estado-celda.bajado{background:#e8f5ee;color:var(--verde);font-weight:600}.estado-celda.sin_mov{background:#f1f5f9;color:#475569}
+.estado-celda.pendiente{background:#fffbeb;color:#a16207}.estado-celda.error{background:#fef2f2;color:var(--rojo);font-weight:600}
+.estado-celda.robot,.estado-celda.no{color:#cbd5e1}
+.estado-bib{padding:2px 8px;border-radius:6px;font-size:12px}.estado-bib.bajado{background:#e8f5ee}.estado-bib.sin_mov{background:#f1f5f9}
+.estado-bib.pendiente{background:#fffbeb}.estado-bib.error{background:#fef2f2}
+.mes-bib{margin:18px 0}.mes-bib h2 .boton{margin-left:10px;vertical-align:middle}

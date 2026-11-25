@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block titulo %}Biblioteca · {{ c.razon_social or cuit_fmt(c.cuit) }}{% endblock %}
+{% block cuerpo %}
+<p><a href="{{ url_for('cliente', cuit=c.cuit) }}">← {{ c.razon_social or cuit_fmt(c.cuit) }}</a> · <a href="{{ url_for('biblioteca_general') }}">Biblioteca de todos los clientes</a></p>
+<h1>Biblioteca de importables</h1>
+<details class="plegado"><summary>Fuentes que se bajan para este cliente ({{ elegidas|length }}){% if por_defecto %} · valores por defecto según su condición{% endif %}</summary>
+  <form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}">
+  <table class="tabla"><thead><tr><th></th><th>Organismo</th><th>Fuente</th><th>Se usa en</th><th>Robot</th></tr></thead><tbody>
+  {% for f in fuentes %}<tr><td><input type="checkbox" name="f_{{ f[0] }}" value="1" {{ 'checked' if f[0] in elegidas }}></td>
+    <td>{{ f[1] }}</td><td>{{ f[2] }}</td><td class="sutil">{{ f[4] }}</td><td class="sutil">{{ 'listo' if f[3] else 'pendiente de relevar' }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p><button>Guardar</button> <span class="sutil">Queda registrado quién lo cambió y cuándo.</span></p></form>
+  <form method="post" action="{{ url_for('pedir_corrida', cuit=c.cuit) }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
+    <input type="hidden" name="robot" value="mis_retenciones"><button class="chico">Bajar ahora (ARCA · Mis Retenciones)</button></form>
+</details>
+{% for m in meses %}
+<section class="mes-bib">
+  <h2>{{ m.periodo[5:] }}/{{ m.periodo[:4] }}
+    {% if m.fuentes|selectattr('estado', 'equalto', 'bajado')|list or m.fuentes|selectattr('estado', 'equalto', 'sin_mov')|list %}
+    <a class="boton chico" href="{{ url_for('biblioteca_zip', cuit=c.cuit, periodo=m.periodo) }}">⬇ Todo el mes (.zip)</a>{% endif %}</h2>
+  {% if m.fuentes %}
+  <table class="tabla"><thead><tr><th>Fuente</th><th>Estado</th><th class="num">Comprobantes</th><th class="num">Importe</th><th>Totales</th><th></th></tr></thead><tbody>
+  {% for f in m.fuentes %}<tr><td>{{ f.nombre }}</td><td class="estado-celda {{ f.estado }}" data-l="Estado">{{ estados[f.estado] }}</td>
+    <td class="num" data-l="Comprobantes">{{ f.n if f.estado in ('bajado', 'sin_mov') else '' }}</td>
+    <td class="num" data-l="Importe">{{ f.importe|pesos if f.estado == 'bajado' else '' }}</td>
+    <td data-l="Totales" class="sutil">{% for k, t in f.totales.items() %}{{ k }}: {{ t.cantidad }} · {{ t.importe|pesos }}<br>{% endfor %}</td>
+    <td>{% if f.estado in ('bajado', 'sin_mov') %}<a class="boton chico" href="{{ url_for('biblioteca_excel', cuit=c.cuit, periodo=m.periodo, fuente=f.id) }}">⬇ Excel</a>{% endif %}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="sutil">No hay fuentes elegidas para este cliente.</p>{% endif %}
+  {% if m.saldos %}<p class="sutil"><b>Saldos del mes anterior:</b>
+    {% for x in m.saldos %}{{ x.impuesto }} {{ x.detalle }}: {{ x.importe|pesos if x.importe is not none else 'sin dato' }} <i>({{ x.fuente }})</i>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+</section>
+{% endfor %}
+<p class="sutil">"Pendiente": todavía no se bajó ese período (Mis Retenciones se lee en la corrida completa del fin de semana o con "Bajar ahora").
+ "Sin movimientos": el organismo respondió y no hay nada. Cada descarga queda registrada en Actividad.</p>
+{% endblock %}

@@ -753,6 +753,29 @@ _iv = cl.get(f"/cliente/{C2}/iva").text
 ok("Proyección de IVA" in _iv and "A pagar estimado" in _iv and "no se le manda al cliente" in _iv, "sección IVA: cuadro de proyección")
 _cv = cl.get("/cartera/iva_mes").text
 ok("IVA del mes en curso" in _cv and "a pagar" in _cv and "Total estimado a pagar" in _cv, "cartera: IVA del mes de todos los clientes")
+# Biblioteca de importables (especificación de Gaby, 25/11/2026)
+from robots_web import biblioteca as _bib  # noqa: E402
+_pa = _bib.periodo_anterior()
+_fx = f"15/{_pa[5:]}/{_pa[:4]}"
+escribir(f"{D}/{C2}/mis_retenciones/2026-11-22.json", {"fecha": "2026-11-22", "desde": "2025-11-01", "hasta": _dtm.date.today().isoformat(),
+    "filas": [{"agente": "30500010912", "impuesto": "767", "regimen": "493", "fecha": _fx, "operacion": "PERCEPCION", "importe": 1500.5,
+               "comprobante": "000100001234", "desc_comprobante": "FACTURA A", "fecha_comprobante": _fx, "certificado": "", "fecha_dj": ""},
+              {"agente": "33693450239", "impuesto": "767", "regimen": "1", "fecha": _fx, "operacion": "PERCEPCION", "importe": 99.0,
+               "comprobante": "", "desc_comprobante": "DESPACHO", "fecha_comprobante": _fx, "certificado": "", "fecha_dj": ""}]})
+_b = cl2.get(f"/biblioteca?periodo={_pa}").text
+ok("Biblioteca de importables" in _b and "Robot pendiente" in _b and "Bajado" in _b, "biblioteca: grilla de clientes por fuente con estados")
+_bc = cl2.get(f"/cliente/{C2}/biblioteca").text
+ok("1.500,50" in _bc and "Todo el mes (.zip)" in _bc and "Fuentes que se bajan" in _bc, "biblioteca del cliente: totales, Excel y zip")
+_x = cl2.get(f"/cliente/{C2}/biblioteca/{_pa}/arca_mr.xlsx")
+_ws = __import__("openpyxl").load_workbook(__import__("io").BytesIO(_x.data)).active
+ok(_x.status_code == 200 and any(r[11] == 1500.5 for r in _ws.iter_rows(values_only=True) if len(r) > 11), "biblioteca: Excel normalizado de la fuente")
+_z = cl2.get(f"/cliente/{C2}/biblioteca/{_pa}.zip")
+ok(_z.status_code == 200 and len(__import__("zipfile").ZipFile(__import__("io").BytesIO(_z.data)).namelist()) >= 2, "biblioteca: todo el mes en .zip")
+_r = cl2.post(f"/cliente/{C2}/biblioteca", data={"csrf": token(_bc), "f_arca_mr": "1"}, follow_redirects=True)
+ok("Fuentes de la biblioteca guardadas" in _r.text and usuarios.datos_cliente(C2).get("importables") == ["arca_mr"], "biblioteca: tildes por cliente")
+ok("importables del cliente" in cl2.get("/actividad").text and "bajó importable" in cl2.get("/actividad").text, "biblioteca: queda registrado quién cambió y quién bajó")
+ok(cb.get(f"/cliente/{C2}/biblioteca").status_code in (200, 403) and cb.get(f"/cliente/{C}/biblioteca/{_pa}.zip").status_code == 403,
+   "biblioteca: solo clientes propios")
 # alertas: filtro por encargado / equipo (25/11/2026)
 _ag = cl2.get("/alertas").text
 ok("Encargado / equipo" in _ag, "alertas: filtro por encargado")

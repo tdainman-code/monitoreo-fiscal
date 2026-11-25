@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block titulo %}Biblioteca{% endblock %}
+{% block cuerpo %}
+<h1>Biblioteca de importables</h1>
+<p class="sutil">Retenciones, percepciones y recaudaciones de cada cliente, por período y fuente, listas para bajar e importar en la liquidación de IVA e IIBB.
+ Tocá un cliente para ver sus archivos, los totales y los saldos del mes anterior. Las fuentes marcadas "robot pendiente" se suman cuando se relevan sus pantallas.</p>
+<form method="get" class="filtros">
+  <label>Período <select name="periodo" onchange="this.form.submit()">{% for p in periodos %}<option value="{{ p }}" {{ 'selected' if p == periodo }}>{{ p[5:] }}/{{ p[:4] }}</option>{% endfor %}</select></label>
+  <label>Encargado / equipo <select name="enc" onchange="this.form.submit()"><option value="">Todos</option>
+    {% for u in quienes %}<option value="{{ u }}" {{ 'selected' if enc == u }}>{{ nombres.get(u, u) }}</option>{% endfor %}
+    <option value="-" {{ 'selected' if enc == '-' }}>Sin encargado ni equipo</option></select></label>
+  <label>Estado <select name="estado" onchange="this.form.submit()"><option value="">Todos</option>
+    {% for k, t in estados.items() if k != 'no' %}<option value="{{ k }}" {{ 'selected' if est == k }}>{{ t }}</option>{% endfor %}</select></label>
+  <label>Condición <select name="cond" onchange="this.form.submit()"><option value="">Todas</option>
+    <option value="inscripto" {{ 'selected' if cond == 'inscripto' }}>Responsable inscripto</option>
+    <option value="monotributo" {{ 'selected' if cond == 'monotributo' }}>Monotributo</option></select></label>
+</form>
+<p class="sutil">{{ filas|length }} cliente(s) ·
+ {% for k in ('bajado', 'sin_mov', 'pendiente', 'error') %}<span class="estado-bib {{ k }}">{{ estados[k] }}: {{ cuenta[k] }}</span> {% endfor %}</p>
+<div class="panel tabla-ancha">
+<table class="tabla biblioteca"><thead><tr><th>Cliente</th>
+  {% for f in fuentes %}<th title="{{ f[1] }} · {{ f[2] }} — se usa en {{ f[4] }}">{{ f[1] }}<br><small>{{ f[2]|truncate(22, True, '…') }}</small></th>{% endfor %}</tr></thead><tbody>
+{% for c in filas %}<tr>
+  <td><a href="{{ url_for('biblioteca_cliente', cuit=c.cuit) }}"><b>{{ c.razon_social or cuit_fmt(c.cuit) }}</b></a><div class="sutil">{{ cuit_fmt(c.cuit) }}</div></td>
+  {% for f in fuentes %}{% set e = c.estados[f[0]] %}<td class="estado-celda {{ e }}" data-l="{{ f[1] }} {{ f[2] }}">{{ estados[e] }}</td>{% endfor %}
+</tr>{% else %}<tr><td colspan="{{ fuentes|length + 1 }}" class="sutil">No hay clientes con ese filtro.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

@@ -21,6 +21,8 @@
   <a class="boton-ficha {{ 'rojo' if claves_mal or s.fallas_claves else 'gris' }}" href="{{ url_for('cliente_claves', cuit=c.cuit) }}">
     <span class="titulo">🔐 Claves</span><span class="numero">{{ 'Actualizar' if claves_mal else 'Cambiar' }}</span><span class="sub">{{ 'Clave inválida, actualizar' if claves_mal else 'cargar o cambiar una clave' }}</span>
     {% for f in s.fallas_claves or [] %}<span class="sub falla" title="{{ f.texto }}">⚠ {{ f.nombre }}: {{ f.texto[:110] }} → {{ f.que_hacer }}</span>{% endfor %}</a>
+  <a class="boton-ficha gris" href="{{ url_for('biblioteca_cliente', cuit=c.cuit) }}">
+    <span class="titulo">📚 Biblioteca</span><span class="numero">Importables</span><span class="sub">retenciones, percepciones y saldos por mes</span></a>
   <a class="boton-ficha gris" href="{{ url_for('datos_del_cliente', cuit=c.cuit) }}">
     <span class="titulo">🗂 Datos del cliente</span><span class="numero">{{ dc.condicion_iva or 'Completar' }}</span>
     <span class="sub">{{ dc.contadores or 'condiciones, contadores, mails' }}</span></a>

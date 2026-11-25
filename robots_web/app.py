@@ -4,6 +4,7 @@ Solo LEE lo que dejan los robots. No tiene acceso a las claves fiscales.
 from __future__ import annotations
 
 import re
+from io import BytesIO
 import json
 import os
 import secrets
@@ -927,6 +928,102 @@ def alertas():
                            motivos=usuarios.MOTIVOS_DESCARTE, anio_perm=usuarios.ANIO_DESCARTE_PERMANENTE,
                            dias=usuarios.DIAS_DESCARTE, ver=request.args.get("ver", ""), enc=enc, quienes=quienes,
                            nombres=nombres, sin_nadie=sin_nadie)
+
+
+# ---------------------------------------------------------------- Biblioteca de importables (Gaby, 25/11/2026)
+def _periodo_ok(p):
+    return p if re.fullmatch(r"20\d\d-(0[1-9]|1[0-2])", p or "") else None
+
+
+@app.route("/biblioteca")
+@requiere_login
+def biblioteca_general():
+    from . import biblioteca as bib
+    periodo = _periodo_ok(request.args.get("periodo")) or bib.periodo_anterior()
+    enc, est, cond = request.args.get("enc", ""), request.args.get("estado", ""), request.args.get("cond", "")
+    filas = bib.grilla(datos.lista_clientes(_solo()), periodo)
+    nombres = {u[0]: (u[1] or u[0]) for u in usuarios.listar()}
+    quienes = set()
+    for f in filas:
+        f["lleva"] = ({f["dc"].get("encargado") or ""} | {x.strip() for x in str(f["dc"].get("equipo") or "").split(",")}) - {""}
+        quienes |= f["lleva"]
+        c_ = (f["dc"].get("condicion_iva") or "").lower()
+        f["cond"] = "monotributo" if "monotrib" in c_ else "inscripto" if "inscripto" in c_ else ""
+    if enc:
+        filas = [f for f in filas if not f["lleva"]] if enc == "-" else [f for f in filas if enc in f["lleva"]]
+    if cond:
+        filas = [f for f in filas if f["cond"] == cond]
+    if est:
+        filas = [f for f in filas if est in f["estados"].values()]
+    cuenta = {k: sum(1 for f in filas for v in f["estados"].values() if v == k) for k in bib.ESTADOS}
+    hoy = date.today()
+    periodos = [(hoy.replace(day=1) - timedelta(days=1 + 28 * i)).strftime("%Y-%m") for i in range(13)]
+    periodos = list(dict.fromkeys(periodos))
+    return render_template("biblioteca.html", filas=filas, periodo=periodo, periodos=periodos, fuentes=bib.FUENTES,
+                           estados=bib.ESTADOS, cuenta=cuenta, enc=enc, est=est, cond=cond, nombres=nombres,
+                           quienes=sorted(quienes, key=lambda u: nombres.get(u, u).upper()))
+
+
+@app.route("/cliente/<cuit>/biblioteca", methods=["GET", "POST"])
+@requiere_login
+def biblioteca_cliente(cuit):
+    from . import biblioteca as bib
+    info = _cliente_info(cuit)
+    dc = usuarios.datos_cliente(cuit) or {}
+    if request.method == "POST":
+        _controlar_csrf()
+        nuevas = [f[0] for f in bib.FUENTES if request.form.get(f"f_{f[0]}") == "1"]
+        antes = bib.elegidas(cuit, dc)
+        d = {k: v for k, v in dc.items() if not k.startswith("_")}
+        d["importables"] = nuevas
+        usuarios.guardar_datos_cliente(cuit, d, session["usuario"])
+        cambios = [("+" if f in nuevas else "−") + f for f in bib.NOMBRE if (f in nuevas) != (f in antes)]
+        usuarios.registrar(session["usuario"], "importables del cliente", f"{cuit} {' '.join(cambios)}"[:300], _ip())
+        flash("Fuentes de la biblioteca guardadas", "ok")
+        return redirect(url_for("biblioteca_cliente", cuit=cuit))
+    hoy = date.today()
+    periodos = list(dict.fromkeys((hoy.replace(day=1) - timedelta(days=1 + 28 * i)).strftime("%Y-%m") for i in range(13)))
+    err = bib.errores_corrida(cuit)
+    meses = []
+    for p in periodos:
+        fu = []
+        for f in bib.FUENTES:
+            e = bib.estado(cuit, p, f[0], dc, err)
+            if e == "no":
+                continue
+            det = bib.detalle(cuit, p, f[0])
+            fu.append({"id": f[0], "nombre": bib.NOMBRE[f[0]], "estado": e, "n": len(det),
+                       "importe": round(sum(x["Importe"] for x in det), 2), "totales": bib.totales(det)})
+        meses.append({"periodo": p, "fuentes": fu, "saldos": bib.saldos_anteriores(cuit, p)})
+    elegidas = bib.elegidas(cuit, dc)
+    return render_template("biblioteca_cliente.html", c=info, meses=meses, fuentes=bib.FUENTES, elegidas=elegidas,
+                           por_defecto=not isinstance(dc.get("importables"), list), estados=bib.ESTADOS)
+
+
+@app.route("/cliente/<cuit>/biblioteca/<periodo>/<fuente>.xlsx")
+@requiere_login
+def biblioteca_excel(cuit, periodo, fuente):
+    from . import biblioteca as bib
+    info = _cliente_info(cuit)
+    if not _periodo_ok(periodo) or fuente not in bib.NOMBRE:
+        abort(404)
+    usuarios.registrar(session["usuario"], "bajó importable", f"{cuit} {periodo} {fuente}", _ip())
+    return send_file(BytesIO(bib.excel(cuit, info.get("razon_social") or cuit, periodo, [fuente])), as_attachment=True,
+                     download_name=f"{periodo}_{fuente}_{cuit}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.route("/cliente/<cuit>/biblioteca/<periodo>.zip")
+@requiere_login
+def biblioteca_zip(cuit, periodo):
+    from . import biblioteca as bib
+    info = _cliente_info(cuit)
+    if not _periodo_ok(periodo):
+        abort(404)
+    dc = usuarios.datos_cliente(cuit) or {}
+    usuarios.registrar(session["usuario"], "bajó importables del mes (zip)", f"{cuit} {periodo}", _ip())
+    return send_file(BytesIO(bib.zip_mes(cuit, info.get("razon_social") or cuit, periodo, bib.elegidas(cuit, dc))),
+                     as_attachment=True, download_name=f"importables_{cuit}_{periodo}.zip", mimetype="application/zip")
 
 
 @app.route("/mas")
