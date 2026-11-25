@@ -27,6 +27,7 @@ ROBOTS = {
     "agip": "AGIP (DFE, deuda, fiscalización)",
     "arba_dfe": "ARBA (domicilio fiscal electrónico)",
     "arba_retenciones": "ARBA: retenciones y percepciones (2 últimos meses)",
+    "sistema_registral": "Datos registrales ARCA (impuestos inscriptos, importador) → completa la ficha",
 }
 MAX_PENDIENTES = 30
 

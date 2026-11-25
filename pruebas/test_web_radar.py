@@ -943,6 +943,19 @@ escribir(os.path.join(D, _C9, "biblioteca", "_diagnostico", "arba.json"), {"fech
          "error": "ErrorRobot: no apareció Régimen de Retenciones", "captura": "error_arba_retenciones_x_0.png"})
 _h = cl2.get(f"/cliente/{_C9}/biblioteca").text
 ok("Falló" in _h and "no apareció Régimen de Retenciones" in _h and "error_arba_retenciones_x_0.png" in _h, "diagnóstico con error y captura")
+
+# Sistema Registral (25/11/2026): completa la ficha solo en lo vacío
+escribir(os.path.join(D, _C9, "sistema_registral", "2026-11-25.json"), {"cuit": _C9, "fecha": "2026-11-25",
+         "ficha": {"condicion_iva": "Responsable inscripto", "regimen_iibb": "Convenio Multilateral", "mes_cierre": "Diciembre",
+                   "importador": "IMPORTADOR/EXPORTADOR (HABILITADO)"}})
+from robots_web import usuarios as _us
+_dc0 = {k: v for k, v in (_us.datos_cliente(_C9) or {}).items() if not k.startswith("_")}
+_us.guardar_datos_cliente(_C9, {**_dc0, "mes_cierre": "Junio", "regimen_iibb": ""}, "prueba")
+cl2.get(f"/cliente/{_C9}")
+_dc = _us.datos_cliente(_C9) or {}
+ok(_dc.get("condicion_iva") == "Responsable inscripto" and _dc.get("regimen_iibb") == "Convenio Multilateral"
+   and _dc.get("mes_cierre") == "Junio" and _dc.get("importador", "").startswith("IMPORTADOR"),
+   "Sistema Registral: completa la ficha sin pisar lo cargado a mano")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

@@ -275,6 +275,10 @@ def _cliente_info(cuit):
 def cliente(cuit):
     info = _cliente_info(cuit)
     try:
+        datos.completar_desde_registral(cuit)       # Sistema Registral de ARCA: completa lo vacío (25/11/2026, Gabriel)
+    except Exception:
+        pass
+    try:
         datos.completar_regimen(cuit)               # régimen de IIBB deducido (SIFERE / ARBA) si estaba vacío (25/11/2026)
     except Exception:
         pass
@@ -710,7 +714,8 @@ CAMPOS_CLIENTE = {
     "contadores": "Contador/es a cargo", "emails": "Mails del cliente",
     "medios_vep": "Medios de pago del VEP (según sus bancos)",
     "no_corresponde": "Organismos que no le corresponden (no se reclaman claves ni se marcan fallas)",
-    "telefonos": "Teléfonos", "whatsapp": "WhatsApp", "observaciones": "Observaciones",
+    "telefonos": "Teléfonos", "whatsapp": "WhatsApp", "importador": "Importador / exportador (Registro Aduanero)",
+    "observaciones": "Observaciones",
 }
 OPCIONES_CLIENTE = {
     "condicion_iva": ["", "Responsable inscripto", "Monotributo", "Exento", "No alcanzado"],

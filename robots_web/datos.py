@@ -448,6 +448,30 @@ def regimen_detectado(cuit: str) -> dict | None:
     return None
 
 
+def registral(cuit: str) -> dict:
+    """Último Sistema Registral leído por el robot (o {})."""
+    return _leer(_ultimo(os.path.join(DATOS, cuit, "sistema_registral", "*.json"))) or {}
+
+
+def completar_desde_registral(cuit: str) -> list[str]:
+    """Completa en Datos del cliente lo que esté VACÍO con lo del Sistema Registral (nunca pisa lo cargado a mano).
+    Devuelve los campos completados."""
+    from . import usuarios as _u
+    r = registral(cuit)
+    nuevos = r.get("ficha") or {}
+    if not nuevos:
+        return []
+    d = _u.datos_cliente(cuit) or {}
+    hechos = [k for k, v in nuevos.items() if v and not str(d.get(k) or "").strip()]
+    if not hechos:
+        return []
+    nuevo = {k: v for k, v in d.items() if not k.startswith("_")}
+    for k in hechos:
+        nuevo[k] = nuevos[k]
+    _u.guardar_datos_cliente(cuit, nuevo, f"robot (Sistema Registral {r.get('fecha', '')})")
+    return hechos
+
+
 def completar_regimen(cuit: str) -> bool:
     """Si en Datos del cliente el régimen de IIBB está vacío y se puede deducir, lo registra (no pisa lo cargado)."""
     from . import usuarios as _u
