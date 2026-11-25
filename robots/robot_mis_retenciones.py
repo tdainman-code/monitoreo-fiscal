@@ -37,13 +37,15 @@ IMPUESTOS_ADUANA = ("767", "217")
 
 _COLUMNAS = {
     "agente": r"CUIT\s*Agente", "impuesto": r"^Impuesto$", "regimen": r"R[eé]gimen", "fecha": r"Fecha\s*Ret",
-    "certificado": r"Certificado", "operacion": r"Descripci[oó]n\s*Operaci", "importe": r"Importe",
+    "certificado": r"Certificado", "operacion": r"Desc(ripci[oó]n|\.)?\s*Operaci", "importe": r"Importe",
     "comprobante": r"N[uú]mero\s*Comprobante", "fecha_comprobante": r"Fecha\s*Comprobante",
     "desc_comprobante": r"Descripci[oó]n\s*Comprobante", "fecha_dj": r"Registraci",
 }
 
 JS_TABLA = r"""() => {
-  const t = [...document.querySelectorAll('table')].filter(x => /CUIT\s*Agente/i.test(x.innerText) && /Importe/i.test(x.innerText));
+  // 25/11/2026: la consulta de Aduana NO tiene columna "CUIT Agente" (el agente va arriba): se busca por los encabezados
+  const t = [...document.querySelectorAll('table')].filter(x => /Importe/i.test(x.innerText)
+      && (/CUIT\s*Agente/i.test(x.innerText) || /Fecha\s*Ret/i.test(x.innerText)) && /\bImpuesto\b/i.test(x.innerText));
   const tabla = t.length ? t[t.length - 1] : null;
   if (!tabla) return null;
   return [...tabla.querySelectorAll('tr')].map(r => [...r.cells].map(c => c.innerText.replace(/\s+/g, ' ').trim()));
@@ -63,11 +65,15 @@ def _num(t) -> float:
     return -v if neg else v
 
 
-def filas_tabla(crudas: list[list[str]] | None) -> list[dict]:
-    """Filas crudas de la tabla de resultados -> renglones con nombre (se ubican las columnas por el encabezado)."""
+def filas_tabla(crudas: list[list[str]] | None, agente: str = "") -> list[dict]:
+    """Filas crudas de la tabla de resultados -> renglones con nombre (se ubican las columnas por el encabezado).
+    agente: el de la consulta, para la tabla de Aduana que no trae la columna "CUIT Agente" (25/11/2026)."""
     if not crudas:
         return []
     i_cab = next((i for i, f in enumerate(crudas) if any(re.search(_COLUMNAS["agente"], c, re.I) for c in f)), None)
+    if i_cab is None and agente:
+        i_cab = next((i for i, f in enumerate(crudas) if any(re.fullmatch(r"\s*Impuesto\s*", c, re.I) for c in f)
+                      and any(re.search(r"Importe", c, re.I) for c in f) and len(f) >= 5), None)
     if i_cab is None:
         return []
     cab = crudas[i_cab]
@@ -78,10 +84,15 @@ def filas_tabla(crudas: list[list[str]] | None) -> list[dict]:
             pos[k] = j
     out = []
     for f in crudas[i_cab + 1:]:
-        if len(f) < len(cab) - 1 or not re.fullmatch(r"\d{11}", (f[pos.get("agente", 0)] or "").replace("-", "")):
+        if len(f) < len(cab) - 1:
+            continue
+        if "agente" in pos:
+            if not re.fullmatch(r"\d{11}", (f[pos["agente"]] or "").replace("-", "")):
+                continue
+        elif not re.fullmatch(r"\d{3}", (f[pos.get("impuesto", 0)] or "").strip()):
             continue
         g = lambda k: f[pos[k]] if k in pos and pos[k] < len(f) else ""
-        out.append({"agente": g("agente").replace("-", ""), "impuesto": g("impuesto"), "regimen": g("regimen"),
+        out.append({"agente": g("agente").replace("-", "") or agente, "impuesto": g("impuesto"), "regimen": g("regimen"),
                     "fecha": g("fecha"), "certificado": g("certificado"), "operacion": g("operacion").upper(),
                     "importe": _num(g("importe")), "comprobante": re.sub(r"[^\w]", "", g("comprobante")).upper(),
                     "fecha_comprobante": g("fecha_comprobante"), "desc_comprobante": g("desc_comprobante"),
@@ -272,7 +283,7 @@ def _resultados(page, cuit: str, que: str = "") -> list[dict]:
         pass
     filas, vistos = [], set()
     for _ in range(100):
-        nuevas = [f for f in filas_tabla(page.evaluate(JS_TABLA))
+        nuevas = [f for f in filas_tabla(page.evaluate(JS_TABLA), ADUANA if que.startswith("aduaneras") else "")
                   if (k := tuple(sorted(f.items()))) not in vistos and not vistos.add(k)]
         if not nuevas:
             break

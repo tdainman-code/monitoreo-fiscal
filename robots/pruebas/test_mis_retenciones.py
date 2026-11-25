@@ -256,5 +256,12 @@ chk(percepciones.buscar({"agente": "30777777770", "comprobante": "00001000000044
     "mismo número y fecha cercana: es el mismo comprobante")
 chk(percepciones.buscar({"agente": "30777777770", "comprobante": "0000100000009999", "fecha_comprobante": "16/10/2026"}, _lib)[0]
     == "sin_comprobante", "misma fecha pero otro número: NO es el mismo comprobante")
+# Aduana (25/11/2026, Nabajuma): la tabla no trae "CUIT Agente"; el agente es el de la consulta
+_ad = rm.filas_tabla([["Impuesto", "Régimen", "Fecha Ret./Perc.", "Número Certificado", "Desc. Operación", "Importe Ret./Perc.",
+                       "Número Comprobante", "Fecha Comprobante", "Descripción Comprobante"],
+                      ["767", "267", "14/04/2026", "0", "PERCEPCION", "1.358.887,94", "26001IC04072711N", "14/04/2026", "OTRO COMPROBANTE"]],
+                     rm.ADUANA)
+chk(len(_ad) == 1 and _ad[0]["agente"] == rm.ADUANA and _ad[0]["importe"] == 1358887.94 and _ad[0]["operacion"] == "PERCEPCION"
+    and _ad[0]["comprobante"] == "26001IC04072711N", "Aduana: lee la tabla sin columna CUIT Agente")
 print("OK" if ok else "FALLÓ")
 sys.exit(0 if ok else 1)
