@@ -832,7 +832,7 @@ if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: 
                      ("iva", f"/cliente/{C2}/iva"), ("deuda", f"/cliente/{C}/deuda"), ("planes", f"/cliente/{C}/planes"),
                      ("notificaciones", f"/cliente/{C2}/notificaciones"), ("cartera_dfe", "/cartera/dfe"),
                      ("cartera_iva", "/cartera/iva"), ("alertas", "/alertas"), ("avisos", "/avisos"),
-                     ("datos", f"/cliente/{C2}/datos")):
+                     ("datos", f"/cliente/{C2}/datos"), ("biblioteca", "/biblioteca"), ("biblio_cli", f"/cliente/{C2}/biblioteca"), ("iva_cli", f"/cliente/{C2}/iva")):
         html = re.sub(r'<link[^>]+estilo\.css[^>]*>', "<style>" + css + "</style>", cl.get(url).text)
         open(os.path.join(os.environ["VOLCAR_HTML"], nom + ".html"), "w", encoding="utf-8").write(html)
 print(f"\n{sum(res)}/{len(res)} OK")

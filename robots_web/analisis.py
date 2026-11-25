@@ -178,12 +178,11 @@ def _saldos_iva_anteriores(cuit: str, per: str) -> dict:
     vacio = {"saldo_tecnico": None, "sld": None, "periodo": "", "al": ""}
     if not isinstance(d, dict):
         return vacio
-    tope = per.replace("-", "") + "00"
-    filas = [m for m in d.get("movimientos") or [] if m.get("impuesto") == "30" and str(m.get("periodo", "")) < tope]
-    if not filas:
-        return {**vacio, "saldo_tecnico": 0.0, "sld": 0.0, "al": d.get("fecha", "")}
-    ult = max(str(m["periodo"]) for m in filas)
-    del_mes = [m for m in filas if str(m["periodo"]) == ult]
+    a, m_ = int(per[:4]), int(per[5:7])
+    ult = f"{a - (m_ == 1)}{(m_ - 2) % 12 + 1:02d}00"           # SOLO el mes inmediato anterior (25/11/2026)
+    del_mes = [m for m in d.get("movimientos") or [] if m.get("impuesto") == "30" and str(m.get("periodo", "")) == ult]
+    if not del_mes:
+        return {**vacio, "al": d.get("fecha", "")}
     return {"saldo_tecnico": round(sum(_num(m.get("saldo_tecnico")) for m in del_mes), 2),
             "sld": round(sum(_num(m.get("sld")) for m in del_mes), 2),
             "periodo": f"{ult[:4]}-{ult[4:6]}", "al": d.get("fecha", "")}

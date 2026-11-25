@@ -13,6 +13,7 @@
     <input type="hidden" name="robot" value="mis_retenciones"><button class="chico">Bajar ahora (ARCA · Mis Retenciones)</button></form>
 </details>
 {% for m in meses %}
+{% if loop.index == 4 %}<details class="plegado"><summary>Meses anteriores</summary>{% endif %}
 <section class="mes-bib">
   <h2>{{ m.periodo[5:] }}/{{ m.periodo[:4] }}
     {% if m.fuentes|selectattr('estado', 'equalto', 'bajado')|list or m.fuentes|selectattr('estado', 'equalto', 'sin_mov')|list %}
@@ -29,6 +30,7 @@
   {% if m.saldos %}<p class="sutil"><b>Saldos del mes anterior:</b>
     {% for x in m.saldos %}{{ x.impuesto }} {{ x.detalle }}: {{ x.importe|pesos if x.importe is not none else 'sin dato' }} <i>({{ x.fuente }})</i>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
 </section>
+{% if loop.last and loop.length >= 4 %}</details>{% endif %}
 {% endfor %}
 <p class="sutil">"Pendiente": todavía no se bajó ese período (Mis Retenciones se lee en la corrida completa del fin de semana o con "Bajar ahora").
  "Sin movimientos": el organismo respondió y no hay nada. Cada descarga queda registrada en Actividad.</p>
