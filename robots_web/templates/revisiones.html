@@ -3,7 +3,15 @@
 <h1>Revisiones diarias <span class="sutil">· {{ nombre_quien }}</span></h1>
 <p class="sutil">Cada cliente se revisa una vez por mes. Los clientes se reparten al azar entre los {{ habiles }} días hábiles de {{ mes[5:] }}/{{ mes[:4] }}
  (sin fines de semana ni feriados). Tildá cada uno cuando lo revisaste: abrís la ficha, mirás alertas, deuda, vencimientos y notificaciones.
- Cada dos días se manda un reporte con los que quedaron sin revisar.</p>
+</p>
+{% if es_admin and resumen %}
+<h2>Resumen de todos</h2>
+<table class="tabla"><thead><tr><th>Usuario</th><th class="num">Revisados en el mes</th><th class="num">Atrasados</th><th></th></tr></thead><tbody>
+{% for r in resumen %}<tr><td>{{ r.nombre }}</td><td class="num" data-l="Revisados">{{ r.hechos }} de {{ r.total }}</td>
+  <td class="num" data-l="Atrasados"><b class="{{ 'txt-rojo' if r.atrasados }}">{{ r.atrasados }}</b></td>
+  <td><a href="{{ url_for('revisiones_diarias', u=r.usuario) }}">ver detalle →</a></td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
 {% if es_admin %}
 <form method="get" class="filtros"><label>Ver las de:
   <select name="u" onchange="this.form.submit()">{% for u in con_rev %}<option value="{{ u }}" {{ 'selected' if u == quien }}>{{ (usuarios_todos|selectattr(0, 'equalto', u)|first or [u, u])[1] }}</option>{% endfor %}</select></label></form>

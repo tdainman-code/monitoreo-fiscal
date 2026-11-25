@@ -806,7 +806,8 @@ _cg = app.test_client()
 login(_cg, "guido", "claveguido12345")
 _pg = _cg.get("/revisiones").text
 ok("Revisiones diarias" in _pg and "Revisados en el mes" in _pg, "revisiones: bandeja de Guido")
-ok("Ver las de:" in cl2.get("/revisiones").text, "revisiones: el admin elige de quién ver")
+_ra = cl2.get("/revisiones").text
+ok("Ver las de:" in _ra and "Resumen de todos" in _ra and "Atrasados" in _ra, "revisiones: el admin ve el resumen de todos y elige de quién ver")
 # Biblioteca de importables (especificación de Gaby, 25/11/2026)
 from robots_web import biblioteca as _bib  # noqa: E402
 _pa = _bib.periodo_anterior()

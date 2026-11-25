@@ -971,7 +971,13 @@ def revisiones_diarias():
     proximos = [f for f in filas if f["dia"] > hoy_iso]
     hechos = [f for f in filas if f["hecho"] and f["dia"] < hoy_iso]
     us = usuarios.listar()
-    return render_template("revisiones.html", quien=quien, mes=mes, hoy=hoy, atras=atras, de_hoy=de_hoy, proximos=proximos,
+    resumen = []
+    if es_admin:                                   # Tomás ve cómo viene cada uno (25/11/2026: sin mail, en pantalla)
+        for u in con_rev:
+            pl = rv.plan(u, hoy.strftime("%Y-%m"))
+            resumen.append({"usuario": u, "nombre": next((x[1] or x[0] for x in us if x[0] == u), u), "total": len(pl),
+                            "hechos": sum(1 for f in pl if f["hecho"]), "atrasados": len(rv.atrasados(u, hoy))})
+    return render_template("revisiones.html", resumen=resumen, quien=quien, mes=mes, hoy=hoy, atras=atras, de_hoy=de_hoy, proximos=proximos,
                            hechos=hechos, total=len(filas), n_hechos=sum(1 for f in filas if f["hecho"]),
                            habiles=len(rv.dias_habiles(mes)), es_admin=es_admin, con_rev=con_rev,
                            usuarios_todos=[(u[0], u[1] or u[0]) for u in us if u[3]],
