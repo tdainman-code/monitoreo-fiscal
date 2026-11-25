@@ -725,6 +725,19 @@ ok(_ids(C3) == _ids(C) and len(_ids(C3)) >= 16 and "boton-ficha rojo vacia" in c
    "todas las fichas tienen las mismas tarjetas en el mismo orden (lo no configurado en rojo: Pendiente de configurar)")
 _rotas = [i for i in _ids(C3) if cl.get(f"/cliente/{C3}/{i}").status_code != 200]
 ok(not _rotas, f"todas las tarjetas abren aunque no haya datos {_rotas}")
+# IVA del mes en curso con Mis Comprobantes (25/11/2026)
+import datetime as _dtm  # noqa: E402
+_hoy = _dtm.date.today().strftime("%Y-%m")
+escribir(f"{D}/{C2}/{_hoy}/resultado.json", {"fecha": _dtm.date.today().isoformat(), "archivos": {
+    "emitidos": {"resumen": {"Total IVA": 2100.0, "Neto gravado total": 10000.0, "Comprobantes B/C (sin IVA discriminado)": 1210.0}},
+    "recibidos": {"resumen": {"Total IVA": 1050.0, "Neto gravado total": 5000.0}}}})
+from robots_web import analisis as _an  # noqa: E402
+_ec = [x for x in _an.iva_en_curso(C2) if x["periodo"] == _hoy]
+ok(_ec and _ec[0]["debito"] == 2310.0 and _ec[0]["credito"] == 1050.0 and _ec[0]["saldo"] == 1260.0,
+   f"IVA en curso: débito A + IVA de las B (21%), crédito de las A ({_ec})")
+_iv = cl.get(f"/cliente/{C2}/iva").text
+ok("Cómo viene el IVA" in _iv and "a pagar" in _iv and "(en curso)" in _iv, "sección IVA: mes en curso provisorio")
+ok("Mis Comprobantes, provisorio" in cl.get(f"/cliente/{C2}").text, "tarjeta IVA: saldo del mes en curso")
 # alertas: filtro por encargado / equipo (25/11/2026)
 _ag = cl2.get("/alertas").text
 ok("Encargado / equipo" in _ag, "alertas: filtro por encargado")

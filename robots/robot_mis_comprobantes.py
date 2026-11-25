@@ -13,7 +13,7 @@ import calendar
 import json
 import os
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from playwright.sync_api import Page, TimeoutError as PWTimeout
 
@@ -193,6 +193,19 @@ def controlar_contribuyente(page: Page, cuit: str) -> None:
         raise arca.CuitEquivocado(f"Mis Comprobantes trabaja con {activo} en lugar de {fmt}")
 
 
+def _incompleto(previo: str, periodo: str) -> bool:
+    """Un mes bajado mientras estaba en curso (la corrida diaria lo baja todos los días) o en los primeros 15 días del
+    mes siguiente puede no tener todos los comprobantes: se vuelve a bajar (25/11/2026)."""
+    try:
+        with open(previo, encoding="utf-8") as f:
+            bajado = date.fromisoformat(json.load(f).get("fecha", "")[:10])
+    except (OSError, ValueError, TypeError):
+        return True
+    a, m = map(int, periodo.split("-"))
+    fin = date(a + (m == 12), m % 12 + 1, 1)             # primer día del mes siguiente
+    return bajado < fin + timedelta(days=14) and bajado != date.today()
+
+
 def paso_periodos(cuit: str, periodos: list[str], estado: dict, forzar: bool = False):
     """Paso para arca.ejecutar: baja emitidos y recibidos de cada período. 'estado' guarda lo hecho
     (si la sesión vence, al volver a entrar sigue con el período siguiente)."""
@@ -204,7 +217,7 @@ def paso_periodos(cuit: str, periodos: list[str], estado: dict, forzar: bool = F
                 continue
             destino = os.path.join(DATOS, cuit, periodo)
             previo = os.path.join(destino, "resultado.json")
-            if os.path.exists(previo) and not forzar:
+            if os.path.exists(previo) and not forzar and not _incompleto(previo, periodo):
                 estado[periodo] = "ya bajado"
                 continue
             os.makedirs(destino, exist_ok=True)

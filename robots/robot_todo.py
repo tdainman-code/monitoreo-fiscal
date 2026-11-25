@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import os
 import glob
-from datetime import date
+from datetime import date, timedelta
 
 from . import arca, robot_agip, robot_ccma, robot_mis_retenciones, robot_sct_historico, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere
 from . import robot_situacion_fiscal as rsf
@@ -61,7 +61,16 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
              ("observados", robot_observados.paso(cuit, est["obs"])),
              ("fiscalizaciones", robot_fiscalizaciones.paso(cuit, est["fisc"])),
              ("mis_comprobantes", robot_mis_comprobantes.paso_periodos(cuit, periodos, est["mc"], forzar))]
-    elegir = {"diaria": {"cuentas_tributarias", "dfe"}, "planes": {"mis_facilidades", "ccma"}}.get(modo)
+    if modo == "diaria":
+        # 25/11/2026 (Tomás): la diaria también mira Mis Comprobantes del mes en curso (y del anterior mientras su DJ de
+        # IVA no está presentada, hasta el día 20) para ver cómo viene el IVA. Se vuelve a bajar todos los días.
+        en_curso = [hoy.strftime("%Y-%m")]
+        ant = (hoy.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+        if hoy.day <= 20 and not os.path.exists(os.path.join(DATOS, cuit, "libro_iva", f"{ant}.json")):
+            en_curso.append(ant)
+        pasos = [p for p in pasos if p[0] != "mis_comprobantes"] + [
+            ("mis_comprobantes", robot_mis_comprobantes.paso_periodos(cuit, en_curso, est["mc"], forzar=True))]
+    elegir = {"diaria": {"cuentas_tributarias", "dfe", "mis_comprobantes"}, "planes": {"mis_facilidades", "ccma"}}.get(modo)
     if elegir:
         pasos = [p for p in pasos if p[0] in elegir]
         if modo in ("diaria", "planes"):

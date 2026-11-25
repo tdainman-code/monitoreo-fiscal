@@ -124,6 +124,38 @@ def iva_mensual(cuit: str) -> list[dict]:
     return out
 
 
+def iva_en_curso(cuit: str, hoy=None) -> list[dict]:
+    """25/11/2026 (Tomás): cómo viene el IVA de los meses SIN DJ presentada (el mes en curso y el anterior), con lo que
+    baja la corrida diaria de Mis Comprobantes. Provisorio: crédito = IVA de las facturas A recibidas (las B no se
+    computan); débito = IVA de las A emitidas + el IVA contenido en las B emitidas (estimado al 21%)."""
+    import datetime as _dt
+    hoy = hoy or _dt.date.today()
+    liva = _meses(cuit, "libro_iva")
+    if not liva and not os.path.isdir(os.path.join(datos.DATOS, cuit, "libro_iva")):
+        return []                                  # monotributo / sin Portal IVA: no corresponde
+    ant = (hoy.replace(day=1) - _dt.timedelta(days=1)).strftime("%Y-%m")
+    out = []
+    for per in (ant, hoy.strftime("%Y-%m")):
+        if per in liva:
+            continue
+        d = _leer(os.path.join(datos.DATOS, cuit, per, "resultado.json"))
+        if not isinstance(d, dict):
+            continue
+        arch = d.get("archivos") or {}
+        em = (arch.get("emitidos") or {}).get("resumen") or {}
+        rc = (arch.get("recibidos") or {}).get("resumen") or {}
+        b_emit = _num(em.get("Comprobantes B/C (sin IVA discriminado)"))
+        deb = _num(em.get("Total IVA")) + round(b_emit * 21 / 121, 2)
+        cred = _num(rc.get("Total IVA"))
+        out.append({"periodo": per, "al": d.get("fecha", ""), "debito": round(deb, 2), "credito": round(cred, 2),
+                    "saldo": round(deb - cred, 2), "b_estimado": round(b_emit * 21 / 121, 2),
+                    "ventas": round(_num(em.get("Neto gravado total")) + _num(em.get("No gravado")) + _num(em.get("Exento"))
+                                    + b_emit / 1.21, 2),
+                    "compras": round(_num(rc.get("Neto gravado total")) + _num(rc.get("No gravado")) + _num(rc.get("Exento")), 2),
+                    "en_curso": per == hoy.strftime("%Y-%m")})
+    return out
+
+
 def nivel_ratio(ratio: float) -> str:
     if ratio < REGLAS["ratio_critico"]:
         return "Crítico"

@@ -10,7 +10,7 @@
 #   domingo 20:00         repechaje: los que dieron error en la semana (cortes, portal caído), hasta las 5:00
 #   cada 3 minutos        claves cargadas desde la web (bandeja de sobres); si hay una corrida en curso se guardan sin
 #                         verificar (las prueba la corrida misma) para no tener dos navegadores compitiendo (25/11/2026)
-#   corridas automáticas: hasta 3 clientes a la vez, según la memoria del servidor (con 2 GB, de a uno)
+#   corridas automáticas: hasta 6 clientes a la vez, según memoria y procesadores (2 GB: de a uno; 8 GB: 5; 16 GB: 6)
 #   cada minuto           corridas pedidas desde la web
 #   cada 30 minutos       avisos de cuotas impagas (4 días: al encargado; 15 días: al cliente) y envío de mails
 # Todas usan el mismo candado (/tmp/robots_todo.lock): nunca corren dos robots a la vez.
@@ -22,7 +22,7 @@ PY="$HOME/venv/bin/python"
 mkdir -p "$HOME/logs"
 [ "$(date +%Z)" = "-03" ] || echo "AVISO: la zona horaria no es la de Argentina ($(date +%Z)); revisar con: timedatectl"
 TAG="# robots-nube"
-CMD="cd \$HOME/app && flock -w 172800 /tmp/robots_todo.lock xvfb-run -a $PY -m robots.correr todo --todos --trabajadores 3"
+CMD="cd \$HOME/app && flock -w 172800 /tmp/robots_todo.lock xvfb-run -a $PY -m robots.correr todo --todos --trabajadores 6"
 NUEVAS=$(cat <<EOT
 $TAG corrida diaria liviana de todos los clientes (lun-vie 20:00, no arranca clientes nuevos despues de las 6:00)
 0 20 * * 1-5 $CMD --modo diaria --urgentes-primero --horas 10 --hasta 06:00 >> \$HOME/logs/diaria_\$(date +\%F).log 2>&1 $TAG

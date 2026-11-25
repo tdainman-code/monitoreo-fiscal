@@ -85,9 +85,14 @@ chk(llamadas == [], "--hasta: pasada la hora no arranca clientes nuevos y los de
 open(correr.PAUSADOS, "w").write("20-33116000-0\n2033116000\n")   # el segundo está mal escrito: se ignora
 chk(correr.pausados() == {cuits[0]}, "lista de clientes en pausa")
 # trabajadores en paralelo: los limita la memoria
+correr.os.cpu_count = lambda: 4
 chk(correr.trabajadores_posibles(3, 1961) == 1, "con 2 GB corre de a uno aunque se pidan 3")
 chk(correr.trabajadores_posibles(3, 7940) == 3, "con 8 GB corre 3 a la vez")
 chk(correr.trabajadores_posibles(3, 3900) == 2, "con 4 GB dos a la vez")
+correr.os.cpu_count = lambda: 1
+chk(correr.trabajadores_posibles(6, 15900) == 1, "con 1 procesador, de a uno aunque sobre memoria")
+correr.os.cpu_count = lambda: 4
+chk(correr.trabajadores_posibles(6, 7940) == 5 and correr.trabajadores_posibles(6, 15900) == 6, "4 procesadores: 8 GB -> 5, 16 GB -> 6")
 # reparto real en 3 procesos (sin entrar a ARCA)
 import subprocess  # noqa: E402
 os.environ.update(ROBOTS_CORRER_FALSO="1", HOME=T)
@@ -99,5 +104,14 @@ _logs = sorted(os.listdir(os.path.join(T, "logs")))
 _txt = "".join(open(os.path.join(T, "logs", x)).read() for x in _logs)
 chk(len(_logs) == 3 and all(c in _txt for c in cuits[:7]) and _txt.count("OK (prueba)") == 7,
     f"3 trabajadores en paralelo se reparten los 7 clientes ({len(_logs)} logs)")
+# Mis Comprobantes: un mes bajado mientras estaba en curso se vuelve a bajar (25/11/2026)
+from robots import robot_mis_comprobantes as rmc  # noqa: E402
+_pv = os.path.join(T, "mc.json")
+def _mc(fecha):
+    json.dump({"fecha": fecha}, open(_pv, "w"))
+    return _pv
+chk(rmc._incompleto(_mc("2026-10-20"), "2026-10"), "octubre bajado el 20/10 (en curso): se vuelve a bajar")
+chk(rmc._incompleto(_mc("2026-11-05"), "2026-10"), "octubre bajado el 5/11: se vuelve a bajar (pueden faltar comprobantes)")
+chk(not rmc._incompleto(_mc("2026-11-20"), "2026-10"), "octubre bajado el 20/11: queda")
 print("OK" if all(res) else "FALLÓ")
 sys.exit(0 if all(res) else 1)

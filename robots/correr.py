@@ -476,7 +476,8 @@ def trabajadores_posibles(pedidos: int, mem_mb: int | None = None) -> int:
                 mem_mb = int(next(x for x in f if x.startswith("MemTotal")).split()[1]) // 1024
         except (OSError, StopIteration, ValueError):
             return 1
-    return max(1, min(pedidos, (mem_mb - 1500) // MEMORIA_POR_NAVEGADOR_MB))
+    por_cpu = int((os.cpu_count() or 1) * 1.5)          # el navegador pasa casi todo el tiempo esperando a ARCA
+    return max(1, min(pedidos, (mem_mb - 1500) // MEMORIA_POR_NAVEGADOR_MB, por_cpu))
 
 
 def _en_paralelo(a, cuits: list[str], n: int) -> None:

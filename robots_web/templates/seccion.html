@@ -194,6 +194,19 @@
 {% else %}<p class="sutil">Todavía no hay notas.</p>{% endfor %}
 {% elif sec == 'iva' %}
   {% set r = s.ratio %}{% set p = s.proyeccion %}
+  {% if s.iva_en_curso %}
+  <h2>Cómo viene el IVA (meses sin DJ presentada)</h2>
+  <table class="tabla"><thead><tr><th>Período</th><th class="num">Débito</th><th class="num">Crédito</th><th class="num">Saldo</th><th class="num">Ventas netas</th><th class="num">Compras netas</th><th>Datos al</th></tr></thead><tbody>
+  {% for m in s.iva_en_curso|reverse %}<tr><td><b>{{ periodo_txt(m.periodo) }}</b>{% if m.en_curso %} <span class="sutil">(en curso)</span>{% endif %}</td>
+    <td class="num" data-l="Débito">{{ m.debito|pesos }}</td><td class="num" data-l="Crédito">{{ m.credito|pesos }}</td>
+    <td class="num" data-l="Saldo"><b class="{{ 'txt-rojo' if m.saldo > 0 }}">{{ ('a pagar ' ~ m.saldo|pesos) if m.saldo > 0 else ('a favor ' ~ (-m.saldo)|pesos) }}</b></td>
+    <td class="num" data-l="Ventas netas">{{ m.ventas|pesos }}</td><td class="num" data-l="Compras netas">{{ m.compras|pesos }}</td>
+    <td data-l="Datos al">{{ m.al|fecha }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="sutil">Provisorio, con Mis Comprobantes (se actualiza todas las noches de lunes a viernes). Crédito: IVA de las facturas A recibidas (las B no se computan).
+   Débito: IVA de las facturas A emitidas más el IVA contenido en las B emitidas, estimado al 21%. No incluye percepciones, retenciones ni saldos a favor anteriores,
+   ni comprobantes que no están en Mis Comprobantes (despachos de importación, algunos servicios públicos).</p>
+  {% endif %}
   {% if r %}
   <div class="tarjetas">
     <div class="tarjeta"><span class="sutil">Relación D/C {{ r.meses }} meses</span><b class="nivel-{{ r.nivel }}">{{ r.ratio|dec if r.credito else '—' }}</b><span class="sutil nivel-{{ r.nivel }}">{{ r.nivel }}</span></div>

@@ -426,6 +426,11 @@ def veps_deuda(cuit: str) -> dict:
     return {"generados": gen, "pedidos": ped[:10]}
 
 
+def _periodo_corto(p: str) -> str:
+    m = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+    return f"{m[int(p[5:7]) - 1]}-{p[2:4]}" if p and len(p) >= 7 else p
+
+
 def ficha(cuit: str) -> dict:
     """Situación + todo lo nuevo, y los botones de la ficha (cada uno con un número y un color)."""
     s = situacion(cuit)
@@ -523,7 +528,11 @@ def ficha(cuit: str) -> dict:
     from . import analisis
     iva = analisis.iva_mensual(cuit)
     s["iva"], s["proyeccion"] = iva, analisis.proyectar_iva(iva)
-    if iva:
+    s["iva_en_curso"] = analisis.iva_en_curso(cuit)
+    _ec = s["iva_en_curso"][-1] if s["iva_en_curso"] else None
+    _ec_txt = (f"{_periodo_corto(_ec['periodo'])} al {_fecha_txt(_ec['al'])}: " + (f"a pagar {_pesos_txt(_ec['saldo'])}"
+               if _ec["saldo"] > 0 else f"a favor {_pesos_txt(-_ec['saldo'])}") + " (Mis Comprobantes, provisorio)") if _ec else ""
+    if iva or _ec:
         rt = s["ratio"]
         # 20/11/2026: es débito fiscal ÷ crédito fiscal de IVA, NO la utilidad (la utilidad está en "Relación débito
         # crédito": ventas sin IVA − erogaciones). Mostrarla acá como "utilidad" contradecía a la otra tarjeta.
@@ -531,6 +540,7 @@ def ficha(cuit: str) -> dict:
                   "sub": (f"débito fiscal ÷ crédito fiscal, {rt['meses']} meses · {rt['nivel']}"
                           + (f" · {rt['parte_sin_iva'] * 100:.0f}% de las ventas sin IVA".replace(".", ",")
                              if rt.get("parte_sin_iva", 0) >= 0.05 else "") + " · proyección") if rt else "",
+                  "sub2": _ec_txt,
                   "color": {"Crítico": "rojo", "Advertencia": "amarillo", "No representativo": "gris"}.get((rt or {}).get("nivel"), "verde")})
     res = analisis.resultado_mensual(cuit)
     s["resultado"] = analisis.analizar_resultado(res)
