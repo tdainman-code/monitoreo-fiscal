@@ -725,6 +725,13 @@ ok(_ids(C3) == _ids(C) and len(_ids(C3)) >= 16 and "boton-ficha rojo vacia" in c
    "todas las fichas tienen las mismas tarjetas en el mismo orden (lo no configurado en rojo: Pendiente de configurar)")
 _rotas = [i for i in _ids(C3) if cl.get(f"/cliente/{C3}/{i}").status_code != 200]
 ok(not _rotas, f"todas las tarjetas abren aunque no haya datos {_rotas}")
+# alertas: filtro por encargado / equipo (25/11/2026)
+_ag = cl2.get("/alertas").text
+ok("Encargado / equipo" in _ag, "alertas: filtro por encargado")
+_todas = _ag.count('class="grupo-alertas"')
+_sin = cl2.get("/alertas?enc=-").text.count('class="grupo-alertas"')
+_nadie = cl2.get("/alertas?enc=usuario-que-no-existe").text.count('class="grupo-alertas"')
+ok(_nadie == 0 and _sin <= _todas, f"alertas filtradas por encargado (todas {_todas}, sin encargado {_sin}, otro 0)")
 # lo descartado de antes de 2020 (deuda / faltas de presentación) no vuelve nunca más (20/11/2026)
 C4 = "20123456786"
 def _sit4(ddjj):

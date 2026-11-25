@@ -5,8 +5,20 @@
 Podés descartar una alerta o <b>todas las del cliente</b> indicando el motivo: si a los {{ dias }} días siguen igual, vuelven a aparecer; si cambian antes (otro importe, otro período) o aparece una nueva, se muestran enseguida.
 <b>Deuda y faltas de presentación de períodos anteriores a {{ anio_perm }}:</b> una vez descartadas no vuelven nunca más (si aparece un período nuevo, la alerta vuelve solo por ese).</p>
 <div class="filtros">
-  <a class="chip {{ 'activo' if ver != 'descartadas' }}" href="{{ url_for('alertas') }}">Pendientes ({{ grupos|length }} cliente(s))</a>
-  <a class="chip {{ 'activo' if ver == 'descartadas' }}" href="{{ url_for('alertas', ver='descartadas') }}">Descartadas ({{ descartadas|length }})</a>
+  <a class="chip {{ 'activo' if ver != 'descartadas' }}" href="{{ url_for('alertas', enc=enc) }}">Pendientes ({{ grupos|length }} cliente(s))</a>
+  <a class="chip {{ 'activo' if ver == 'descartadas' }}" href="{{ url_for('alertas', ver='descartadas', enc=enc) }}">Descartadas ({{ descartadas|length }})</a>
+  {% if quienes or enc %}
+  <form method="get" class="en-linea filtro-enc">
+    {% if ver %}<input type="hidden" name="ver" value="{{ ver }}">{% endif %}
+    <label>Encargado / equipo:
+      <select name="enc" onchange="this.form.submit()">
+        <option value="">Todos</option>
+        {% for u in quienes %}<option value="{{ u }}" {{ 'selected' if enc == u }}>{{ nombres.get(u, u) }}</option>{% endfor %}
+        <option value="-" {{ 'selected' if enc == '-' }}>Sin encargado ni equipo{% if sin_nadie %} ({{ sin_nadie }}){% endif %}</option>
+      </select></label>
+    <noscript><button>Filtrar</button></noscript>
+  </form>
+  {% endif %}
 </div>
 {% macro form_motivo(boton) %}
   {% for m in motivos %}<label class="en-linea"><input type="radio" name="motivo" value="{{ m }}" required> {{ m }}</label> {% endfor %}

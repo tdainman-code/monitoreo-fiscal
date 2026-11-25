@@ -833,7 +833,7 @@ def alertas():
                     usuarios.registrar(session["usuario"], f"cliente descartado en alertas ({motivo})", cuit, _ip())
                     flash(f"{len(actuales)} alerta(s) del cliente descartadas: {motivo}. Las que sigan igual vuelven en "
                           f"{usuarios.DIAS_DESCARTE} días; si aparece una nueva, se muestra enseguida.", "ok")
-            return redirect(url_for("alertas", ver=request.args.get("ver", "")))
+            return redirect(url_for("alertas", ver=request.args.get("ver", ""), enc=request.args.get("enc", "")))
         if accion == "restaurar":
             clave = request.form.get("clave", "")
             d = usuarios.descartes_vigentes().get(clave) or next(
@@ -857,7 +857,7 @@ def alertas():
                                    session.get("nombre", ""), a_.get("items"))
                 usuarios.registrar(session["usuario"], f"alerta descartada ({motivo})", f"{cuit} {tipo}"[:120], _ip())
                 flash(f"Alerta descartada: {motivo}. Si en {usuarios.DIAS_DESCARTE} días sigue igual, vuelve a aparecer.", "ok")
-        return redirect(url_for("alertas", ver=request.args.get("ver", "")))
+        return redirect(url_for("alertas", ver=request.args.get("ver", ""), enc=request.args.get("enc", "")))
     desc = usuarios.descartes_vigentes()
     items_d = usuarios.items_descartados()
     grupos, descartadas = [], []
@@ -890,9 +890,24 @@ def alertas():
     por_cliente = {}
     for d in descartadas:
         por_cliente.setdefault(d["cuit"], {"cuit": d["cuit"], "nombre": d["nombre_cliente"], "alertas": []})["alertas"].append(d)
+    # 25/11/2026: filtro por encargado / equipo (quién lleva el cliente)
+    enc = request.args.get("enc", "")
+    lleva = {}
+    for cuit_ in {g["cuit"] for g in grupos} | {d["cuit"] for d in descartadas}:
+        d_ = usuarios.datos_cliente(cuit_) or {}
+        lleva[cuit_] = ({d_.get("encargado") or ""} | {x.strip() for x in str(d_.get("equipo") or "").split(",")}) - {""}
+    nombres = {u[0]: (u[1] or u[0]) for u in usuarios.listar()}
+    quienes = sorted({u for v in lleva.values() for u in v}, key=lambda u: nombres.get(u, u).upper())
+    sin_nadie = sum(1 for g in grupos if not lleva.get(g["cuit"]))
+    if enc:
+        pasa = (lambda c: not lleva.get(c)) if enc == "-" else (lambda c: enc in lleva.get(c, set()))
+        grupos = [g for g in grupos if pasa(g["cuit"])]
+        descartadas = [d for d in descartadas if pasa(d["cuit"])]
+        por_cliente = {k: v for k, v in por_cliente.items() if pasa(k)}
     return render_template("alertas.html", grupos=grupos, descartadas=descartadas, desc_grupos=list(por_cliente.values()),
                            motivos=usuarios.MOTIVOS_DESCARTE, anio_perm=usuarios.ANIO_DESCARTE_PERMANENTE,
-                           dias=usuarios.DIAS_DESCARTE, ver=request.args.get("ver", ""))
+                           dias=usuarios.DIAS_DESCARTE, ver=request.args.get("ver", ""), enc=enc, quienes=quienes,
+                           nombres=nombres, sin_nadie=sin_nadie)
 
 
 @app.route("/mas")
