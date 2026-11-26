@@ -840,7 +840,8 @@ def que_hacer(msg: str) -> str:
     if re.search(r"SinRepresentado|no (est[aá]|figura) entre|representad|delegad|apoderad", m, re.I):
         return "revisar en ARCA que el estudio tenga la representación / el servicio delegado de este cliente"
     if re.search(r"RequiereIntervencion|no est[aá] habilitado|habilitar", m, re.I):
-        return "habilitar el servicio en ARCA (Administrador de relaciones) o revisarlo a mano"
+        return ("habilitar el servicio en ARCA: con la clave propia del cliente, Administrador de relaciones → "
+                "Adherir servicio; si entramos por representación, que el cliente se lo delegue al estudio")
     if re.search(r"captcha", m, re.I):
         return "ARCA pidió captcha: se reintenta solo en la próxima corrida"
     if re.search(r"Timeout|corte|SesionPerdida|net::|ERR_|no respond|Trabada|cargando", m, re.I):

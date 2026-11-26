@@ -203,9 +203,25 @@ def abrir_servicio(ctx: BrowserContext, portal: Page, servicio: str) -> Page:
         boton = portal.locator("a[role=button]").filter(
             has=portal.locator("h3", has_text=re.compile(ident[6:], re.I)))
     else:
-        boton = portal.get_by_role("button", name=ident, exact=True)
-        if not boton.count():
-            boton = portal.locator(f"[title='{ident}'], [aria-label='{ident}']")
+        # Gaby 26/11/2026: con muchos servicios la lista tarda en dibujarse y el botón "no estaba" (Mis Retenciones y
+        # Mis Facilidades de su propio CUIT, que sí tiene). Se espera a que aparezca antes de darlo por no habilitado.
+        try:
+            portal.locator("a[role=button], button").first.wait_for(state="attached", timeout=30_000)
+        except Exception:
+            pass
+        titulo = {"mis_retenciones": r"MIS\s+RETENCIONES", "mis_facilidades": r"MIS\s+FACILIDADES",
+                  "mis_comprobantes": r"MIS\s+COMPROBANTES", "cuentas_tributarias": r"CUENTAS?\s+TRIBUTARIA|CUENTA\s+CORRIENTE"}.get(servicio)
+        limite = time.time() + 25
+        while True:
+            boton = portal.get_by_role("button", name=ident, exact=True)
+            if not boton.count():
+                boton = portal.locator(f"[title='{ident}'], [aria-label='{ident}']")
+            if not boton.count() and titulo:
+                boton = portal.locator("a[role=button]").filter(
+                    has=portal.locator("h3", has_text=re.compile(titulo, re.I)))
+            if boton.count() or time.time() > limite:
+                break
+            portal.wait_for_timeout(1500)
     if not boton.count():
         raise RequiereIntervencion(f"El servicio '{servicio}' no está habilitado para este contribuyente")
     antes = set(ctx.pages)

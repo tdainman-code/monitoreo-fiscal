@@ -128,9 +128,18 @@ def _controlar_cuit(page, cuit: str, donde: str, espera_s: int = 45) -> None:
             except Exception:
                 pass
         page.wait_for_timeout(1500)
-    otros = sorted(set(re.findall(r"\d{2}-\d{8}-\d", _texto(page)[:3000])) - {fmt})
+    t = _texto(page)[:3000]
+    otros = sorted(set(re.findall(r"\d{2}-\d{8}-\d", t)) - {fmt})
     if otros:
         raise arca.CuitEquivocado(f"{donde}: la pantalla muestra {', '.join(otros)} y no {fmt}")
+    if re.sub(r"\D", "", cuit) in re.sub(r"[-\s]", "", t):          # CUIT sin guiones
+        return
+    # Gaby 26/11/2026: "soy yo y es mi CUIT (me represento a mí mismo)". Sin apoderados ARCA no muestra
+    # "REPRESENTANDO A" ni el CUIT: si se ingresó con la propia clave del cliente y la pantalla no muestra otro
+    # CUIT, es él.
+    from . import robot_situacion_fiscal as rsf
+    if re.sub(r"\D", "", str(rsf.USUARIO_ACTUAL.get("cuit") or "")) == re.sub(r"\D", "", cuit):
+        return
     raise arca.SinRepresentado(f"{donde}: no aparece el CUIT {fmt} en el encabezado")
 
 

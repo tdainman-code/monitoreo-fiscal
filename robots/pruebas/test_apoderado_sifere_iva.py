@@ -113,5 +113,19 @@ with sync_playwright() as p:
         ob.elegir_representado(pn, "30999999993", espera_s=20); chk(False, "ajena")
     except arca.SinRepresentado:
         chk(True, "Nuestra Parte: empresa que no puede representar -> se detiene")
+    # Gaby 26/11/2026: entra con su propia clave y se representa a sí mismo; el Portal IVA no muestra su CUIT
+    from robots import robot_situacion_fiscal as rsf
+    pp = ctx.new_page(); pp.set_content("<div>PORTAL IVA</div><div>MANCOVSKY GABRIEL</div><div>Mis declaraciones</div>")
+    rsf.USUARIO_ACTUAL["cuit"] = "20205744283"
+    li._controlar_cuit(pp, "20205744283", "Portal IVA", espera_s=2)
+    chk(True, "Portal IVA: con su propia clave y sin CUIT en pantalla -> es él")
+    rsf.USUARIO_ACTUAL["cuit"] = "20388931311"
+    try:
+        li._controlar_cuit(pp, "20205744283", "Portal IVA", espera_s=2); chk(False, "propio")
+    except arca.SinRepresentado:
+        chk(True, "Portal IVA: con la clave de otro y sin CUIT en pantalla -> se detiene")
+    pp.set_content("<div>MANCOVSKY GABRIEL [20205744283]</div>")
+    li._controlar_cuit(pp, "20205744283", "Portal IVA", espera_s=2)
+    chk(True, "Portal IVA: CUIT sin guiones en el encabezado")
     b.close()
 print("TODO OK" if ok else "FALLAS"); sys.exit(0 if ok else 1)
