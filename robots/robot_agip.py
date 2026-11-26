@@ -646,7 +646,11 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                                     "error": "no aparece la tarjeta de Gestión-AR en el menú (ver captura)",
                                     "captura": os.path.basename(caps[0]) if caps else ""})
                             continue
-                        if not _elegir_cuit(pag, cuit):
+                        if not _elegir_cuit(pag, cuit) and clave_srv == "fiscalizacion":
+                            # Gaby (25/11/2026): Fiscalización Electrónica solo muestra algo si hay una abierta; si la hay,
+                            # llega aviso al DFE. Sin el CUIT en pantalla = sin fiscalización abierta, no es una falla.
+                            r["servicios"][clave_srv] = "OK (sin fiscalización abierta)"
+                        elif not _elegir_cuit(pag, cuit):
                             r["servicios"][clave_srv] = f"no se pudo confirmar que muestre el CUIT {arca.cuit_fmt(cuit)}"
                             caps = arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), f"agip_{clave_srv}_cuit")
                             if clave_srv == "percepciones":
