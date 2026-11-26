@@ -384,9 +384,11 @@ def _elegir_cuit(page, cuit: str) -> bool:
     Devuelve True si la pantalla queda mostrando ese CUIT."""
     fmt = arca.cuit_fmt(cuit)
     texto = page.inner_text("body")
+    eligio = False
     if cuit in texto or fmt in texto:
         sel = page.locator("select").filter(has=page.locator(f"option:has-text('{cuit}'), option:has-text('{fmt}')"))
         if sel.count():
+            eligio = True
             try:
                 opcion = sel.first.locator(f"option:has-text('{cuit}'), option:has-text('{fmt}')").first
                 sel.first.select_option(value=opcion.get_attribute("value"))
@@ -401,7 +403,11 @@ def _elegir_cuit(page, cuit: str) -> bool:
                 pass
         texto = page.inner_text("body")
     es_dfe = "/dfe" in page.url
-    encabezado_ok = bool(re.search(rf"CUIT:\s*({cuit}|{re.escape(fmt)})", texto)) if es_dfe else (cuit in texto[:1500] or fmt in texto[:1500])
+
+    def _identidad(t: str) -> bool:                   # el renglón "CUIT: …" / "Contribuyente: …" de arriba
+        m = re.search(r"(?:CUIT:|Contribuyente:)[^\n]{0,120}", t)
+        return bool(m) and cuit in re.sub(r"\D", "", m[0])
+    encabezado_ok = (eligio or _identidad(texto)) if es_dfe else (cuit in texto[:1500] or fmt in texto[:1500])
     if not encabezado_ok:
         # DFE (lb.agip.gob.ar/dfe, Gaby 25/11/2026): entra con el usuario del estudio; menú "Representado" -> el cliente
         try:
@@ -415,7 +421,7 @@ def _elegir_cuit(page, cuit: str) -> bool:
                     page.wait_for_load_state("domcontentloaded")
                     arca.pausa(2.0, 3.0)
                     texto = page.inner_text("body")
-                    return bool(re.search(rf"CUIT:\s*({cuit}|{re.escape(fmt)})", texto)) if es_dfe else (cuit in texto or fmt in texto)
+                    return _identidad(texto) if es_dfe else (cuit in texto or fmt in texto)
         except Exception:
             pass
         if es_dfe:                                      # la tabla mezcla a todos los representados: no se lee
