@@ -203,7 +203,8 @@ def procesar() -> int:
                     if p.get("enviar"):
                         res += " · " + avisos.mail_vep_deuda(p["cuit"], v, p.get("por") or "?")
                 else:
-                    res = correr_uno(p["robot"], p["cuit"], None, visible=False, modo="completo")
+                    res = correr_uno(p["robot"], p["cuit"], None, visible=False, modo="completo",
+                                     fecha_cierre=p.get("fecha_cierre") or "")
                 _anotar(p, "terminado" if res.startswith("OK") else "con problemas", res)
             except Exception as e:                           # nunca dejar la tarea trabada
                 _anotar(p, "error", f"{type(e).__name__}: {e}")

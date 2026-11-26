@@ -126,7 +126,7 @@ def avisos() -> list[dict]:
         return []
 
 
-def encolar(cuit: str, robot: str, por: str) -> str:
+def encolar(cuit: str, robot: str, por: str, fecha_cierre: str = "") -> str:
     if robot not in ROBOTS:
         raise ErrorPedido("Robot desconocido")
     if not datos.CUIT_RE.match(cuit or ""):
@@ -140,6 +140,8 @@ def encolar(cuit: str, robot: str, por: str) -> str:
         raise ErrorPedido("Hay demasiados pedidos en espera; probá más tarde")
     p = {"id": uuid.uuid4().hex, "fecha": dt.datetime.now().isoformat(timespec="seconds"), "por": por,
          "cuit": cuit, "robot": robot}
+    if fecha_cierre and robot == "planes_todos":            # Deuda fiscal al cierre a una fecha elegida (26/11/2026)
+        p["fecha_cierre"] = fecha_cierre
     ruta = os.path.join(PEDIDOS, f"{p['fecha'].replace(':', '')}_{p['id'][:8]}.json")
     tmp = ruta + ".tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o660)

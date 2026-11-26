@@ -60,7 +60,7 @@ def leer(ctx, portal, cuit: str, hoy: date) -> dict:
         page.close()
 
 
-def paso(cuit: str, estado: dict):
+def paso(cuit: str, estado: dict, fecha_cierre: str = ""):
     def fn(ctx, portal):
         hoy = date.today()
         r = leer(ctx, portal, cuit, hoy)
@@ -71,7 +71,7 @@ def paso(cuit: str, estado: dict):
             json.dump(r, f, ensure_ascii=False, indent=1, default=str)
         try:
             from . import deuda_cierre
-            hechos = deuda_cierre.generar(cuit)
+            hechos = deuda_cierre.generar(cuit, fechas=[date.fromisoformat(fecha_cierre)] if fecha_cierre else None)
         except Exception as e:
             hechos = [f"error: {e}"]
         estado.update(resultado=f"OK ({len(r['planes'])} planes leídos; deuda al cierre: {', '.join(hechos) or 'sin fecha de cierre'})")
@@ -79,7 +79,7 @@ def paso(cuit: str, estado: dict):
     return fn
 
 
-def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, **_):
+def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, fecha_cierre="", **_):
     estado: dict = {}
-    arca.ejecutar(usuario, clave, [("planes_todos", paso(cuit, estado))], os.path.join(DATOS, cuit, "capturas"), visible)
+    arca.ejecutar(usuario, clave, [("planes_todos", paso(cuit, estado, fecha_cierre))], os.path.join(DATOS, cuit, "capturas"), visible)
     return {"cuit": cuit, "planes_todos": estado.get("resultado"), "archivos": {"planes_todos": {"alertas": []}}}

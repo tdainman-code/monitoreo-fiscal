@@ -346,7 +346,7 @@ def correr_agip(cuit: str) -> str:
 
 
 def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, meses=None, forzar=False,
-               modo: str = "completo") -> str:
+               modo: str = "completo", fecha_cierre: str = "") -> str:
     if robot in ("arba", "arba_dfe", "arba_retenciones"):
         return correr_arba(cuit, periodo, visible, meses, forzar, robot)
     if robot == "agip":
@@ -354,6 +354,8 @@ def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, 
     usuario, clave, metodo = alm.obtener_clave(cuit, "ARCA", motivo=f"{robot} {periodo or ''}".strip())
     try:
         extra = {"partes": partes} if partes else {}
+        if robot == "planes_todos" and fecha_cierre:
+            extra["fecha_cierre"] = fecha_cierre
         if robot == "mis_comprobantes" and meses:
             res = robot_mis_comprobantes.correr_periodos(cuit, arca.periodos_ultimos(meses, periodo), usuario,
                                                          clave, metodo, visible, forzar)

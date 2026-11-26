@@ -32,7 +32,8 @@
   <input type="hidden" name="csrf" value="{{ csrf() }}">
   <span class="sutil">Deuda y DDJJ: <b>todas las noches</b> de lunes a viernes · Corrida completa: <b>{{ dia_corrida }}</b> ·</span>
   <b>🤖 Actualizar ahora:</b>
-  <select name="robot">{% for k, v in robots_pedir.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+  <select name="robot" onchange="document.getElementById('fc-cierre').hidden = this.value !== 'planes_todos'">{% for k, v in robots_pedir.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+  <label id="fc-cierre" hidden>al <input type="date" name="fecha_cierre" title="Fecha de cierre (vacía: los dos últimos cierres según la ficha)"></label>
   <button {{ '' if pedir_listo else 'disabled title="Falta habilitar los pedidos en el servidor"' }}>Pedir corrida</button>
   {% for p in pedidos_pend %}<span class="sutil">⏳ {{ robots_pedir.get(p.robot, p.robot) }} pedido por {{ p.por }} ({{ p.fecha[11:16] }})</span>{% endfor %}
   {% for p in pedidos_ult %}<span class="sutil">{{ '✅' if p.estado == 'terminado' else '⏳' if p.estado in ('corriendo', 'en espera') else '⚠' }} {{ robots_pedir.get(p.robot, p.robot) }}: {{ p.estado }} {{ (p.actualizado or '')[11:16] }}</span>{% endfor %}

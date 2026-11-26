@@ -613,10 +613,17 @@ def pedir_corrida(cuit):
     _controlar_csrf()
     _cliente_info(cuit)
     robot = request.form.get("robot", "")
+    fc = ""
+    if robot == "planes_todos" and request.form.get("fecha_cierre"):
+        try:
+            fc = date.fromisoformat(request.form["fecha_cierre"]).isoformat()
+        except ValueError:
+            flash("Fecha de cierre inválida", "error")
+            return redirect(url_for("cliente", cuit=cuit))
     try:
-        pedidos.encolar(cuit, robot, session["usuario"])
+        pedidos.encolar(cuit, robot, session["usuario"], fc)
         usuarios.registrar(session["usuario"], f"pidió corrida {robot}", cuit, _ip())
-        flash(f"Pedido enviado: {pedidos.ROBOTS[robot]}. Arranca en un minuto (o cuando termine la corrida en curso).", "ok")
+        flash(f"Pedido enviado: {pedidos.ROBOTS[robot]}" + (f" al {fc[8:]}/{fc[5:7]}/{fc[:4]}" if fc else "") + ". Arranca en un minuto (o cuando termine la corrida en curso).", "ok")
     except pedidos.ErrorPedido as e:
         flash(str(e), "error")
     return redirect(url_for("cliente", cuit=cuit))

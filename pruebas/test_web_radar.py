@@ -464,6 +464,16 @@ with open(rp.CANDADO, "a") as f:
     fcntl.flock(f, fcntl.LOCK_EX)
     ok(rp.procesar() == 0 and len([n for n in os.listdir(rp.PEDIDOS) if n.endswith(".json")]) == 1, "con una corrida en curso el pedido espera")
 ok("en espera" in cl.get("/robots").text, "estado 'en espera' visible")
+# Deuda fiscal al cierre a una fecha elegida (Gaby 26/11/2026: Nabajuma al 31/12/2024)
+_r = cl.get(f"/cliente/{C2}")
+ok('name="fecha_cierre"' in _r.text, "pedido de deuda al cierre: casilla de fecha")
+_r = cl.post(f"/cliente/{C2}/pedir", data={"csrf": token(_r.text), "robot": "planes_todos", "fecha_cierre": "2024-12-31"}, follow_redirects=True)
+_pj = [json.load(open(os.path.join(rp.PEDIDOS, n))) for n in os.listdir(rp.PEDIDOS) if n.endswith(".json")]
+ok("al 31/12/2024" in _r.text and any(x.get("fecha_cierre") == "2024-12-31" for x in _pj), "pedido de deuda al cierre con la fecha")
+_kw = []
+rc.correr_uno = lambda robot, cuit, *a, **k: _kw.append((robot, k.get("fecha_cierre"))) or "OK"
+rp.procesar()
+ok(("planes_todos", "2024-12-31") in _kw, "el robot recibe la fecha de cierre pedida")
 # fallas de la última corrida: en el botón de la ficha y en Más -> Robots (22/11/2026)
 escribir(f"{D}/{C2}/corrida_todo_2026-11-15_completo.json", {"fecha": "2026-11-15", "modo": "completo",
          "errores": {"sifere": "TimeoutError: Locator.click: Timeout 45000ms exceeded", "mis_comprobantes": "ErrorRobot: x"},
