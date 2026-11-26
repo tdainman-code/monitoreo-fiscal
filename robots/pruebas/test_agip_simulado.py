@@ -137,8 +137,8 @@ caso("Clave Ciudad rechazada pero la clave es de miBA -> entra por miBA (Gaby, 2
 M.update(entro=False, error_previo=False, con_selector=True, cuit_fe=REPRESENTANTE)
 caso("representante: elige el CUIT del cliente; si una pantalla muestra a otro, NO la lee",
      lambda: (robot_agip.correr(CUIT, None, REPRESENTANTE, "bien"), leer())[1],
-     lambda r: len(r["comunicaciones"]) == 2 and r["servicios"]["fiscalizacion"].startswith("no se pudo confirmar")
-     and r["fiscalizacion"] == [])
+     lambda r: len(r["comunicaciones"]) == 2 and r["servicios"]["fiscalizacion"] == "OK (sin fiscalización abierta)"
+     and r["fiscalizacion"] == [])          # 25/11/2026 (Gaby): sin el CUIT en pantalla = sin fiscalización abierta
 from robots.robot_agip import comunicaciones_de, deuda_de  # noqa: E402
 
 caso("lector de tablas sin columnas reconocibles no inventa datos",

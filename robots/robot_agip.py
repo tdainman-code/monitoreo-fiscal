@@ -400,6 +400,26 @@ def _elegir_cuit(page, cuit: str) -> bool:
             except Exception:
                 pass
         texto = page.inner_text("body")
+    es_dfe = "/dfe" in page.url
+    encabezado_ok = bool(re.search(rf"CUIT:\s*({cuit}|{re.escape(fmt)})", texto)) if es_dfe else (cuit in texto[:1500] or fmt in texto[:1500])
+    if not encabezado_ok:
+        # DFE (lb.agip.gob.ar/dfe, Gaby 25/11/2026): entra con el usuario del estudio; menú "Representado" -> el cliente
+        try:
+            rep = page.locator("a, button, li").filter(has_text=re.compile(r"^\s*Representado\s*$", re.I)).filter(visible=True)
+            if rep.count():
+                rep.first.click()
+                page.wait_for_timeout(800)
+                item = page.locator("a, li").filter(has_text=cuit).filter(visible=True)
+                if item.count():
+                    item.last.click()
+                    page.wait_for_load_state("domcontentloaded")
+                    arca.pausa(2.0, 3.0)
+                    texto = page.inner_text("body")
+                    return bool(re.search(rf"CUIT:\s*({cuit}|{re.escape(fmt)})", texto)) if es_dfe else (cuit in texto or fmt in texto)
+        except Exception:
+            pass
+        if es_dfe:                                      # la tabla mezcla a todos los representados: no se lee
+            return False
     return cuit in texto or fmt in texto
 
 
