@@ -81,5 +81,14 @@ def paso(cuit: str, estado: dict, fecha_cierre: str = ""):
 
 def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, fecha_cierre="", **_):
     estado: dict = {}
-    arca.ejecutar(usuario, clave, [("planes_todos", paso(cuit, estado, fecha_cierre))], os.path.join(DATOS, cuit, "capturas"), visible)
+    from datetime import timedelta
+    from . import deuda_cierre, robot_pagos_sct
+    fechas = [date.fromisoformat(fecha_cierre)] if fecha_cierre else deuda_cierre.cierres(cuit)
+    desde = (min(fechas) + timedelta(days=1)) if fechas else date(date.today().year - 2, 1, 1)
+    est_p: dict = {}
+    # primero los pagos posteriores al cierre (Cuentas Tributarias), después los planes (que arman el Excel)
+    pasos = [("pagos_sct", robot_pagos_sct.paso(cuit, desde, est_p)), ("planes_todos", paso(cuit, estado, fecha_cierre))]
+    r = arca.ejecutar(usuario, clave, pasos, os.path.join(DATOS, cuit, "capturas"), visible, seguir_si_falla=True)
+    if (r or {}).get("_errores", {}).get("planes_todos"):
+        raise arca.ErrorRobot(str(r["_errores"]["planes_todos"]))
     return {"cuit": cuit, "planes_todos": estado.get("resultado"), "archivos": {"planes_todos": {"alertas": []}}}

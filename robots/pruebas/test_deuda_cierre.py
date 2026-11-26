@@ -77,12 +77,30 @@ class T(unittest.TestCase):
         self.assertEqual(ct["total_f931"], 1000.0)
         self.assertTrue(next(x for x in ct["filas"] if x["periodo"] == "20241200")["vence_despues"])
 
+    def test_pagos_posteriores(self):
+        pp = dc.pagos_posteriores({"desde": "2025-01-01", "pagos": [
+            {"fecha": "2025-01-09", "formulario": "1931", "impuesto": "312 - ART", "periodo": "20241200", "importe": 991245.98, "observaciones": ""},
+            {"fecha": "2026-04-16", "formulario": "800", "impuesto": "352 - OS", "periodo": "20241100", "importe": 3330.31, "observaciones": ""},
+            {"fecha": "2026-11-17", "formulario": "1931", "impuesto": "352 - OS", "periodo": "20261000", "importe": 1866268.45, "observaciones": ""}]},
+            date(2024, 12, 31))
+        self.assertEqual(pp["total"], 991245.98)
+        self.assertEqual(pp["total_f800"], 3330.31)
+        self.assertEqual(len(pp["filas"]), 2)
+
+    def test_csv_pagos(self):
+        from robots import robot_pagos_sct as rp
+        t = ("CUIT: 30-71222757-1 - Fecha de emisión: 26/11/2026\nFecha Operación;Formulario;Version;Impuesto;Periodo;Importe;Observaciones\n"
+             "09/01/2025;1931;0;312 - ASEG.RIESGO DE TRABAJO L 24557;20241200;$ 991.245,98;02 - Comprobante general\n")
+        x = rp.leer_csv(t)
+        self.assertEqual(x[0]["importe"], 991245.98)
+        self.assertEqual(x[0]["periodo"], "20241200")
+
     def test_excel(self):
         with tempfile.TemporaryDirectory() as t:
             x = dc.excel("30712227571", dc.calcular(DATOS, date(2024, 12, 31)), os.path.join(t, "a.xlsx"), "2026-11-26")
             from openpyxl import load_workbook
             self.assertEqual(load_workbook(x).sheetnames, ["Resumen", "Planes", "Obligaciones al cierre", "Cuotas pendientes al cierre",
-                                                          "Cuentas Tributarias"])
+                                                          "Cuentas Tributarias", "Pagos posteriores al cierre"])
 
 if __name__ == "__main__":
     unittest.main()

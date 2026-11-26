@@ -208,6 +208,29 @@ def cuentas_tributarias(scth: dict | None, f: date) -> dict:
             "hay": bool(scth)}
 
 
+def pagos_posteriores(pagos_sct: dict | None, f: date) -> dict:
+    """Pagos con fecha posterior al cierre e imputados a períodos hasta el cierre (Gaby 26/11/2026: "no tomaste en
+    cuenta los pagos posteriores"): eran deuda a la fecha del cierre. El F.800 se separa: suele ser de intereses."""
+    filas = []
+    from datetime import timedelta
+    # los pagos leídos tienen que arrancar a más tardar el día siguiente al cierre
+    if pagos_sct and date.fromisoformat(pagos_sct.get("desde") or "1900-01-01") <= f + timedelta(days=1):
+        for p in pagos_sct.get("pagos") or []:
+            per = str(p.get("periodo") or "")
+            if not re.fullmatch(r"\d{8}", per) or date.fromisoformat(p["fecha"]) <= f:
+                continue
+            anio, mes = int(per[:4]), int(per[4:6])
+            if anio * 100 + (mes or 12) > f.year * 100 + f.month:
+                continue
+            filas.append({**p, "periodo_txt": f"{mes:02d}/{anio}" if mes else f"Anual {anio}",
+                          "posible_interes": str(p.get("formulario")) == "800"})
+    filas.sort(key=lambda x: (x["impuesto"], x["periodo"], x["fecha"]))
+    return {"filas": filas, "total": round(sum(x["importe"] for x in filas if not x["posible_interes"]), 2),
+            "total_f800": round(sum(x["importe"] for x in filas if x["posible_interes"]), 2),
+            "hay": bool(pagos_sct) and date.fromisoformat(pagos_sct.get("desde") or "1900-01-01") <= f + timedelta(days=1),
+            "desde": (pagos_sct or {}).get("desde", "")}
+
+
 def excel(cuit: str, r: dict, destino: str, leido: str = "") -> str:
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
@@ -229,15 +252,19 @@ def excel(cuit: str, r: dict, destino: str, leido: str = "") -> str:
     ws.title = "Resumen"
     for k, v in (("CUIT", cuit), ("Deuda fiscal al", r["cierre"]), ("Planes leídos de Mis Facilidades el", leido),
                  ("Planes de pago: capital adeudado al cierre", r["total_planes"]),
-                 ("Cuentas Tributarias: DDJJ impagas al cierre (sin intereses)",
+                 ("Cuentas Tributarias: DDJJ impagas HOY de períodos hasta el cierre (sin intereses)",
                   r["ct"]["total"] if r.get("ct", {}).get("hay") else "falta correr Deuda histórica (Cuentas Tributarias)"),
                  ("   de las cuales F.931 (incluye obras sociales, ART, seguro de vida)", r.get("ct", {}).get("total_f931", 0.0)),
-                 ("TOTAL deuda fiscal al cierre", round(r["total_planes"] + (r.get("ct", {}).get("total") or 0.0), 2)),
+                 ("Pagos posteriores al cierre de períodos hasta el cierre (eran deuda al cierre)",
+                  r["pp"]["total"] if r.get("pp", {}).get("hay") else "falta leer los pagos (pedir de nuevo la deuda al cierre)"),
+                 ("TOTAL deuda fiscal al cierre", round(r["total_planes"] + (r.get("ct", {}).get("total") or 0.0)
+                                                       + (r.get("pp", {}).get("total") or 0.0), 2)),
+                 ("   aparte, pagos con F.800 posteriores (verificar: suelen ser intereses; no suman)", r.get("pp", {}).get("total_f800", 0.0)),
                  ("Estado de cumplimiento leído el", r.get("ct", {}).get("leido", ""))):
         ws.append([k, v])
-    for fila in (4, 5, 6, 7):
+    for fila in (4, 5, 6, 7, 8, 9):
         ws[f"B{fila}"].number_format = "#,##0.00"
-    ws["A4"].font = ws["B4"].font = ws["A7"].font = ws["B7"].font = neg
+    ws["A4"].font = ws["B4"].font = ws["A8"].font = ws["B8"].font = neg
     ws.column_dimensions["A"].width = 48
     ws.column_dimensions["B"].width = 52
     hoja(wb.create_sheet("Planes"), ["Plan", "Tipo", "Consolidación", "Situación hoy", "Cuotas", "Consolidado",
@@ -260,6 +287,12 @@ def excel(cuit: str, r: dict, destino: str, leido: str = "") -> str:
          ["Impuesto", "Período", "Concepto", "Anticipo / cuota", "Deuda (sin intereses)", "F.931", "Vence después del cierre"],
          [[x["impuesto"], x["periodo_txt"], x["concepto"], x["cuota"], x["deuda"], "Sí" if x["f931"] else "",
            "Sí" if x["vence_despues"] else ""] for x in ct.get("filas") or []], (38, 12, 26, 14, 18, 8, 14))
+    pp = r.get("pp") or {}
+    hoja(wb.create_sheet("Pagos posteriores al cierre"),
+         ["Fecha de pago", "Formulario", "Impuesto", "Período", "Importe", "Observaciones", "Suma"],
+         [[x["fecha"], x["formulario"], x["impuesto"], x["periodo_txt"], x["importe"], x["observaciones"],
+           "no (F.800: verificar si es interés)" if x["posible_interes"] else "sí"] for x in pp.get("filas") or []],
+         (13, 11, 38, 12, 16, 40, 30))
     for w in wb.worksheets[1:]:
         for row in w.iter_rows(min_row=2):
             for c in row:
@@ -268,6 +301,17 @@ def excel(cuit: str, r: dict, destino: str, leido: str = "") -> str:
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     wb.save(destino)
     return destino
+
+
+def _ultimo_json(cuit: str, carpeta: str) -> dict | None:
+    r = sorted(glob.glob(os.path.join(DATOS, cuit, carpeta, "[0-9]*.json")))
+    if not r:
+        return None
+    try:
+        with open(r[-1], encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
 
 
 def _ultimo_scth(cuit: str) -> dict | None:
@@ -292,6 +336,7 @@ def generar(cuit: str, hoy: date | None = None, fechas: list[date] | None = None
     for f in fechas or cierres(cuit, hoy):
         res = calcular(datos, f)
         res["ct"] = cuentas_tributarias(_ultimo_scth(cuit), f)
+        res["pp"] = pagos_posteriores(_ultimo_json(cuit, "pagos_sct"), f)
         excel(cuit, res, os.path.join(DATOS, cuit, "biblioteca", "_conciliaciones", "deuda_cierre", f"{f.isoformat()}.xlsx"),
               datos.get("fecha", ""))
         hechas.append(f.strftime("%d/%m/%Y"))
