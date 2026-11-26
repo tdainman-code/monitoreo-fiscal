@@ -17,12 +17,26 @@
 </form>
 <p class="sutil">{{ filas|length }} cliente(s) ·
  {% for k in ('bajado', 'sin_mov', 'pendiente', 'error') %}<span class="estado-bib {{ k }}">{{ estados[k] }}: {{ cuenta[k] }}</span> {% endfor %}</p>
+<div class="buscar-grande" style="margin:12px 0"><input id="b-buscar" type="search" placeholder="🔍  Buscar cliente por nombre o CUIT… (Enter abre el primero)" autocomplete="off"></div>
 <div class="panel tabla-ancha">
-<table class="tabla biblioteca"><thead><tr><th>Cliente</th>
+<table class="tabla biblioteca" id="b-tabla"><thead><tr><th>Cliente</th>
   {% for f in fuentes %}<th title="{{ f[1] }} · {{ f[2] }} — se usa en {{ f[4] }}">{{ f[1] }}<br><small>{{ f[2]|truncate(22, True, '…') }}</small></th>{% endfor %}</tr></thead><tbody>
-{% for c in filas %}<tr>
+{% for c in filas %}<tr data-buscar="{{ ((c.razon_social or '') ~ ' ' ~ c.cuit ~ ' ' ~ cuit_fmt(c.cuit))|lower }}">
   <td><a href="{{ url_for('biblioteca_cliente', cuit=c.cuit) }}"><b>{{ c.razon_social or cuit_fmt(c.cuit) }}</b></a><div class="sutil">{{ cuit_fmt(c.cuit) }}</div></td>
   {% for f in fuentes %}{% set e = c.estados[f[0]] %}<td class="estado-celda {{ e }}" data-l="{{ f[1] }} {{ f[2] }}">{{ estados[e] }}</td>{% endfor %}
 </tr>{% else %}<tr><td colspan="{{ fuentes|length + 1 }}" class="sutil">No hay clientes con ese filtro.</td></tr>{% endfor %}
+<tr id="b-vacio" hidden><td colspan="{{ fuentes|length + 1 }}" class="sutil">No hay clientes que coincidan.</td></tr>
 </tbody></table></div>
+<script>
+(() => {
+  const filas = [...document.querySelectorAll('#b-tabla tbody tr[data-buscar]')], b = document.getElementById('b-buscar');
+  const norm = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[-.\s]/g, '');
+  b.addEventListener('input', () => { const q = norm(b.value.trim()); let n = 0;
+    filas.forEach(r => { const ok = !q || norm(r.dataset.buscar).includes(q); r.hidden = !ok; if (ok) n++; });
+    document.getElementById('b-vacio').hidden = n > 0; });
+  b.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault();
+    const r = filas.find(x => !x.hidden); if (r) location.href = r.querySelector('a').href; } });
+  if (window.innerWidth > 700) b.focus();
+})();
+</script>
 {% endblock %}

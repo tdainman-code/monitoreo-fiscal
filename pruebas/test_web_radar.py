@@ -1087,6 +1087,7 @@ _as = datos.apoc_salieron(C2)
 ok(len(_as["lista"]) == 1 and _as["lista"][0]["rectificado"] and _as["lista"][0]["dejo_de_figurar"] == "2026-11-26",
    "APOC: el que dejó de figurar se muestra con la rectificativa que lo sacó")
 os.remove(f"{D}/{C2}/libro_iva/2025-11.json"); os.remove(os.path.join(_dob, "observados_historial.json"))
+ok('id="b-buscar"' in cl.get("/biblioteca").text and 'data-buscar=' in cl.get("/biblioteca").text, "Biblioteca: buscador que filtra mientras se escribe")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()
