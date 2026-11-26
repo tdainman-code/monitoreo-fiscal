@@ -9,6 +9,7 @@
   <a class="boton-ficha gris" href="{{ url_for('robots') }}"><span class="titulo">🤖 Robots</span><span class="sub">últimas corridas</span></a>
   {% if session.rol == 'admin' %}<a class="boton-ficha gris" href="{{ url_for('actividad') }}"><span class="titulo">👤 Actividad</span><span class="sub">quién entró y qué consultó</span></a>
   <a class="boton-ficha gris" href="{{ url_for('asignaciones') }}"><span class="titulo">👥 Planilla de clientes</span><span class="sub">quién lleva cada cliente, datos, claves y altas con Excel</span></a>
+  <a class="boton-ficha gris" href="{{ url_for('intercliente') }}"><span class="titulo">🤝 Facturación entre clientes</span><span class="sub">quién le factura a quién dentro del estudio y la comisión (solo administradores)</span></a>
   <a class="boton-ficha gris" href="{{ url_for('pantalla_usuarios') }}"><span class="titulo">🔑 Usuarios</span><span class="sub">altas, contraseñas y bajas de colaboradores</span></a>
   <a class="boton-ficha gris" href="{{ url_for('sistema') }}"><span class="titulo">🛠 Sistema</span><span class="sub">versión, cambios del código y su resultado</span></a>{% endif %}
 </section>

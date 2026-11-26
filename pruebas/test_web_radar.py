@@ -1021,9 +1021,9 @@ ok("Comprobantes" in _wb.sheetnames and any(r[8] == 100000.0 and r[11] == 21000.
    "facturación entre clientes: comprobantes uno por uno con neto e IVA como el Libro IVA")
 ok("100.000,00" in cl2.get(f"/intercliente?cliente={C}").text and "100.000,00" not in cl2.get("/intercliente?cliente=20111111112").text,
    "facturación entre clientes: filtrada por el cliente")
-ok("Facturación entre clientes" in cl2.get(f"/cliente/{C}/informes").text and "Facturación entre clientes" not in cl2.get("/mas").text
-   and "Facturación entre clientes" not in cl.get(f"/cliente/{C}/informes").text,
-   "facturación entre clientes: botón dentro de Informes Excel, solo admin")
+ok("Facturación entre clientes" in cl2.get("/mas").text and "Facturación entre clientes" not in cl.get("/mas").text
+   and "Facturación entre clientes" not in cl2.get(f"/cliente/{C}/informes").text,
+   "facturación entre clientes: en Más, solo para administradores")
 # Excel de la solapa Clientes (26/11/2026): los que ve cada uno, sin claves
 import io as _io3
 from openpyxl import load_workbook as _lw3
