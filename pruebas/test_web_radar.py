@@ -1105,6 +1105,7 @@ ok("Supuestos guardados" in _r.text and _rr["filas"]["prestamo_ingreso"][0] == 5
 _x = cl.get(f"/cliente/{C2}/cashflow?excel=1").data
 from openpyxl import load_workbook as _lw4
 ok(_lw4(_io2.BytesIO(_x)).sheetnames[:2] == ["Cash flow", "Fundamentos"], "cash flow: Excel con fundamentos")
+ok(all(v == 0 for p_, v in zip(_rr["periodos"], _rr["filas"]["sac"]) if p_[5:] not in ("06", "12")), "cash flow: el SAC solo en junio y diciembre")
 ok(abs(_cfm.cuota_francesa(1200000, 0, 12) - 100000) < 0.01 and _cfm.cuota_francesa(100000, 12, 12) > 8800, "cash flow: cuota francesa")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)

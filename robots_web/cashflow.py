@@ -98,7 +98,11 @@ def base(cuit: str, meses_base: int) -> dict:
     if not ult:
         return {"meses": [], "n": 0}
     prom = lambda k: sum(_f(m.get(k)) for m in ult) / len(ult)
-    b = {k: prom(k) for k in ("ventas", "compras", "compras_bc_mc", "sueldos", "cargas", "iibb", "debito", "credito")}
+    b = {k: prom(k) for k in ("ventas", "compras", "compras_bc_mc", "iibb", "debito", "credito")}
+    # junio y diciembre traen el medio aguinaldo (SAC): se saca de la base para no inflar el sueldo mensual
+    sac = lambda m: 1.5 if str(m.get("periodo", ""))[5:7] in ("06", "12") else 1.0
+    for k in ("sueldos", "cargas"):
+        b[k] = sum(_f(m.get(k)) / sac(m) for m in ult) / len(ult)
     b["compras"] += b.pop("compras_bc_mc")
     b.update(meses=[m["periodo"] for m in ult], n=len(ult), ultimo=ult[-1]["periodo"])
     return b
@@ -117,7 +121,7 @@ def calcular(cuit: str, s: dict | None = None, hoy: date | None = None) -> dict:
     f = datos.ficha(cuit)
     filas = {k: [0.0] * n for k in ("cobranzas", "otros_ingresos", "prestamo_ingreso", "proveedores", "sueldos", "cargas",
                                     "iva", "iibb", "anticipos", "planes", "autonomos", "fijos", "variables", "bancarios",
-                                    "prestamo_cuotas")}
+                                    "prestamo_cuotas", "sac")}
     infl_c = _f(s.get("inflacion_costos", s["inflacion"])) / 100
     nom = _f(s.get("aumento_nomina", s["inflacion"])) / 100
     resultado_op = [0.0] * n
@@ -137,10 +141,17 @@ def calcular(cuit: str, s: dict | None = None, hoy: date | None = None) -> dict:
             deb, cred = b["debito"] * k_vol, b["credito"] * k_cmp
             if per in pers:                                     # resultado operativo devengado del mes
                 resultado_op[pers.index(per)] = (ventas - compras - (b["sueldos"] + b["cargas"]) * k_inf
-                                                 - b["iibb"] * k_vol)
+                                                 - sac_sueldo - sac_cargas - b["iibb"] * k_vol)
+            # Gaby 26/11/2026: "en junio y diciembre el SAC influye un montón": medio aguinaldo que se paga en el mismo
+            # mes (30/6 y 18/12) y sus cargas sociales con el F.931 del mes siguiente
+            es_sac = per[5:7] in ("06", "12")
+            sac_sueldo = b["sueldos"] * k_inf * 0.5 if es_sac else 0.0
+            sac_cargas = b["cargas"] * k_inf * 0.5 if es_sac else 0.0
+            if sac_sueldo and per in pers:
+                filas["sac"][pers.index(per)] += sac_sueldo
             for col, val, lag in (("cobranzas", ventas + deb, lag_c), ("proveedores", compras + cred, lag_p),
-                                  ("sueldos", b["sueldos"] * k_inf, 1), ("cargas", b["cargas"] * k_inf, 1),
-                                  ("iibb", b["iibb"] * k_inf, 1)):
+                                  ("sueldos", b["sueldos"] * k_inf, 1), ("cargas", (b["cargas"] * k_inf) + sac_cargas, 1),
+                                  ("iibb", b["iibb"] * k_vol, 1)):
                 destino = _mes(per, lag)
                 if destino in pers:
                     filas[col][pers.index(destino)] += val
@@ -205,7 +216,7 @@ def calcular(cuit: str, s: dict | None = None, hoy: date | None = None) -> dict:
         filas["bancarios"][i] = mov * (_f(s.get("impuesto_dc")) + _f(s.get("gastos_bancarios"))) / 100
         resultado_op[i] -= filas["fijos"][i] + filas["variables"][i] + filas["bancarios"][i] + filas["autonomos"][i]
     ingresos = [filas["cobranzas"][i] + filas["otros_ingresos"][i] + filas["prestamo_ingreso"][i] for i in range(n)]
-    egresos_k = ("proveedores", "sueldos", "cargas", "iva", "iibb", "anticipos", "planes", "autonomos", "fijos",
+    egresos_k = ("proveedores", "sueldos", "sac", "cargas", "iva", "iibb", "anticipos", "planes", "autonomos", "fijos",
                  "variables", "bancarios", "prestamo_cuotas")
     egresos = [sum(filas[k][i] for k in egresos_k) for i in range(n)]
     saldo, ini, fin = _f(s["saldo_inicial"]), [], []
@@ -229,7 +240,8 @@ def calcular(cuit: str, s: dict | None = None, hoy: date | None = None) -> dict:
 
 RENGLONES = [("cobranzas", "Cobranzas de ventas (con IVA)"), ("otros_ingresos", "Otros ingresos"),
              ("prestamo_ingreso", "Desembolso del financiamiento solicitado")]
-EGRESOS = [("proveedores", "Pagos a proveedores (con IVA)"), ("sueldos", "Sueldos"), ("cargas", "Cargas sociales (F.931)"),
+EGRESOS = [("proveedores", "Pagos a proveedores (con IVA)"), ("sueldos", "Sueldos"),
+           ("sac", "Aguinaldo (SAC) de junio y diciembre"), ("cargas", "Cargas sociales (F.931, con las del SAC)"),
            ("iva", "IVA (saldo a pagar)"), ("iibb", "Ingresos Brutos"), ("anticipos", "Anticipos y obligaciones por vencer (ARCA)"),
            ("planes", "Cuotas de planes de pago"), ("autonomos", "Autónomos / monotributo"), ("fijos", "Gastos fijos"),
            ("variables", "Gastos que van con las ventas (comisiones, fletes…)"),

@@ -240,12 +240,42 @@ def _ir_a_parametros(page):
     if fr:
         return fr
 
+    def hamburguesa():
+        # Gaby 26/11/2026 (Gonçalves): en "Mostrar Consulta" el menú izquierdo queda escondido detrás del ☰
+        for fr_ in [page.main_frame] + [f for f in page.frames if f is not page.main_frame]:
+            try:
+                b = fr_.locator("button[aria-label*='men' i], .navbar-toggler, .menu-toggle, .hamburger, "
+                                "[class*='hamburg'], [class*='toggle'][class*='menu']").locator("visible=true")
+                if b.count():
+                    b.first.click()
+                    page.wait_for_timeout(1000)
+                    return
+            except Exception:
+                continue
+
     def menu():
         try:
             _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$", espera_s=15)
-        except arca.ErrorRobot:                        # menú plegado: se abre "CUENTA CORRIENTE"
-            _clic_texto(page, r"^\s*CUENTA CORRIENTE\s*$")
-            _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$")
+        except arca.ErrorRobot:                        # menú plegado: ☰ y después "CUENTA CORRIENTE"
+            hamburguesa()
+            try:
+                _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$", espera_s=8)
+            except arca.ErrorRobot:
+                _clic_texto(page, r"^\s*CUENTA CORRIENTE\s*$")
+                _clic_texto(page, r"^\s*ESTADO DE CUMPLIMIENTO\s*$")
+
+    def cancelar():
+        # "Mostrar Consulta" no tiene VOLVER arriba: tiene "CANCELAR OPERACIÓN", que vuelve al Ingreso de Parámetros
+        fr_c = _hay_marco(page, r"Mostrar Consulta|Per[ií]odo Fiscal consultado")
+        if not fr_c:
+            raise arca.ErrorRobot("no está en Mostrar Consulta")
+        b = fr_c.get_by_text(re.compile(r"^\s*CANCELAR OPERACI[OÓ]N\s*$", re.I)).locator("visible=true")
+        if not b.count():
+            raise arca.ErrorRobot("sin CANCELAR OPERACIÓN")
+        b.first.click()
+        page.wait_for_timeout(1500)
+        if not _hay_marco(page, r"Ingreso de Par[aá]metros"):
+            menu()
 
     def volver():
         fr_c = _hay_marco(page, r"Mostrar Consulta|Per[ií]odo Fiscal consultado")
@@ -256,7 +286,7 @@ def _ir_a_parametros(page):
                 return
         raise arca.ErrorRobot("sin botón VOLVER")
 
-    for paso_ in (volver, menu, lambda: (page.reload(wait_until="domcontentloaded"), page.wait_for_timeout(3000), menu())):
+    for paso_ in (volver, cancelar, menu, lambda: (page.reload(wait_until="domcontentloaded"), page.wait_for_timeout(3000), menu())):
         try:
             paso_()
         except Exception:
