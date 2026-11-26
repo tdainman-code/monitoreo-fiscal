@@ -428,7 +428,10 @@ def _cambiar_representado(page, cuit: str | None) -> bool:
         return False
 
 
-def _abrir_servicio(ctx, page, cuit: str, textos: list[str]):
+URL_DIRECTA = {"percepciones": "https://claveciudad.agip.gob.ar/?s=agip_gestion_arciba"}   # Gaby, 25/11/2026
+
+
+def _abrir_servicio(ctx, page, cuit: str, textos: list[str], clave_srv: str = ""):
     """25/11/2026 (Gaby, Nabajuma): las tarjetas dependen del representado elegido arriba. Se busca con el cliente
     elegido; si no está, con el propio usuario (la aplicación pregunta después a quién se representa: _elegir_cuit)."""
     pag = _abrir(ctx, page, textos)
@@ -436,6 +439,12 @@ def _abrir_servicio(ctx, page, cuit: str, textos: list[str]):
         pag = _abrir(ctx, page, textos)
         if pag is None or pag is not page:
             _cambiar_representado(page, cuit)            # el menú vuelve a quedar con el cliente
+    if pag is None and URL_DIRECTA.get(clave_srv):
+        # 25/11/2026: con el usuario del estudio la tarjeta de Gestión-AR no figura en el menú, pero la dirección
+        # directa lleva a "Seleccione Representado" (NOMBRE [cuit] -> Ingresar) y de ahí a Gestión-AR
+        pag = ctx.new_page()
+        pag.goto(URL_DIRECTA[clave_srv], wait_until="domcontentloaded")
+        pag.wait_for_timeout(3000)
     return pag
 
 
@@ -580,7 +589,7 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                     page.goto(inicio, wait_until="domcontentloaded")
                 for clave_srv, textos in SERVICIOS:
                     try:
-                        pag = _abrir_servicio(ctx, page, cuit, textos)
+                        pag = _abrir_servicio(ctx, page, cuit, textos, clave_srv)
                         if pag is None:
                             r["servicios"][clave_srv] = "no encontrado en el portal"
                             caps = arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), f"agip_{clave_srv}_no_encontrado")

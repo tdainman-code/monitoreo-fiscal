@@ -84,9 +84,16 @@ def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
     page.wait_for_timeout(4000)
     nuevas = [p for p in ctx.pages if p not in antes]
     git = nuevas[-1] if nuevas else page
-    git.wait_for_load_state("domcontentloaded")
+    try:
+        git.wait_for_load_state("load", timeout=60_000)
+    except Exception:
+        pass
     git.wait_for_timeout(2000)
-    if re.search(r"Seleccione\s+Representado", git.inner_text("body")[:2000], re.I):
+    try:
+        t0 = git.inner_text("body", timeout=20_000)[:2000]
+    except Exception:
+        t0 = ""
+    if re.search(r"Seleccione\s+Representado", t0, re.I):
         from .robot_agip import _elegir_cuit          # NOMBRE [cuit] -> Ingresar (igual que Gestión-AR)
         _elegir_cuit(git, cuit)
         nuevas = [p for p in ctx.pages if p not in antes and p is not git]
