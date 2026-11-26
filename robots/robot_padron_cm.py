@@ -136,6 +136,14 @@ def leer(ctx, portal, cuit: str, hoy: date) -> dict:
 def paso(cuit: str, estado: dict):
     def fn(ctx, portal):
         hoy = date.today()
+        try:                                             # Gaby (25/11/2026): local CABA / Buenos Aires -> no va
+            from .correr import regimen_iibb
+            reg = (regimen_iibb(cuit).get("regimen") or "").lower()
+        except Exception:
+            reg = ""
+        if reg and "convenio" not in reg:
+            estado.update(resultado=f"no corresponde (régimen {reg})")
+            return "no corresponde"
         r = leer(ctx, portal, cuit, hoy)
         r.update(cuit=cuit, fecha=hoy.isoformat())
         r["ficha"] = resumen_ficha(r)

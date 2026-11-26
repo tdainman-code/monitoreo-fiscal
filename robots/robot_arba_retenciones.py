@@ -253,8 +253,12 @@ def paso(cuit: str, cit: str, estado: dict):
             inicio = page.url
             try:                                         # constancia de inscripción de IIBB (25/11/2026)
                 from . import robot_arba_constancia
-                cons = robot_arba_constancia.bajar(ctx, page, cuit)
-                estado["constancia"] = "OK" + ("" if cons.get("pdf") else " (sin PDF)")
+                from .robot_agip import _es_convenio
+                if _es_convenio(cuit):                   # Gaby: en Convenio la constancia está en el Padrón Web
+                    estado["constancia"] = "no corresponde (Convenio Multilateral)"
+                else:
+                    cons = robot_arba_constancia.bajar(ctx, page, cuit)
+                    estado["constancia"] = "OK" + ("" if cons.get("pdf") else " (sin PDF)")
             except Exception as e:
                 estado["constancia"] = f"error: {str(e).splitlines()[0][:160] if str(e) else type(e).__name__}"
             if page.url != inicio:

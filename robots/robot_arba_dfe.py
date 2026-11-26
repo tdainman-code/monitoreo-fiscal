@@ -430,7 +430,9 @@ def paso(cuit: str, cit: str, estado: dict):
                         page.goto(inicio_autogestion, wait_until="domcontentloaded")
                     try:                                       # constancia de inscripción de IIBB (25/11/2026)
                         from . import robot_arba_constancia
-                        robot_arba_constancia.bajar(ctx, page, cuit)
+                        from .robot_agip import _es_convenio
+                        if not _es_convenio(cuit):           # en Convenio la constancia está en el Padrón Web
+                            robot_arba_constancia.bajar(ctx, page, cuit)
                     except Exception as e:
                         estado["constancia"] = f"error: {str(e).splitlines()[0][:160] if str(e) else type(e).__name__}"
                     if page.url != inicio_autogestion:

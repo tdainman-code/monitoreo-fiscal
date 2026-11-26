@@ -177,6 +177,11 @@ ORDEN = {"rojo": 0, "amarillo": 1, "verde": 2, "gris": 3}
 def inicio():
     """Tablero de clientes (rediseñado el 20/11/2026: filtros por tema y por encargado, búsqueda al tipear, orden por
     columna y un resumen corto de 'qué pasa' por cliente). Los filtros corren en el navegador; ?q= y ?f= siguen andando."""
+    try:                                                # fichas: completar lo vacío con lo que bajaron los robots
+        import threading
+        threading.Thread(target=datos.completar_todos, daemon=True).start()
+    except Exception:
+        pass
     q = request.args.get("q", "").strip()
     filtro = request.args.get("f", "")
     es_admin = _solo() is None

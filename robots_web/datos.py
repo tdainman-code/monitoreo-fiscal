@@ -484,6 +484,27 @@ def completar_desde_registral(cuit: str) -> list[str]:
     return hechos
 
 
+_ULT_COMPLETAR = [0.0]
+
+
+def completar_todos(cada_seg: int = 1800) -> int:
+    """Completa lo vacío de las fichas de TODOS con lo que bajaron los robots (Sistema Registral, Padrón Web,
+    constancias, F.1272). Gaby, 25/11/2026. Se hace como mucho cada media hora."""
+    import time
+    if time.time() - _ULT_COMPLETAR[0] < cada_seg:
+        return 0
+    _ULT_COMPLETAR[0] = time.time()
+    n = 0
+    for c in _lista_clientes():
+        try:
+            if completar_desde_registral(c["cuit"]):
+                n += 1
+            completar_regimen(c["cuit"])
+        except Exception:
+            pass
+    return n
+
+
 def completar_regimen(cuit: str) -> bool:
     """Si en Datos del cliente el régimen de IIBB está vacío y se puede deducir, lo registra (no pisa lo cargado)."""
     from . import usuarios as _u
