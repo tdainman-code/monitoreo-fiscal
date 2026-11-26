@@ -1,0 +1,61 @@
+{% extends "base.html" %}{% block titulo %}Cash flow · {{ nombre }}{% endblock %}
+{% block cuerpo %}
+<p><a href="{{ url_for('cliente', cuit=c.cuit) }}">← {{ nombre }}</a></p>
+<div class="cabecera"><div><h1>Cash flow proyectado</h1>
+  <div class="sutil">Escenario para presentar (banco, aseguradora): parte de los datos fiscales del cliente y de los supuestos de abajo.</div></div>
+  <a class="boton" href="{{ url_for('cashflow', cuit=c.cuit, excel=1) }}">⬇ Excel</a></div>
+{% set b = r.base %}
+{% if not b.n %}<div class="aviso error">Todavía no hay meses completos (Libro IVA + F.931 + IIBB) para tomar de base: las ventas y compras salen en cero.</div>{% endif %}
+<div class="tarjetas">
+  <div class="tarjeta"><span class="sutil">Base: promedio de {{ b.n }} mes(es)</span><b>{{ (b.ventas or 0)|pesos }}</b><span class="sutil">ventas netas por mes · compras {{ (b.compras or 0)|pesos }}</span></div>
+  <div class="tarjeta"><span class="sutil">Resultado operativo proyectado ({{ r.periodos|length }} meses)</span><b class="{{ '' if r.gana_plata else 'txt-rojo' }}">{{ r.resultado_operativo|sum|pesos }}</b><span class="sutil">{{ 'gana plata' if r.gana_plata else 'no gana plata: revisar supuestos' }}</span></div>
+  <div class="tarjeta"><span class="sutil">Saldo final</span><b class="{{ 'txt-rojo' if r.saldo_final[-1] < 0 }}">{{ r.saldo_final[-1]|pesos }}</b><span class="sutil">{{ ('meses en negativo: ' ~ r.meses_negativos|length) if r.meses_negativos else 'nunca en negativo' }}</span></div>
+  {% if r.cobertura is not none %}<div class="tarjeta"><span class="sutil">Cobertura del financiamiento</span><b class="{{ 'txt-rojo' if r.cobertura < 1.2 }}">{{ '%.2f'|format(r.cobertura) }} veces</b><span class="sutil">cuota {{ r.cuota_prestamo|pesos }} · los bancos piden 1,2 o más</span></div>{% endif %}
+</div>
+<div class="panel tabla-ancha"><table class="tabla"><thead><tr><th>Concepto</th>{% for p in r.periodos %}<th class="num">{{ p[5:] }}/{{ p[2:4] }}</th>{% endfor %}</tr></thead><tbody>
+  <tr><td><b>Saldo inicial</b></td>{% for v in r.saldo_inicial %}<td class="num">{{ v|pesos }}</td>{% endfor %}</tr>
+  {% for k, t in renglones %}<tr><td>{{ t }}</td>{% for v in r.filas[k] %}<td class="num">{{ v|pesos }}</td>{% endfor %}</tr>{% endfor %}
+  <tr><td><b>Total ingresos</b></td>{% for v in r.ingresos %}<td class="num"><b>{{ v|pesos }}</b></td>{% endfor %}</tr>
+  {% for k, t in egresos %}<tr><td>{{ t }}</td>{% for v in r.filas[k] %}<td class="num">{{ v|pesos }}</td>{% endfor %}</tr>{% endfor %}
+  <tr><td><b>Total egresos</b></td>{% for v in r.egresos %}<td class="num"><b>{{ v|pesos }}</b></td>{% endfor %}</tr>
+  <tr><td><b>Flujo neto</b></td>{% for v in r.neto %}<td class="num {{ 'txt-rojo' if v < 0 }}"><b>{{ v|pesos }}</b></td>{% endfor %}</tr>
+  <tr class="{{ '' }}"><td><b>Saldo final</b></td>{% for v in r.saldo_final %}<td class="num {{ 'txt-rojo' if v < 0 }}"><b>{{ v|pesos }}</b></td>{% endfor %}</tr>
+  <tr><td class="sutil">Resultado operativo devengado</td>{% for v in r.resultado_operativo %}<td class="num sutil">{{ v|pesos }}</td>{% endfor %}</tr>
+</tbody></table></div>
+{% set s = r.supuestos %}{% set pr = r.prestamo %}
+<h2>Supuestos</h2>
+<form method="post" class="form-datos"><input type="hidden" name="csrf" value="{{ csrf() }}">
+  <div class="tarjetas">
+    <label>Saldo inicial de caja y bancos<input name="saldo_inicial" value="{{ s.saldo_inicial }}"></label>
+    <label>Meses a proyectar<input name="meses" value="{{ s.meses }}"></label>
+    <label>Meses de base (promedio)<input name="meses_base" value="{{ s.meses_base }}"></label>
+    <label>Días de cobro<input name="dias_cobro" value="{{ s.dias_cobro }}"></label>
+    <label>Días de pago<input name="dias_pago" value="{{ s.dias_pago }}"></label>
+    <label>Inflación de precios (% mensual)<input name="inflacion" value="{{ s.inflacion }}"></label>
+    <label>Inflación de costos (% mensual)<input name="inflacion_costos" value="{{ s.inflacion_costos }}"></label>
+    <label>Aumento de nómina (% mensual)<input name="aumento_nomina" value="{{ s.aumento_nomina }}"></label>
+    <label>Crecimiento real de ventas (% mensual)<input name="crecimiento" value="{{ s.crecimiento }}"></label>
+    <label>Impuesto débito y crédito (%)<input name="impuesto_dc" value="{{ s.impuesto_dc }}"></label>
+    <label>Gastos bancarios (%)<input name="gastos_bancarios" value="{{ s.gastos_bancarios }}"></label>
+  </div>
+  <label>Explicación de la inflación tomada (fuente / criterio)<textarea name="explicacion_inflacion" rows="2" placeholder="Ej.: REM del BCRA de octubre 2026: 1,85 % mensual promedio para los próximos 12 meses">{{ s.explicacion_inflacion }}</textarea></label>
+  <label>Motivos del crecimiento<textarea name="motivos_crecimiento" rows="3" placeholder="Ej.: nueva línea de producción con la máquina que se compra con el préstamo; contrato nuevo con X; apertura de sucursal…">{{ s.motivos_crecimiento }}</textarea></label>
+  <h3>Financiamiento que pide</h3>
+  <div class="tarjetas">
+    <label>Monto<input name="p_monto" value="{{ pr.monto }}"></label>
+    <label>Tasa anual (%)<input name="p_tasa" value="{{ pr.tasa_anual }}"></label>
+    <label>Cuotas<input name="p_cuotas" value="{{ pr.cuotas }}"></label>
+    <label>Mes del desembolso (1 = el primero)<input name="p_mes" value="{{ pr.mes }}"></label>
+    <label>Entidad<input name="p_entidad" value="{{ pr.entidad }}"></label>
+  </div>
+  <label>Destino de los fondos<textarea name="p_destino" rows="2">{{ pr.destino }}</textarea></label>
+  <label>Gastos (un renglón por concepto: «Alquiler; 350000» fijo que sube con la inflación de costos, o «Comisiones; 0,5%» de las ventas)
+    <textarea name="fijos" rows="6">{% for x in s.fijos %}{{ x.concepto }}; {{ (x.pct_ventas ~ '%') if x.pct_ventas else x.importe }}
+{% endfor %}</textarea></label>
+  <label>Otros ingresos (un renglón por concepto: «Alquiler cobrado; 200000»)<textarea name="ingresos" rows="3">{% for x in s.ingresos %}{{ x.concepto }}; {{ x.importe }}
+{% endfor %}</textarea></label>
+  <label>Notas<textarea name="notas" rows="2">{{ s.notas }}</textarea></label>
+  <p><button class="boton">Guardar y recalcular</button></p>
+</form>
+<p class="sutil">Base: {{ b.meses|join(', ') if b.meses else '—' }}. Cobranzas y pagos con IVA y desplazados por los días de cobro/pago; sueldos, cargas, IVA e IIBB se pagan el mes siguiente; anticipos y cuotas de planes en el mes en que vencen según ARCA.</p>
+{% endblock %}

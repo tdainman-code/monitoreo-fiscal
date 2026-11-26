@@ -204,6 +204,8 @@
   {% for i in s.informes_lista if not tipos or i.tipo in tipos %}{% if loop.index <= 9 %}<li><a class="boton" href="{{ url_for('bajar_informe', ruta=i.ruta) }}">⬇ {{ i.tipo }}</a> <span class="sutil">{{ i.fecha|fecha }} · {{ i.archivo }}</span></li>{% endif %}
   {% else %}<li class="sutil">Todavía no hay informes.</li>{% endfor %}
   </ul>
+  {% if sec == 'informes' %}<ul class="informes"><li><a class="boton" href="{{ url_for('cashflow', cuit=c.cuit) }}">💵 Cash flow proyectado</a>
+    <span class="sutil">para bancos y aseguradoras: con sus datos fiscales, supuestos de inflación y crecimiento y el financiamiento que pide</span></li></ul>{% endif %}
 
 {% elif sec == 'notas' %}
 <form class="nota-form" method="post" action="{{ url_for('nueva_nota', cuit=c.cuit) }}">

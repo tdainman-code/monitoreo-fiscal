@@ -1090,6 +1090,22 @@ ok(any(x["periodo"] == "2025-11" and x["secuencia"] == 1 for x in datos.rectific
    and "Rectificativa 1" in cl.get(f"/cliente/{C2}/compras").text, "Libro IVA: última rectificativa y fecha por período")
 os.remove(f"{D}/{C2}/libro_iva/2025-11.json"); os.remove(os.path.join(_dob, "observados_historial.json"))
 ok('id="b-buscar"' in cl.get("/biblioteca").text and 'data-buscar=' in cl.get("/biblioteca").text, "Biblioteca: buscador que filtra mientras se escribe")
+# Cash flow proyectado (Gaby 26/11/2026)
+_cf = cl.get(f"/cliente/{C2}/cashflow")
+ok(_cf.status_code == 200 and "Cash flow proyectado" in _cf.text, "cash flow: pantalla")
+_r = cl.post(f"/cliente/{C2}/cashflow", data={"csrf": token(_cf.text), "saldo_inicial": "1000000", "meses": "12", "meses_base": "6",
+             "dias_cobro": "30", "dias_pago": "30", "inflacion": "1,85", "inflacion_costos": "2", "aumento_nomina": "2", "crecimiento": "1",
+             "impuesto_dc": "1,2", "gastos_bancarios": "0,5", "p_monto": "5000000", "p_tasa": "60", "p_cuotas": "12", "p_mes": "1",
+             "p_destino": "máquina", "fijos": "Alquiler; 350000\nComisiones; 0,5%", "ingresos": "", "motivos_crecimiento": "nueva máquina",
+             "explicacion_inflacion": "REM BCRA"}, follow_redirects=True)
+from robots_web import cashflow as _cfm
+_rr = _cfm.calcular(C2)
+ok("Supuestos guardados" in _r.text and _rr["filas"]["prestamo_ingreso"][0] == 5000000 and _rr["cuota_prestamo"] > 0
+   and _rr["filas"]["fijos"][0] == 350000 and _rr["supuestos"]["inflacion"] == 1.85, "cash flow: supuestos, préstamo y gastos")
+_x = cl.get(f"/cliente/{C2}/cashflow?excel=1").data
+from openpyxl import load_workbook as _lw4
+ok(_lw4(_io2.BytesIO(_x)).sheetnames[:2] == ["Cash flow", "Fundamentos"], "cash flow: Excel con fundamentos")
+ok(abs(_cfm.cuota_francesa(1200000, 0, 12) - 100000) < 0.01 and _cfm.cuota_francesa(100000, 12, 12) > 8800, "cash flow: cuota francesa")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

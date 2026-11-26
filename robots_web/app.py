@@ -637,6 +637,62 @@ VEP_DEUDA_LISTO = True                       # relevado con Tomás el 20/11/2026
 MEDIOS_VEP_DEUDA = MEDIOS_VEP + ["Pago con QR"]
 
 
+def _lineas(txt: str) -> list[dict]:
+    """'Alquiler; 350000' o 'Comisiones; 0,5%' por renglón."""
+    out = []
+    for l in (txt or "").splitlines()[:60]:
+        if ";" not in l:
+            continue
+        c, v = [x.strip() for x in l.split(";", 1)]
+        num = re.sub(r"[^\d,.\-]", "", v)
+        num = float(num.replace(".", "").replace(",", ".")) if re.search(r",\d{1,2}$", num) or num.count(".") > 1 else float(num or 0)
+        out.append({"concepto": c[:80], **({"pct_ventas": num, "importe": 0.0} if "%" in v else {"importe": num, "pct_ventas": 0.0})})
+    return out
+
+
+@app.route("/cliente/<cuit>/cashflow", methods=["GET", "POST"])
+@requiere_login
+def cashflow(cuit):
+    """Cash flow proyectado para bancos / aseguradoras (Gaby 26/11/2026)."""
+    from . import cashflow as cf
+    info = _cliente_info(cuit)
+    nombre = info.get("razon_social") or datos.cuit_fmt(cuit)
+    if request.method == "POST":
+        _controlar_csrf()
+        s = cf.supuestos(cuit)
+        num = lambda k, d=0.0: float((request.form.get(k) or str(d)).replace(".", "").replace(",", ".")) if re.search(r",", request.form.get(k) or "") else float(request.form.get(k) or d)
+        try:
+            for k in ("saldo_inicial", "inflacion", "inflacion_costos", "aumento_nomina", "crecimiento", "impuesto_dc",
+                      "gastos_bancarios"):
+                s[k] = num(k, s.get(k) or 0)
+            for k in ("meses", "dias_cobro", "dias_pago", "meses_base"):
+                s[k] = int(num(k, s.get(k) or 0))
+            s["prestamo"] = {"monto": num("p_monto"), "tasa_anual": num("p_tasa"), "cuotas": int(num("p_cuotas", 12)),
+                             "mes": int(num("p_mes", 1)), "destino": (request.form.get("p_destino") or "")[:500],
+                             "entidad": (request.form.get("p_entidad") or "")[:120]}
+        except ValueError:
+            flash("Algún número no se entendió: usá solo dígitos, coma decimal", "error")
+            return redirect(url_for("cashflow", cuit=cuit))
+        for k in ("motivos_crecimiento", "explicacion_inflacion", "notas"):
+            s[k] = (request.form.get(k) or "")[:3000]
+        try:
+            s["fijos"], s["ingresos"] = _lineas(request.form.get("fijos")), _lineas(request.form.get("ingresos"))
+        except ValueError:
+            flash("Revisá los gastos u otros ingresos: un renglón por concepto, 'Alquiler; 350000' o 'Comisiones; 0,5%'", "error")
+            return redirect(url_for("cashflow", cuit=cuit))
+        cf.guardar(cuit, s)
+        usuarios.registrar(session["usuario"], "cash flow: supuestos", cuit, _ip())
+        flash("Supuestos guardados", "ok")
+        return redirect(url_for("cashflow", cuit=cuit))
+    r = cf.calcular(cuit)
+    if request.args.get("excel"):
+        usuarios.registrar(session["usuario"], "bajó el cash flow proyectado", cuit, _ip())
+        return send_file(BytesIO(cf.excel(cuit, nombre, r)), as_attachment=True,
+                         download_name=f"cashflow_{cuit}_{date.today().isoformat()}.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return render_template("cashflow.html", c=info, nombre=nombre, r=r, renglones=cf.RENGLONES, egresos=cf.EGRESOS)
+
+
 @app.route("/cliente/<cuit>/vep_ccma", methods=["POST"])
 @requiere_login
 def vep_ccma(cuit):
