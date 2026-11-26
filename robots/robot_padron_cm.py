@@ -95,7 +95,13 @@ def leer(ctx, portal, cuit: str, hoy: date) -> dict:
         enc = pag.inner_text("body")
         if arca.cuit_fmt(cuit) not in enc:
             raise arca.CuitEquivocado(f"Padrón Web: no muestra el CUIT {arca.cuit_fmt(cuit)}")
-        pag.get_by_text(re.compile(r"^\s*DATOS ACTUALES\s*$", re.I)).first.click()
+        # 25/11/2026: el texto "Datos Actuales" también está en el <title> invisible del ícono: se va por el enlace
+        link_da = pag.locator("a[href*='ConsultaGral']").filter(visible=True)
+        if link_da.count():
+            link_da.first.click()
+        else:
+            pag.goto("https://padronweb.comarb.gob.ar/padronweb/controller?action=ActionMostrarConsultaGral",
+                     wait_until="domcontentloaded")
         pag.wait_for_load_state("domcontentloaded")
         pag.wait_for_timeout(2000)
         link = pag.locator("a[href*='ConstanciaInscrip'], a:has-text('Constancia de Inscripción')").first
