@@ -90,6 +90,26 @@ def analizar(tipo: str, operativo: str, texto: str) -> dict:
             "periodos": periodos, "resumen": resumen}
 
 
+def elegir_rol(pag) -> bool:
+    """sso.arba.gov.ar "Seleccione un rol" (25/11/2026, Nabajuma: Agente de Recaudación / Contribuyente de Ingresos
+    Brutos): se elige el de contribuyente y Continuar. Si no aparece, no hace nada."""
+    try:
+        pag.wait_for_timeout(1500)
+        if not re.search(r"Seleccione un rol", pag.inner_text("body")[:3000], re.I):
+            return False
+        sel = pag.locator("select").filter(has=pag.locator("option", has_text=re.compile(r"Contribuyente", re.I)))
+        if not sel.count():
+            return False
+        op = next(o for o in sel.first.locator("option").all_inner_texts() if re.search(r"Contribuyente", o, re.I))
+        sel.first.select_option(label=op.strip())
+        pag.locator("button, input[type=submit], a").filter(has_text=re.compile(r"^\s*Continuar\s*$", re.I)).first.click()
+        pag.wait_for_load_state("domcontentloaded")
+        pag.wait_for_timeout(2500)
+        return True
+    except Exception:
+        return False
+
+
 def _abrir_bandeja(ctx, page, cuit):
     link = page.get_by_text(re.compile(r"Domicilio Fiscal Electr[oó]nico", re.I)).locator("visible=true")
     link.first.wait_for(timeout=45_000)
@@ -97,6 +117,7 @@ def _abrir_bandeja(ctx, page, cuit):
         link.first.click()
     band = nueva.value
     band.wait_for_load_state("domcontentloaded")
+    elegir_rol(band)
     band.locator("#listaNotificacionesTCTodas").wait_for(state="attached", timeout=60_000)
     if arca.cuit_fmt(cuit) not in band.inner_text("body")[:3000]:
         raise arca.CuitEquivocado(f"ARBA DFE: la bandeja no muestra el CUIT {arca.cuit_fmt(cuit)}")
@@ -380,8 +401,15 @@ def paso(cuit: str, cit: str, estado: dict):
                 except Exception:
                     cuenta = {}
                 inicio_autogestion = page.url
-                band = _abrir_bandeja(ctx, page, cuit)
-                filas = _listar(band)
+                try:
+                    band = _abrir_bandeja(ctx, page, cuit)
+                    filas = _listar(band)
+                except (arca.CuitEquivocado, arca.ClaveInvalida):
+                    raise
+                except Exception as e:                   # 25/11/2026: si la ventanilla falla, igual se bajan retenciones
+                    arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), "arba_dfe")
+                    estado["error_ventanilla"] = f"{type(e).__name__}: {str(e).splitlines()[0][:160] if str(e) else ''}"
+                    filas = []
                 for f in filas:
                     previo = reg.get(f["clave"])
                     if previo and previo.get("leida_por_robot"):
@@ -462,6 +490,9 @@ def paso(cuit: str, cit: str, estado: dict):
                 pass
         estado.update({"total": res["total"], "nuevas_leidas": res["nuevas_leidas"], "alertas": len(alertas),
                        "deducciones": estado.get("deducciones") or (f"OK ({len(percep)} percepciones)" if percep is not None else "")})
+        if estado.get("error_ventanilla"):            # la ventanilla falló: se informa, pero lo demás quedó guardado
+            raise arca.ErrorRobot(f"ARBA ventanilla DFE: {estado['error_ventanilla']} (retenciones: "
+                                  f"{estado.get('deducciones') or 'sin dato'})")
         return res
     return fn
 
