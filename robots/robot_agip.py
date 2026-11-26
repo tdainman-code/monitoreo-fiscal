@@ -260,6 +260,11 @@ def alertas_cct(c: dict, minimo: float = 15_000.0) -> list[dict]:
                    "texto": f"Quedan {txt(rem)} a favor" + (" (" + ", ".join(i["impuesto"] for i in tienen) + ")" if tienen else "")
                             + ": evaluar solicitud de devolución; si crece todos los meses, revisar exclusión o reducción "
                               "de los regímenes de retención y percepción."})
+    for i in c.get("impuestos") or []:          # Gaby 26/11/2026: lo retenido y no depositado va aparte, más grave
+        if re.search(r"recaudaci", i.get("impuesto") or "", re.I) and (i.get("adeudado") or 0) > 0:
+            al.insert(0, {"prioridad": "URGENTE", "tipo": "AGIP: retenciones / percepciones NO depositadas",
+                          "texto": f"{i['impuesto']}: {txt(i['adeudado'])} retenidos o percibidos y no depositados. "
+                                   "Depositar YA (riesgo de apropiación indebida)."})
     if c.get("faltas_presentacion"):
         al.append({"prioridad": "ALTA", "tipo": "AGIP: faltas de presentación",
                    "texto": f"{c['faltas_presentacion']} DDJJ con falta de presentación en la Cuenta Corriente Tributaria"})

@@ -221,7 +221,8 @@ def _leer_una(ctx, f: dict, carpeta: str) -> dict:
 # Autogestión -> "Mi cuenta corriente" (relevado con Gaby el 18/11/2026, GONCALVES 20-33116278-8):
 #   1 Ingresos Brutos  $ 10.613.047,90 [Juicios]  $ 0,00 / 4 Sellos $ 0,00 $ 0,00 / TOTALES $ 10.613.047,90 $ 0,00
 #   (columnas Deuda y Saldo a favor; la marca "Juicios" aparece solo si hay deuda en juicio).
-IMPUESTOS_ARBA = ("Ingresos Brutos", "Sellos", "Inmobiliario", "Automotor", "Embarcaciones", "Planes de pago")
+IMPUESTOS_ARBA = ("Ingresos Brutos", "Agentes de Recaudación", "Sellos", "Inmobiliario Complementario", "Inmobiliario",
+                  "Automotor", "Embarcaciones", "Planes de pago")
 _PESOS = re.compile(r"\$\s*(-?[\d.]+,\d{2})")
 
 

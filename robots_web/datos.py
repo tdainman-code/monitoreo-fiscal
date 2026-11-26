@@ -248,6 +248,7 @@ def situacion(cuit: str) -> dict:
          "alertas": (sit.get("alertas") or []) + ((dfe or {}).get("alertas") or [])}
     r["deuda_vencida"] = (sct or {}).get("totales_leidos", {}).get("vencido") if sct else None
     r["ddjj"] = len(sct["ddjj_pendientes"]) if sct else None
+    r["ddjj_determinativas"] = ddjj_determinativas((sct or {}).get("ddjj_pendientes"))
     vig = (mf or {}).get("vigentes") or []
     r["planes"] = len(vig) if mf else None
     r["cuotas_impagas"] = sum(sum(1 for c in (p.get("detalle_cuotas") or []) if c.get("situacion") == "Vencida impaga")
@@ -331,16 +332,32 @@ def situacion(cuit: str) -> dict:
                       "texto": x["texto"] + (f" — {_pesos_txt(x['a_favor'])} a recuperar." if x["a_favor"] else "")
                                + " El encargado tiene que marcarla vista."}
                      for x in r["revisar"]]
+    r["agente_impago"] = agente_impago(sct, agip, arba)
+    if r["agente_impago"]:
+        r["alertas"].insert(0, {"prioridad": "URGENTE", "tipo": "Retenciones / percepciones NO depositadas",
+                                "texto": "; ".join(f"{x['organismo']} {x['concepto']} {x['periodo']} {_pesos_txt(x['importe'])}".replace("  ", " ")
+                                                   for x in r["agente_impago"])
+                                         + ". Es plata retenida a terceros: depositar YA (riesgo de apropiación indebida)."})
+    if r["ddjj_determinativas"]:
+        # misma alerta "Falta de presentación" (así sigue funcionando el descarte), pero URGENTE y marcada
+        for a_ in r["alertas"]:
+            if str(a_.get("tipo", "")).startswith("Falta de presentaci"):
+                a_["prioridad"] = "URGENTE"
+                a_["grave"] = ("DDJJ que determina impuesto sin presentar (más grave que los informativos): "
+                               + "; ".join(f"{d.get('impuesto')} {d.get('periodo_txt') or ''}".strip() for d in r["ddjj_determinativas"][:6]))
     ratio_mal = r["ratio"]["nivel"] if r["ratio"] and r["ratio"]["meses"] >= 6 else ""
     minima = analisis.REGLAS["deuda_minima"]
     if not sit and not dfe and not agip and not fisc and not ccma:
         r["semaforo"], r["motivo"] = "gris", "Sin datos todavía"
-    elif (r["cuotas_impagas"] or r["ddjj"] or r["dfe_altas"] or r["caducos"] or r["revisar"] or r["arba_altas"]
+    elif (r["agente_impago"] or r["cuotas_impagas"] or r["ddjj"] or r["dfe_altas"] or r["caducos"] or r["revisar"] or r["arba_altas"]
           or r["agip_altas"] or r["fiscalizaciones"] or r["ccma_impagos"] or ratio_mal == "Crítico"):
         r["semaforo"] = "rojo"
         r["motivo"] = ", ".join(x for x in [
+            "RETENCIONES/PERCEPCIONES NO DEPOSITADAS" if r["agente_impago"] else "",
+            f"{len(r['ddjj_determinativas'])} DDJJ DETERMINATIVA(S) SIN PRESENTAR" if r["ddjj_determinativas"] else "",
             f"{r['cuotas_impagas']} cuota(s) impaga(s)" if r["cuotas_impagas"] else "",
-            f"{r['ddjj']} DDJJ pendiente(s)" if r["ddjj"] else "",
+            (f"{r['ddjj'] - len(r['ddjj_determinativas'])} DDJJ informativa(s) pendiente(s)"
+             if r["ddjj"] and r["ddjj"] > len(r["ddjj_determinativas"]) else ""),
             f"{r['dfe_altas']} notificación(es) importante(s) sin abrir" if r["dfe_altas"] else "",
             f"{r['caducos']} plan(es) caduco(s)" if r["caducos"] else "",
             f"{len(r['revisar'])} deuda(s) histórica(s) para que revise el encargado" if r["revisar"] else "",
@@ -466,7 +483,7 @@ def _notificaciones(base: str, dfe: dict | None) -> list[dict]:
                     "importancia": c.get("importancia"), "para": "", "motivo": c.get("clasificacion", ""),
                     "responsable": "", "estado": c.get("estado") or ("SIN ABRIR" if not c.get("leida") else ""),
                     "pendiente": not c.get("leida"), "plazo": "", "resumen": c.get("impuesto") or ""})
-    orden = {"ALTA": 0, "Media": 1, "Baja": 2}
+    orden = {"URGENTE": -1, "ALTA": 0, "Media": 1, "Baja": 2}
 
     def clave(n):
         f = _fecha((n["fecha"] or "").replace("-", "/")) or date.min
@@ -553,6 +570,39 @@ def apoc_salieron(cuit: str) -> dict:
 def _fecha_txt(v) -> str:
     d = _fecha(str(v or "")[:10])
     return d.strftime("%d/%m/%Y") if d else str(v or "")
+
+
+# Gaby y Tomás 26/11/2026: lo GRAVE va aparte.
+# 1) DDJJ que determinan impuesto sin presentar (IVA, Ganancias, Bienes Personales, F.931, SICORE…) es mucho más grave
+#    que un régimen informativo (103 y similares).
+# 2) Retenciones / percepciones practicadas y no depositadas, y aportes retenidos al personal: puede ser apropiación
+#    indebida (ley penal tributaria), no una deuda común.
+INFORMATIVOS = re.compile(r"^\s*0*103\b|INFORMACI[OÓ]N|INFORMATIV", re.I)
+AGENTE_ARCA = {"217": "SICORE Ganancias (retenciones)", "767": "SICORE IVA (retenciones / percepciones)",
+               "301": "aportes personales retenidos al personal (F.931)", "302": "aportes de obra social retenidos (F.931)"}
+
+
+def ddjj_determinativas(lista: list[dict]) -> list[dict]:
+    return [d for d in lista or [] if not INFORMATIVOS.search(f"{d.get('impuesto') or ''} {d.get('concepto') or ''}")]
+
+
+def agente_impago(sct: dict | None, agip: dict | None, arba: dict | None) -> list[dict]:
+    """Lo que se retuvo o percibió y no se depositó, en ARCA, AGIP y ARBA."""
+    out = []
+    for d in (sct or {}).get("deudas") or []:
+        cod = re.match(r"\s*0*(\d+)", str(d.get("impuesto") or ""))
+        cod = cod[1] if cod else ""
+        if cod in AGENTE_ARCA and d.get("vencida") and (d.get("total") or 0) > 0 \
+                and not re.search(r"INTER", str(d.get("concepto") or ""), re.I):
+            out.append({"organismo": "ARCA", "concepto": f"{d.get('impuesto')} — {AGENTE_ARCA[cod]}",
+                        "periodo": d.get("periodo_txt") or d.get("periodo"), "importe": d.get("total") or 0.0})
+    for i in ((agip or {}).get("cct") or {}).get("impuestos") or []:
+        if re.search(r"recaudaci", i.get("impuesto") or "", re.I) and (i.get("adeudado") or 0) > 0:
+            out.append({"organismo": "AGIP", "concepto": i["impuesto"], "periodo": "", "importe": i["adeudado"]})
+    for i in ((arba or {}).get("cuenta") or {}).get("impuestos") or []:
+        if re.search(r"agentes? de recaudaci", i.get("impuesto") or "", re.I) and (i.get("deuda") or 0) > 0:
+            out.append({"organismo": "ARBA", "concepto": "Agentes de Recaudación", "periodo": "", "importe": i["deuda"]})
+    return out
 
 
 def tipo_actividad(codigo: str) -> str:
@@ -894,8 +944,8 @@ def alertas_del_dia(solo: set | None = None) -> list[dict]:
     out = []
     for c in lista_clientes(solo):
         f = ficha(c["cuit"])
-        al = [a for a in f["alertas"] if a.get("prioridad") == "ALTA"]
-        al += [a for a in ((f["arba_dfe"] or {}).get("alertas") or []) if a.get("prioridad") == "ALTA"]
+        al = [a for a in f["alertas"] if a.get("prioridad") in ("URGENTE", "ALTA")]
+        al += [a for a in ((f["arba_dfe"] or {}).get("alertas") or []) if a.get("prioridad") in ("URGENTE", "ALTA")]
         # Convenio: ya va como "Deuda histórica para revisar" mientras el encargado no la marque vista
         if f.get("ratio") and f["ratio"]["nivel"] == "Crítico" and f["ratio"]["meses"] >= 6:
             al.append({"prioridad": "ALTA", "tipo": "Relación débito/crédito crítica",

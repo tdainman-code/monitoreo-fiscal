@@ -1107,6 +1107,14 @@ from openpyxl import load_workbook as _lw4
 ok(_lw4(_io2.BytesIO(_x)).sheetnames[:2] == ["Cash flow", "Fundamentos"], "cash flow: Excel con fundamentos")
 ok(all(v == 0 for p_, v in zip(_rr["periodos"], _rr["filas"]["sac"]) if p_[5:] not in ("06", "12")), "cash flow: el SAC solo en junio y diciembre")
 ok(abs(_cfm.cuota_francesa(1200000, 0, 12) - 100000) < 0.01 and _cfm.cuota_francesa(100000, 12, 12) > 8800, "cash flow: cuota francesa")
+# Lo grave aparte (Gaby y Tomás 26/11/2026)
+_dd = datos.ddjj_determinativas([{"impuesto": "103 - REGIMENES DE INFORMACION", "concepto": "855"}, {"impuesto": "30 - IVA", "concepto": "DDJJ"}])
+ok(len(_dd) == 1 and _dd[0]["impuesto"].startswith("30"), "DDJJ: la de IVA es determinativa, el 103 informativo")
+_ag = datos.agente_impago({"deudas": [{"impuesto": "217 - SICORE", "concepto": "DDJJ", "vencida": True, "total": 5000.0, "periodo_txt": "10/2026"},
+                                      {"impuesto": "30 - IVA", "concepto": "DDJJ", "vencida": True, "total": 9.0}]},
+                          {"cct": {"impuestos": [{"impuesto": "IIBB - Ag. de Recaudación", "adeudado": 174012.55}]}},
+                          {"cuenta": {"impuestos": [{"impuesto": "Agentes de Recaudación", "deuda": 1482675.5}]}})
+ok({x["organismo"] for x in _ag} == {"ARCA", "AGIP", "ARBA"} and len(_ag) == 3, "agente: retenciones no depositadas en ARCA, AGIP y ARBA")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

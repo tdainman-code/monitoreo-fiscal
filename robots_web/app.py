@@ -219,6 +219,10 @@ def inicio():
 def _que_pasa(r: dict) -> list[tuple]:
     """Etiquetas cortas de lo que NO está en las columnas del tablero (deuda, DDJJ, cuotas y notificaciones ya tienen la suya)."""
     t = []
+    if r.get("agente_impago"):
+        t.append(("rojo", "🚨 retenciones/percepciones no depositadas"))
+    if r.get("ddjj_determinativas"):
+        t.append(("rojo", f"🚨 {len(r['ddjj_determinativas'])} DDJJ determinativa(s) sin presentar"))
     if r.get("caducos"):
         t.append(("rojo", f"{r['caducos']} plan caduco" if r["caducos"] == 1 else f"{r['caducos']} planes caducos"))
     if r.get("revisar"):
