@@ -994,6 +994,12 @@ def fallas(cuit: str) -> list[dict]:
             estado["arba"] = (f, "sin CIT cargada")
         if str(d.get("agip", "")).startswith("sin Clave Ciudad"):
             estado["agip"] = (f, "sin Clave Ciudad cargada")
+    try:                                               # Convenio Multilateral: las DJ locales de ARBA no corresponden
+        from . import usuarios as _u
+        if "convenio" in str((_u.datos_cliente(cuit) or {}).get("regimen_iibb") or "").lower():
+            estado.pop("arba", None)
+    except Exception:
+        pass
     try:                                               # ingreso a ARCA rechazado: queda en el registro de ejecuciones
         with open(REGISTRO, encoding="utf-8") as fh:
             ult = None

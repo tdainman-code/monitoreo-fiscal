@@ -90,7 +90,11 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
                       seguir_si_falla=True)
 
     # ARBA (IIBB local): ingreso propio, después de ARCA. Reintenta una vez ante un corte.
-    if arba:
+    # Gaby 26/11/2026: si es Convenio Multilateral, las DJ de IIBB local de ARBA no corresponden (Nabajuma).
+    arba_local = bool(arba) and not robot_agip._es_convenio(cuit)
+    if arba and not arba_local:
+        r["_errores"].pop("arba", None)
+    if arba_local:
         for intento in range(2):
             try:
                 robot_arba.paso(arba[0], arba[1], periodos, est["arba"], forzar)()
@@ -163,7 +167,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
 
     resumen = {"cuit": cuit, "fecha": hoy.isoformat(), "modo": modo, "periodos": periodos, "reingresos": r["_reingresos"],
                "errores": r["_errores"], "mis_comprobantes": est["mc"], "f931": est["f931"],
-               "sifere": est["sifere"], "libro_iva": est["liva"], "observados": est["obs"].get("resultado", ""), "arba": est["arba"] if arba else "sin CIT cargada",
+               "sifere": est["sifere"], "libro_iva": est["liva"], "observados": est["obs"].get("resultado", ""), "arba": (est["arba"] if arba_local else "no corresponde (Convenio Multilateral: las DJ van por SIFERE)" if arba else "sin CIT cargada"),
                "arba_dfe": est["arba_dfe"] if arba else "sin CIT cargada",
                "agip": est["agip"].get("servicios", est["agip"]) if agip else "sin Clave Ciudad cargada",
                "fiscalizaciones": est["fisc"].get("servicios", {}),
