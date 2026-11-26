@@ -1052,6 +1052,24 @@ _dj = _ls.leer_sct({"deudas": {"encabezados": ["Establecimiento", "Impuesto", "C
                                                    "855 - MEMORIA, EST. CONTABLES E INF. DE AUDIT.", "2025", "0", "31/07/2026"]}]}})
 ok(_dj["ddjj_pendientes"][0]["subconcepto"].startswith("855") and _dj["ddjj_pendientes"][0]["concepto"].startswith("855"),
    "DDJJ pendientes: concepto y subconcepto (régimen de información 103)")
+# VEP de autónomos / monotributo desde la CCMA (Gaby 26/11/2026)
+escribir(f"{D}/{C2}/ccma/2026-11-26.json", {"cuit": C2, "fecha": "2026-11-26", "totales": {"deudor": 11952.06, "deudor_obligacion": 10985.35, "deudor_accesorios": 966.71, "acreedor": 4247.33}, "periodos": [],
+         "impagos": [{"periodo": "08/2026"}], "deuda_impaga": 10985.35, "movimientos": []})
+_vc = cl.get(f"/cliente/{C2}/ccma")
+ok("Generar VEP de lo impago" in _vc.text, "CCMA: formulario para generar el VEP de autónomos / monotributo")
+for _n in os.listdir(os.path.join(BANDEJA, "pedidos")):
+    if _n.endswith(".json"):
+        os.remove(os.path.join(BANDEJA, "pedidos", _n))
+cl.post(f"/cliente/{C2}/vep_ccma", data={"csrf": token(_vc.text), "medio": "Pago Mis Cuentas (Banelco)",
+                                         "seccion": ["autonomo", "monotributo", "intereses"]})
+_pj = [json.load(open(os.path.join(BANDEJA, "pedidos", n))) for n in os.listdir(os.path.join(BANDEJA, "pedidos")) if n.endswith(".json")]
+from robots import pedidos as _rp2
+ok(any(x["robot"] == "vep_ccma" and x["secciones"] == ["autonomo", "monotributo", "intereses"] and _rp2._valido(x) for x in _pj),
+   "CCMA: pedido de VEP en la bandeja y válido para el robot")
+for _n in os.listdir(os.path.join(BANDEJA, "pedidos")):
+    if _n.endswith(".json"):
+        os.remove(os.path.join(BANDEJA, "pedidos", _n))
+os.remove(f"{D}/{C2}/ccma/2026-11-26.json")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

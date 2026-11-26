@@ -415,6 +415,17 @@
     <td data-l="Estado"><b class="{{ 'txt-rojo' if p.estado == 'IMPAGO' }}">{{ p.estado }}</b>{% if p.estado == 'IMPAGO' %} <span class="sutil">({{ p.dias_vencido }} días)</span>{% endif %}</td></tr>
   {% else %}<tr><td colspan="7" class="sutil">Sin movimientos.</td></tr>{% endfor %}
   </tbody></table>
+  {% if cm.impagos or (t.deudor or 0) > 0 %}
+  <form method="post" action="{{ url_for('vep_ccma', cuit=c.cuit) }}" class="panel" style="padding:12px;margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ csrf() }}">
+    <b>Generar VEP de lo impago</b> <span class="sutil">(el robot recalcula la deuda a hoy en la CCMA, tilda lo pedido y lo manda al medio de pago; vence en unos 25 días; no paga nada)</span><br>
+    <label><input type="checkbox" name="seccion" value="autonomo" checked> Autónomo — obligaciones</label>
+    <label><input type="checkbox" name="seccion" value="monotributo" checked> Monotributo — obligaciones</label>
+    <label><input type="checkbox" name="seccion" value="intereses" checked> Monotributo — intereses</label><br>
+    <select name="medio"><option value="">Medio de pago…</option>{% for m in medios_vep_todos %}<option>{{ m }}</option>{% endfor %}</select>
+    <button class="boton">Generar VEP</button>
+  </form>
+  {% endif %}
   {% else %}<p class="sutil">Todavía no se consultó la cuenta de autónomos / monotributo (se lee en la corrida "Todo" o pidiendo "Autónomos y Monotributo").</p>{% endif %}
 
 {% elif sec == 'historica' %}

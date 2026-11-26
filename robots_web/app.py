@@ -637,6 +637,26 @@ VEP_DEUDA_LISTO = True                       # relevado con Tomás el 20/11/2026
 MEDIOS_VEP_DEUDA = MEDIOS_VEP + ["Pago con QR"]
 
 
+@app.route("/cliente/<cuit>/vep_ccma", methods=["POST"])
+@requiere_login
+def vep_ccma(cuit):
+    """VEP de autónomos / monotributo (CCMA → Volante de pago), relevado con Gaby el 26/11/2026."""
+    _controlar_csrf()
+    _cliente_info(cuit)
+    medio = request.form.get("medio", "")
+    secciones = request.form.getlist("seccion")
+    if medio not in MEDIOS_VEP_DEUDA:
+        flash("Elegí el medio de pago", "error")
+    else:
+        try:
+            pedidos.encolar_vep_ccma(cuit, medio, secciones, session["usuario"])
+            usuarios.registrar(session["usuario"], f"pidió VEP de autónomos/monotributo ({medio})", cuit, _ip())
+            flash(f"Pedido: el robot genera el VEP de autónomos / monotributo por {medio} en un minuto.", "ok")
+        except pedidos.ErrorPedido as e:
+            flash(str(e), "error")
+    return redirect(url_for("cliente_seccion", cuit=cuit, seccion="ccma"))
+
+
 @app.route("/cliente/<cuit>/vep_deuda", methods=["POST"])
 @requiere_login
 def vep_deuda(cuit):

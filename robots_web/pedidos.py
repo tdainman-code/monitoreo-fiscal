@@ -151,6 +151,28 @@ def encolar(cuit: str, robot: str, por: str, fecha_cierre: str = "") -> str:
     return p["id"]
 
 
+def encolar_vep_ccma(cuit: str, medio: str, secciones: list[str], por: str) -> str:
+    """VEP de autónomos / monotributo desde la CCMA (Gaby 26/11/2026)."""
+    if not datos.CUIT_RE.match(cuit or ""):
+        raise ErrorPedido("CUIT inválido")
+    if not listo():
+        raise ErrorPedido("Los pedidos todavía no están habilitados en el servidor")
+    secciones = [x for x in secciones if x in ("autonomo", "monotributo", "intereses")]
+    if not secciones:
+        raise ErrorPedido("Elegí qué incluir en el VEP")
+    if any(x.get("cuit") == cuit and x.get("robot") == "vep_ccma" for x in pendientes()):
+        raise ErrorPedido("Ya hay un VEP de autónomos / monotributo esperando para este cliente")
+    p = {"id": uuid.uuid4().hex, "fecha": dt.datetime.now().isoformat(timespec="seconds"), "por": por, "cuit": cuit,
+         "robot": "vep_ccma", "medio": medio, "secciones": secciones}
+    ruta = os.path.join(PEDIDOS, f"{p['fecha'].replace(':', '')}_{p['id'][:8]}.json")
+    tmp = ruta + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o660)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(p, f)
+    os.replace(tmp, ruta)
+    return p["id"]
+
+
 def encolar_vep_deuda(cuit: str, conceptos: list[dict], medio: str, enviar: bool, por: str) -> str:
     """VEP de conceptos de deuda tildados en la web (20/11/2026). El robot lo procesa cuando esté relevada la pantalla."""
     if not datos.CUIT_RE.match(cuit or ""):

@@ -50,6 +50,7 @@ ROBOTS_PERMITIDOS["reporte_revisiones"] = "Reporte de revisiones diarias sin hac
 # 25/11/2026 (Tomás): el reporte de revisiones va SIEMPRE a esta casilla (la web solo manda asunto y texto)
 REPORTE_REVISIONES_PARA = ["tdainman@gmail.com"]
 ROBOTS_PERMITIDOS["vep_deuda"] = "VEP de deuda (conceptos tildados en la web)"
+ROBOTS_PERMITIDOS["vep_ccma"] = "VEP de autónomos / monotributo (CCMA)"
 MAX_ESTADO = 50
 
 
@@ -93,6 +94,11 @@ def _valido(p: dict) -> bool:
         c = p.get("conceptos")
         ok = (isinstance(c, list) and 0 < len(c) <= 60 and all(isinstance(x, dict) and x.get("impuesto") for x in c)
               and p.get("medio") in MEDIOS)
+    if ok and p["robot"] == "vep_ccma":
+        from .robot_vep_deuda import MEDIOS
+        from .robot_vep_ccma import SECCIONES
+        s = p.get("secciones")
+        ok = p.get("medio") in MEDIOS and isinstance(s, list) and 0 < len(s) <= 3 and all(x in SECCIONES for x in s)
     if ok and p["robot"] in AVISOS:
         ok = re.fullmatch(rf"{p['cuit']}:[A-Za-z0-9-]{{1,20}}:\d{{1,3}}", str(p.get("aviso", ""))) is not None
     return ok
@@ -195,6 +201,11 @@ def procesar() -> int:
                 if p["robot"] in AVISOS:                     # aviso + VEP: entra a ARCA a generar el VEP
                     from . import avisos
                     res = avisos.accion_web(p["aviso"], con_vep=True, por=p.get("por") or "?")
+                elif p["robot"] == "vep_ccma":               # VEP de autónomos / monotributo (26/11/2026)
+                    from . import robot_vep_ccma
+                    v = robot_vep_ccma.correr(p["cuit"], p["medio"], p["secciones"], por=p.get("por") or "")
+                    res = (f"OK VEP {v['vep']} por $ {v.get('importe') or 0:,.2f} ({p['medio']}), autónomos / monotributo"
+                           .replace(",", "X").replace(".", ",").replace("X", "."))
                 elif p["robot"] == "vep_deuda":              # VEP de deuda pedido desde la web (20/11/2026)
                     from . import avisos, robot_vep_deuda
                     v = robot_vep_deuda.correr(p["cuit"], p["conceptos"], p["medio"], por=p.get("por") or "")
