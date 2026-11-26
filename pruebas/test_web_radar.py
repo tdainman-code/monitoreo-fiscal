@@ -1013,6 +1013,16 @@ ok("100.000,00" in cl2.get(f"/intercliente?cliente={C}").text and "100.000,00" n
 ok("Facturación entre clientes" in cl2.get(f"/cliente/{C}/informes").text and "Facturación entre clientes" not in cl2.get("/mas").text
    and "Facturación entre clientes" not in cl.get(f"/cliente/{C}/informes").text,
    "facturación entre clientes: botón dentro de Informes Excel, solo admin")
+# Excel de la solapa Clientes (26/11/2026): los que ve cada uno, sin claves
+import io as _io3
+from openpyxl import load_workbook as _lw3
+_xa = _lw3(_io3.BytesIO(cl2.get("/clientes?excel=1").data))["Clientes"]
+_xc = _lw3(_io3.BytesIO(cl.get("/clientes?excel=1").data))["Clientes"]
+_txt = " ".join(str(v) for r in _xa.iter_rows(values_only=True) for v in r if v)
+_cab = [c.value for c in _xa[1]]
+ok(_xa.max_row - 1 == len(datos.lista_clientes()) and "Condición frente al IVA" in _cab
+   and [h for h in _cab if "lave" in str(h)] == ["Clave ARCA (estado)"], "Excel de clientes: todos para el admin, con la ficha y sin claves")
+ok(2 <= _xc.max_row <= _xa.max_row, "Excel de clientes: el colaborador baja los suyos")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

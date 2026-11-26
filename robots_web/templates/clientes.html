@@ -2,7 +2,8 @@
 {% block cuerpo %}
 <div class="cabecera">
   <div><h1>Clientes</h1><div class="sutil">{{ filas|length }} cliente(s) cargados{% if es_admin %} · la ✕ da de baja al cliente (pide confirmación){% endif %}</div></div>
-  <a class="boton" href="{{ url_for('cliente_nuevo') }}">＋ Nuevo cliente</a>
+  <div><a class="boton gris" href="{{ url_for('listado_clientes', excel=1) }}">⬇ Excel</a>
+  <a class="boton" href="{{ url_for('cliente_nuevo') }}">＋ Nuevo cliente</a></div>
 </div>
 <div class="buscar-grande" style="margin:12px 0"><input id="c-buscar" type="search" placeholder="🔍  Buscar por nombre, CUIT o encargado…" autocomplete="off"></div>
 <div class="panel">

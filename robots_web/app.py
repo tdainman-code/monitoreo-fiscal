@@ -977,8 +977,46 @@ def listado_clientes():
         arca = next((a for a in c.get("accesos") or [] if a.get("organismo") == "ARCA"), {})
         filas.append({**c, "condicion": dc.get("condicion_iva") or "", "iibb": " · ".join(x for x in (dc.get("regimen_iibb"), dc.get("jurisdicciones_iibb")) if x), "encargado": nombres.get(dc.get("encargado") or "", dc.get("encargado") or ""),
                       "equipo": ", ".join(nombres.get(x.strip(), x.strip()) for x in str(dc.get("equipo") or "").split(",") if x.strip()),
-                      "clave": arca.get("estado") or ("sin clave" if not arca else "")})
+                      "clave": arca.get("estado") or ("sin clave" if not arca else ""), "_dc": dc})
+    if request.args.get("excel"):
+        return _excel_clientes(filas, nombres)
     return render_template("clientes.html", filas=filas, es_admin=session.get("rol") == "admin")
+
+
+def _excel_clientes(filas: list, nombres: dict):
+    """Excel de la solapa Clientes (Gaby 26/11/2026): los que ve el usuario, con los datos de la ficha. Sin claves."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    campos = [k for k in CAMPOS_CLIENTE if k not in ("no_corresponde",)]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Clientes"
+    ws.append(["Cliente", "CUIT", *[CAMPOS_CLIENTE[k] for k in campos], "Clave ARCA (estado)"])
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="1F4E78")
+    for f in filas:
+        dc = f["_dc"]
+        vals = []
+        for k in campos:
+            v = dc.get(k) or ""
+            if k == "encargado":
+                v = nombres.get(v, v)
+            elif k == "equipo":
+                v = ", ".join(nombres.get(x.strip(), x.strip()) for x in str(v).split(",") if x.strip())
+            vals.append(", ".join(map(str, v)) if isinstance(v, (list, tuple)) else str(v))
+        ws.append([f.get("razon_social") or "", datos.cuit_fmt(f["cuit"]), *vals, f.get("clave") or ""])
+    for i in range(1, ws.max_column + 1):
+        ws.column_dimensions[get_column_letter(i)].width = 34 if i == 1 else 16 if i == 2 else 22
+    ws.freeze_panes = "C2"
+    ws.auto_filter.ref = ws.dimensions
+    b = BytesIO()
+    wb.save(b)
+    b.seek(0)
+    usuarios.registrar(session["usuario"], "bajó el Excel de clientes", f"{len(filas)} clientes", _ip())
+    return send_file(b, as_attachment=True, download_name=f"clientes_{date.today().isoformat()}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @app.route("/clientes/baja/<cuit>", methods=["GET", "POST"])
