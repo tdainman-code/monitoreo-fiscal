@@ -176,7 +176,7 @@ def _elegir_representado_portal(page, cuit: str) -> None:
             return
         op = sel.first.locator(f"option:has-text('{fmt}'), option:has-text('{cuit}')").first
         sel.first.select_option(value=op.get_attribute("value"))
-        arca.pausa(1.5, 2.5)
+        _esperar_tarjetas(page)
         # 25/11/2026 (Nabajuma): pantalla "Seleccione Representado" con botón Ingresar; sin el clic se queda ahí y
         # ningún servicio aparece ("no encontrado en el portal")
         # solo en la pantalla dedicada "Seleccione Representado" (en el menú principal hay otros "Ingresar" que sacan
@@ -403,6 +403,23 @@ def _elegir_cuit(page, cuit: str) -> bool:
     return cuit in texto or fmt in texto
 
 
+def _esperar_tarjetas(page) -> None:
+    """Al elegir representado el menú recarga las tarjetas (a veces recarga toda la página): se espera."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=20_000)
+    except Exception:
+        pass
+    page.wait_for_timeout(3000)
+
+
+def _representado_actual(page) -> str:
+    try:
+        sel = page.locator("select").filter(has=page.locator("option", has_text=re.compile(r"\[\d{2}-\d{8}-\d\]")))
+        return sel.first.evaluate("x => (x.options[x.selectedIndex] || {}).text || ''") if sel.count() else ""
+    except Exception:
+        return ""
+
+
 def _cambiar_representado(page, cuit: str | None) -> bool:
     """Menú de Clave Ciudad: "Seleccione un representado" (la lista de tarjetas cambia según a quién se representa).
     cuit=None -> la primera opción (el propio usuario). Devuelve True si cambió algo."""
@@ -422,7 +439,7 @@ def _cambiar_representado(page, cuit: str | None) -> bool:
         if sel.first.input_value() == v:
             return False
         sel.first.select_option(value=v)
-        page.wait_for_timeout(3500)                      # las tarjetas se recargan
+        _esperar_tarjetas(page)
         return True
     except Exception:
         return False
@@ -434,7 +451,15 @@ URL_DIRECTA = {"percepciones": "https://claveciudad.agip.gob.ar/?s=agip_gestion_
 def _abrir_servicio(ctx, page, cuit: str, textos: list[str], clave_srv: str = ""):
     """25/11/2026 (Gaby, Nabajuma): las tarjetas dependen del representado elegido arriba. Se busca con el cliente
     elegido; si no está, con el propio usuario (la aplicación pregunta después a quién se representa: _elegir_cuit)."""
-    pag = _abrir(ctx, page, textos)
+    # Gaby (25/11/2026): el robot buscaba las tarjetas con MEYOYAN elegido y no con NABAJUMA: se asegura el cliente
+    if arca.cuit_fmt(cuit) not in _representado_actual(page):
+        _cambiar_representado(page, cuit)
+    pag = None
+    for _ in range(3):                                  # las tarjetas pueden tardar en aparecer
+        pag = _abrir(ctx, page, textos)
+        if pag is not None:
+            break
+        page.wait_for_timeout(3000)
     if pag is None and _cambiar_representado(page, None):
         pag = _abrir(ctx, page, textos)
         if pag is None or pag is not page:

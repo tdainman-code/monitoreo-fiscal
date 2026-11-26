@@ -70,9 +70,11 @@ def _cuit_en_campos(pag, campos, cuit: str) -> None:
 def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
     """page = menú principal de Clave Ciudad (con el representado ya elegido)."""
     hoy = hoy or date.today()
+    from .robot_agip import _cambiar_representado, _representado_actual
+    if arca.cuit_fmt(cuit) not in _representado_actual(page):
+        _cambiar_representado(page, cuit)
     tarjeta = page.get_by_text(re.compile(r"^\s*Ingresos Brutos\s*$", re.I)).locator("visible=true")
-    if not tarjeta.count():
-        from .robot_agip import _cambiar_representado   # las tarjetas dependen del representado elegido arriba
+    if not tarjeta.count():   # las tarjetas dependen del representado elegido arriba
         if _cambiar_representado(page, None):
             tarjeta = page.get_by_text(re.compile(r"^\s*Ingresos Brutos\s*$", re.I)).locator("visible=true")
     if not tarjeta.count():
