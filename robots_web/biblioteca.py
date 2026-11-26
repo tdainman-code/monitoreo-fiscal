@@ -192,7 +192,8 @@ def detalle(cuit: str, periodo: str, fuente: str) -> list[dict]:
 ROBOT_PEDIDO = {"arca_mr": "mis_retenciones", "arca_aduana": "mis_retenciones", "arba": "arba_retenciones", "agip": "agip"}
 
 
-CONCILIACIONES = {"percepciones": "Percepciones (ARCA, ARBA, AGIP) vs Libro IVA y Mis Comprobantes"}
+CONCILIACIONES = {"percepciones": "Percepciones (ARCA, ARBA, AGIP) vs Libro IVA y Mis Comprobantes",
+                  "deuda_cierre": "Deuda fiscal al cierre de balance (planes de pago)"}
 
 
 def conciliaciones(cuit: str) -> list[dict]:

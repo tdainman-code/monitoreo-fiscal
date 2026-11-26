@@ -33,7 +33,7 @@ import traceback
 from contextlib import closing
 
 from . import almacen_claves as alm
-from . import arca, robot_agip, robot_arba, robot_arba_dfe, robot_arba_retenciones, robot_sistema_registral, robot_padron_cm, robot_pyme_iva, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_situacion_fiscal, robot_todo
+from . import arca, robot_agip, robot_arba, robot_arba_dfe, robot_arba_retenciones, robot_sistema_registral, robot_padron_cm, robot_pyme_iva, robot_planes_todos, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_situacion_fiscal, robot_todo
 from . import robot_ccma, robot_fiscalizaciones, robot_sct_historico, robot_mis_retenciones
 
 REGISTRO = os.environ.get("ROBOTS_REGISTRO", "/var/lib/robots/ejecuciones.jsonl")
@@ -42,7 +42,7 @@ ROBOTS = {"mis_comprobantes": robot_mis_comprobantes, "situacion_fiscal": robot_
           "libro_iva": robot_libro_iva, "observados": robot_observados, "arba_dfe": robot_arba_dfe,
           "agip": robot_agip, "fiscalizaciones": robot_fiscalizaciones, "ccma": robot_ccma, "sct_historico": robot_sct_historico,
           "mis_retenciones": robot_mis_retenciones, "arba_retenciones": robot_arba_retenciones,
-          "sistema_registral": robot_sistema_registral, "padron_cm": robot_padron_cm, "pyme_iva": robot_pyme_iva,
+          "sistema_registral": robot_sistema_registral, "padron_cm": robot_padron_cm, "pyme_iva": robot_pyme_iva, "planes_todos": robot_planes_todos,
           "cruce_historico": robot_todo}
 
 

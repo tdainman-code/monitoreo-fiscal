@@ -1,0 +1,85 @@
+"""Mis Facilidades: TODOS los planes (vigentes, caducos, anulados, cancelados) con sus obligaciones y sus pagos.
+
+Gaby, 26/11/2026 (Nabajuma): lista seguimiento_presentacion.aspx (Presentación | Número | Cuotas | Tipo | Consolidado |
+Estado | Situación | Detalle; paginada abajo a la derecha: se lee con textContent, así entran todas las páginas) ->
+Detalle -> SeguimientoPlanEnviado/<id>:
+   - obligaciones incluidas: SeguimientoDetalleDeuda/<id>  (Año | Mes | Ant/Cta | Establ. | Imp. | Cpto. | Subcpto. |
+     Fecha Vto. | Deuda Complementaria | Monto Obligación | Total Pagos Imputados | Saldo a Cancelar)
+   - cronograma: SeguimientoDetallePlanPago/<id>
+   - pagos: SeguimientoDetallePagos/<id>?estado=0  (Cuota N° | Capital | Interés Financiero | Interés Resarcitorio |
+     Total | Fecha Venc. | Pago | Estado de Cuota)
+Se va directo por las direcciones de cada plan (al volver a la lista, ARCA vuelve a la página 1).
+Solo consulta. DATOS/<cuit>/planes_todos/<fecha>.json; de ahí sale la deuda al cierre del balance (deuda_cierre).
+"""
+from __future__ import annotations
+
+import json
+import os
+from datetime import date
+
+from . import arca
+from . import lector_situacion as ls
+from . import robot_situacion_fiscal as rsf
+
+DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
+
+
+def leer(ctx, portal, cuit: str, hoy: date) -> dict:
+    page = arca.abrir_servicio(ctx, portal, "mis_facilidades")
+    try:
+        page.wait_for_load_state("domcontentloaded")
+        rsf._elegir_cuit_mf(page, cuit)
+        rsf._controlar_cuit(page.inner_text("body"), cuit, "Mis Facilidades")
+        rsf.USUARIO_ACTUAL["cliente"] = cuit
+        lista = rsf._tabla_por_texto(page, "Consolidado")
+        planes = ls.leer_lista_planes(lista)
+        detalle = {}
+        for p in planes:
+            try:
+                id_ = rsf._abrir_detalle(page, p["numero"])
+                d = {"id": id_}
+                for clave, url, marca, tid in (
+                        ("obligaciones", f"SeguimientoDetalleDeuda/{id_}", "Saldo a Cancelar", None),
+                        ("cronograma", f"SeguimientoDetallePlanPago/{id_}", "Fecha Vencimiento", "tableDetallePlanPago"),
+                        ("pagos", f"SeguimientoDetallePagos/{id_}?estado=0", "Estado de Cuota", "tableDetallePagos")):
+                    rsf._ir(page, rsf.BASE_MF + url)
+                    rsf._controlar_cuit(page.inner_text("body"), cuit, "Mis Facilidades")
+                    try:
+                        d[clave] = rsf._tabla_por_texto(page, marca, tid)
+                    except arca.ErrorRobot:
+                        d[clave] = {"encabezados": [], "filas": []}      # plan anulado: puede no tener cronograma
+                detalle[p["numero"]] = d
+            except (arca.SesionPerdida, arca.CuitEquivocado):
+                raise
+            except Exception as e:
+                detalle[p["numero"]] = {"error": f"{type(e).__name__}: {str(e).splitlines()[0][:160] if str(e) else ''}"}
+            arca.pausa(1.0, 2.5)
+        return {"planes": [{**p, "presentacion": p["presentacion"].isoformat() if p.get("presentacion") else None}
+                           for p in planes], "detalle": detalle}
+    finally:
+        page.close()
+
+
+def paso(cuit: str, estado: dict):
+    def fn(ctx, portal):
+        hoy = date.today()
+        r = leer(ctx, portal, cuit, hoy)
+        r.update(cuit=cuit, fecha=hoy.isoformat())
+        d = os.path.join(DATOS, cuit, "planes_todos")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"{hoy.isoformat()}.json"), "w", encoding="utf-8") as f:
+            json.dump(r, f, ensure_ascii=False, indent=1, default=str)
+        try:
+            from . import deuda_cierre
+            hechos = deuda_cierre.generar(cuit)
+        except Exception as e:
+            hechos = [f"error: {e}"]
+        estado.update(resultado=f"OK ({len(r['planes'])} planes leídos; deuda al cierre: {', '.join(hechos) or 'sin fecha de cierre'})")
+        return "OK"
+    return fn
+
+
+def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, **_):
+    estado: dict = {}
+    arca.ejecutar(usuario, clave, [("planes_todos", paso(cuit, estado))], os.path.join(DATOS, cuit, "capturas"), visible)
+    return {"cuit": cuit, "planes_todos": estado.get("resultado"), "archivos": {"planes_todos": {"alertas": []}}}

@@ -21,7 +21,7 @@ import os
 import glob
 from datetime import date, timedelta
 
-from . import arca, robot_agip, robot_ccma, robot_mis_retenciones, robot_sct_historico, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_sistema_registral, robot_padron_cm, robot_pyme_iva
+from . import arca, robot_agip, robot_ccma, robot_mis_retenciones, robot_sct_historico, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_sistema_registral, robot_padron_cm, robot_pyme_iva, robot_planes_todos
 from . import robot_situacion_fiscal as rsf
 
 DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
@@ -43,7 +43,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
     rsf.USUARIO_ACTUAL["cuit"], rsf.USUARIO_ACTUAL["cliente"] = usuario, cuit
     sit = {"cuit": cuit, "fecha": hoy.isoformat(), "alertas": [], "archivos": {}, "reingresos": 0}
     avance_mf: dict = {}
-    est = {"mc": {}, "f931": {}, "sifere": {}, "dfe": {}, "arba": {}, "presentadas": {}, "liva": {}, "obs": {}, "arba_dfe": {}, "agip": {}, "fisc": {}, "ccma": {}, "scth": {}, "mret": {}, "sreg": {}, "pcm": {}, "pyme": {}}
+    est = {"mc": {}, "f931": {}, "sifere": {}, "dfe": {}, "arba": {}, "presentadas": {}, "liva": {}, "obs": {}, "arba_dfe": {}, "agip": {}, "fisc": {}, "ccma": {}, "scth": {}, "mret": {}, "sreg": {}, "pcm": {}, "pyme": {}, "ptodos": {}}
 
     def p_sct(ctx, portal):
         sit["sct"] = rsf.leer_cuentas_tributarias(ctx, portal, cuit, destino, hoy, delegacion)
@@ -68,6 +68,9 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
              ("observados", robot_observados.paso(cuit, est["obs"])),
              ("fiscalizaciones", robot_fiscalizaciones.paso(cuit, est["fisc"])),
              ("mis_comprobantes", robot_mis_comprobantes.paso_periodos(cuit, periodos_cruce, est["mc"], forzar))]
+    if historico:
+        # Deuda fiscal al cierre (Gaby, 26/11/2026): todos los planes de pago, también caducos y cancelados (tanda nocturna).
+        pasos.append(("planes_todos", robot_planes_todos.paso(cuit, est["ptodos"])))
     if modo == "diaria":
         # 25/11/2026 (Tomás): la diaria también mira Mis Comprobantes del mes en curso (y del anterior mientras su DJ de
         # IVA no está presentada, hasta el día 20) para ver cómo viene el IVA. Se vuelve a bajar todos los días.
@@ -166,7 +169,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
                "fiscalizaciones": est["fisc"].get("servicios", {}),
                "ccma": est["ccma"].get("resultado", ""), "sct_historico": est["scth"].get("resultado", ""),
                "mis_retenciones": est["mret"].get("resultado", ""), "sistema_registral": est["sreg"].get("resultado", ""),
-               "padron_cm": est["pcm"].get("resultado", ""), "pyme_iva": est["pyme"].get("resultado", ""), "dfe": {k: est["dfe"].get(k) for k in ("total", "sin_abrir", "altas_sin_abrir")}}
+               "padron_cm": est["pcm"].get("resultado", ""), "pyme_iva": est["pyme"].get("resultado", ""), "planes_todos": est["ptodos"].get("resultado", ""), "dfe": {k: est["dfe"].get(k) for k in ("total", "sin_abrir", "altas_sin_abrir")}}
     with open(os.path.join(DATOS, cuit, f"corrida_todo_{hoy.isoformat()}_{modo}.json"), "w", encoding="utf-8") as f:
         json.dump(resumen, f, ensure_ascii=False, indent=1, default=str)
 
