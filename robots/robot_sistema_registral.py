@@ -146,7 +146,15 @@ def resumen_ficha(r: dict) -> dict:
 
 
 # ------------------------------------------------------------------ navegación
+URL_INDEX = "https://seti.afip.gob.ar/padron-puc-consulta-internet/ResponsiveIndexInternetAction.do?idPersona={}"
+
+
 def _elegir_persona(pag, cuit: str) -> None:
+    for _ in range(20):                                  # la página tarda: o pide persona o ya muestra el inicio
+        t = pag.inner_text("body")
+        if re.search(r"Eleg[ií] una persona|Estado de la CUIT|Sistema registral", t, re.I):
+            break
+        pag.wait_for_timeout(1000)
     if not re.search(r"Eleg[ií] una persona", pag.inner_text("body"), re.I):
         return
     tarjeta = pag.get_by_text(arca.cuit_fmt(cuit), exact=False).locator("visible=true")
@@ -154,16 +162,30 @@ def _elegir_persona(pag, cuit: str) -> None:
         raise arca.SinRepresentado(f"Sistema Registral: {arca.cuit_fmt(cuit)} no está entre las personas para ingresar")
     tarjeta.first.click()
     pag.wait_for_load_state("domcontentloaded")
-    pag.wait_for_timeout(2500)
+    pag.wait_for_timeout(3000)
 
 
-def _menu(pag, nombre: str) -> None:
-    m = pag.get_by_text(re.compile(rf"^\s*{nombre}\s*$", re.I)).locator("visible=true")
-    if not m.count():
-        raise arca.ErrorRobot(f"Sistema Registral: no aparece '{nombre}' en el menú")
-    m.first.click()
-    pag.wait_for_load_state("domcontentloaded")
-    pag.wait_for_timeout(2500)
+def _menu(pag, nombre: str, cuit: str) -> None:
+    """Menú izquierdo del Sistema Registral (Inicio / Consulta / Constancias / ... / Registros Especiales).
+    25/11/2026: no aparecía 'Consulta' (la página tarda o quedó en otra vista): se espera y, si no, se entra directo
+    al inicio del representado (ResponsiveIndexInternetAction.do?idPersona=<cuit>) y se reintenta."""
+    patron = re.compile(rf"^\s*{nombre}\s*$", re.I)
+    for intento in range(2):
+        m = pag.locator("a, li, button, span, div").filter(has_text=patron).locator("visible=true")
+        for _ in range(15):
+            if m.count():
+                break
+            pag.wait_for_timeout(1000)
+            m = pag.locator("a, li, button, span, div").filter(has_text=patron).locator("visible=true")
+        if m.count():
+            m.last.click()
+            pag.wait_for_load_state("domcontentloaded")
+            pag.wait_for_timeout(2500)
+            return
+        if intento == 0:
+            pag.goto(URL_INDEX.format(cuit), wait_until="domcontentloaded")
+            pag.wait_for_timeout(3000)
+    raise arca.ErrorRobot(f"Sistema Registral: no aparece '{nombre}' en el menú (página: {pag.url[:90]})")
 
 
 def leer(ctx, portal, cuit: str) -> dict:
@@ -171,7 +193,7 @@ def leer(ctx, portal, cuit: str) -> dict:
     try:
         _elegir_persona(pag, cuit)
         inicio = pag.inner_text("body")
-        _menu(pag, "Consulta")
+        _menu(pag, "Consulta", cuit)
         pag.get_by_text(re.compile(r"Impuestos y/o Aportes", re.I)).first.wait_for(timeout=45_000)
         texto = pag.inner_text("body")
         if cuit not in re.sub(r"\D", "", texto[:4000]):
@@ -182,7 +204,7 @@ def leer(ctx, portal, cuit: str) -> dict:
             if vol.count():
                 vol.first.click()
                 pag.wait_for_timeout(1500)
-            _menu(pag, "Registros Especiales")
+            _menu(pag, "Registros Especiales", cuit)
             d = pag.locator("button, a").filter(has_text=re.compile(r"DESPLEGAR", re.I)).locator("visible=true")
             if d.count():
                 d.first.click()
