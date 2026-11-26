@@ -1204,6 +1204,12 @@ def intercliente():
                 c["propios"] = sorted(set(c["propios"]) | {comp})
             elif que == "grupo":
                 c["grupos"] = ic.unir_grupo(c["grupos"], vend, comp)
+        nuevo = re.sub(r"\D", "", request.form.get("agregar_propio") or "")
+        if nuevo:
+            if len(nuevo) == 11:
+                c["propios"] = sorted(set(c["propios"]) | {nuevo})
+            else:
+                flash("El CUIT del estudio tiene que tener 11 números", "error")
         quitar = set(request.form.getlist("quitar_propio"))
         c["propios"] = [x for x in c["propios"] if x not in quitar]
         sacar = set(request.form.getlist("quitar_grupo"))

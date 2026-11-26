@@ -22,7 +22,8 @@ import re
 
 from . import datos
 
-PROPIOS_NOMBRES = r"\bBH SOLUCIONES|\bTALLPIR|\bMANCOVSKY|\bDAINMAN|\bARTURO\b"
+# Arturo va por CUIT (Gaby 26/11/2026: "busca por cuit, no existen 2 personas con el mismo cuit"): se carga en pantalla.
+PROPIOS_NOMBRES = r"\bBH SOLUCIONES|\bTALLPIR|\bMANCOVSKY|\bDAINMAN"
 GRUPOS_NOMBRES = [r"\bNABAJUMA", r"\bDINAFER"]
 NOTAS_CREDITO = {3, 8, 13, 53, 110, 112, 113, 114, 203, 208, 213}
 # Columnas como el Libro IVA (Gaby 26/11/2026): (clave, título, columnas posibles del CSV de Mis Comprobantes)

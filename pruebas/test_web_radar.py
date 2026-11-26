@@ -973,6 +973,9 @@ _g = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "", "par"
 ok("Mismo dueño:" in _g and "mismo dueño</td>" in _g and 'name="conocidos"' not in _g, "facturación entre clientes: mismo dueño no va")
 _hi = cl2.post("/intercliente", data={"csrf": token(_g), "porcentaje": "", "quitar_grupo": C2}, follow_redirects=True).text
 ok('name="conocidos"' in _hi, "facturación entre clientes: se puede sacar del grupo")
+_a = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "", "agregar_propio": C}, follow_redirects=True).text
+ok('name="conocidos"' not in _a and "del estudio</td>" in _a, "facturación entre clientes: agregar del estudio por CUIT")
+_hi = cl2.post("/intercliente", data={"csrf": token(_a), "porcentaje": "", "quitar_propio": C}, follow_redirects=True).text
 _r = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "10", "par": f"{C2}>{C}"}, follow_redirects=True)
 ok("12.100,00" in _r.text, "comisión 10 % sobre el total, la paga el comprador")
 _r = cl2.post("/intercliente", data={"csrf": token(_r.text), "porcentaje": "10", "par": f"{C2}>{C}", "conocidos": f"{C2}>{C}"},
