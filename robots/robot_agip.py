@@ -508,6 +508,23 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                 page = login(ctx, usuario, clave, miba)
                 _elegir_representado_portal(page, cuit)
                 inicio = page.url
+                try:                                     # constancia de inscripción de IIBB (Gaby, 25/11/2026)
+                    from . import robot_agip_constancia
+                    cons = robot_agip_constancia.bajar(ctx, page, cuit)
+                    r["servicios"]["constancia"] = f"OK ({cons.get('categoria') or 'sin categoría'})"
+                except arca.CuitEquivocado:
+                    raise
+                except Exception as e:
+                    r["servicios"]["constancia"] = f"error: {str(e).splitlines()[0][:160] if str(e) else type(e).__name__}"
+                    arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), "agip_constancia")
+                for p in list(ctx.pages):
+                    if p is not page:
+                        try:
+                            p.close()
+                        except Exception:
+                            pass
+                if page.url != inicio:
+                    page.goto(inicio, wait_until="domcontentloaded")
                 for clave_srv, textos in SERVICIOS:
                     try:
                         pag = _abrir(ctx, page, textos)

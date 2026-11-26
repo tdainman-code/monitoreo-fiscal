@@ -105,5 +105,19 @@ ok(pi.leer_beneficio("¿Solicita el beneficio del Pago del I.V.A. en forma difer
 _fp = pi.filas_presentadas([["Acciones", "30712227571", "0", "F.1272 - PYMES", "2025", "Presentado", "21-04-2025 12:21", ""],
                             ["Acciones", "30712227571", "0", "F.1272 - PYMES", "2026", "Presentado", "21-04-2026 12:26", ""]], "30712227571")
 ok(_fp[0]["periodo"] == "2026" and _fp[0]["estado"] == "Presentado", "F.1272: toma el período más nuevo")
+# AGIP: constancia de inscripción de IIBB (texto del PDF de Garbuglia, 25/11/2026)
+from robots import robot_agip_constancia as agc  # noqa: E402
+_ag = agc.leer_constancia("""Nro. de CUIT 27-27137058-5                             Apellido y Nombre / Razón Social
+Categoría:                      MASIVO                                             Sucesión Indivisa:
+Vigente / Ultima Categoría Registrada:               ISIB-RG                            Estado:     ACTIVO
+Actividad Principal                 960990 Servicios personales n.c.p.
+Historial de Tramos Registrados en Ingresos Brutos
+ ISIB-RG                       01/06/2022                   31/12/9999                  1623077 - 9
+ ISIB-RS                       01/08/2019                   31/05/2022
+""")
+ok(_ag["cuit"] == "27271370585" and _ag["categoria"] == "ISIB-RG" and len(_ag["tramos"]) == 2
+   and agc.resumen_ficha(_ag) == {"regimen_iibb": "Local", "jurisdicciones_iibb": "CABA"}, "constancia AGIP: ISIB-RG activo -> local CABA")
+ok(agc.resumen_ficha({"categoria": "ISIB-RS", "estado": "ACTIVO"})["regimen_iibb"] == "Régimen simplificado"
+   and agc.resumen_ficha({"categoria": "ISIB-RG", "estado": "BAJA"}) == {}, "constancia AGIP: simplificado y bajas")
 print(f"\n{sum(res)}/{len(res)} OK")
 sys.exit(0 if all(res) else 1)

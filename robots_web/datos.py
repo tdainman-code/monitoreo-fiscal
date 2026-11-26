@@ -466,10 +466,11 @@ def completar_desde_registral(cuit: str) -> list[str]:
         nuevos["iva_90_dias"] = "Sí" if py["iva_diferido"] else "No"
     elif py and py.get("tiene_f1272") is False:
         nuevos["iva_90_dias"] = "No"
-    if not (cm.get("ficha") or {}):                     # constancia de ARBA: local si no está en Convenio
-        ab = _leer(_ultimo(os.path.join(DATOS, cuit, "arba_constancia", "*.json"))) or {}
-        for k, v in (ab.get("ficha") or {}).items():
-            nuevos.setdefault(k, v)
+    if not (cm.get("ficha") or {}):                     # constancias de ARBA / AGIP: local si no está en Convenio
+        for org in ("arba_constancia", "agip_constancia"):
+            ab = _leer(_ultimo(os.path.join(DATOS, cuit, org, "*.json"))) or {}
+            for k, v in (ab.get("ficha") or {}).items():
+                nuevos.setdefault(k, v)
     if not nuevos:
         return []
     d = _u.datos_cliente(cuit) or {}
