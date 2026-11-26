@@ -170,7 +170,7 @@ def _menu(pag, nombre: str, cuit: str) -> None:
     25/11/2026: no aparecía 'Consulta' (la página tarda o quedó en otra vista): se espera y, si no, se entra directo
     al inicio del representado (ResponsiveIndexInternetAction.do?idPersona=<cuit>) y se reintenta."""
     patron = re.compile(rf"^\s*{nombre}\s*$", re.I)
-    for intento in range(2):
+    for intento in range(3):
         m = pag.locator("a, li, button, span, div").filter(has_text=patron).locator("visible=true")
         for _ in range(15):
             if m.count():
@@ -182,6 +182,11 @@ def _menu(pag, nombre: str, cuit: str) -> None:
             pag.wait_for_load_state("domcontentloaded")
             pag.wait_for_timeout(2500)
             return
+        menu = pag.locator("button.navbar-toggler, [aria-label*='men' i], .menu-toggle, .hamburger").filter(visible=True)
+        if menu.count():                                 # menú plegado en un botón (☰)
+            menu.first.click()
+            pag.wait_for_timeout(1000)
+            continue
         if intento == 0:
             pag.goto(URL_INDEX.format(cuit), wait_until="domcontentloaded")
             pag.wait_for_timeout(3000)
@@ -191,6 +196,10 @@ def _menu(pag, nombre: str, cuit: str) -> None:
 def leer(ctx, portal, cuit: str) -> dict:
     pag = arca.abrir_servicio(ctx, portal, "sistema_registral")
     try:
+        try:                                             # la página es "responsive": angosta, esconde el menú izquierdo
+            pag.set_viewport_size({"width": 1440, "height": 900})
+        except Exception:
+            pass
         _elegir_persona(pag, cuit)
         inicio = pag.inner_text("body")
         _menu(pag, "Consulta", cuit)
