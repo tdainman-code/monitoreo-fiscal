@@ -244,6 +244,14 @@ ok(_sv["deuda_total"] == 300.0 and _sv["no_vencido_total"] == 500.0 and _sv["no_
 _sv = datos.solo_vencido({"deudas": [_h["deudas"][0]], "deuda_total": 500.0},
                          {"deudas": [{"impuesto": "11 - GANANCIAS", "periodo": "20260000", "cuota": "4", "vencida": False}]})
 ok(_sv["deuda_total"] == 0 and not datos.revisiones("x", None, _sv), "deuda histórica: solo anticipos por vencer -> nada para revisar")
+# Gaby: tres anticipos iguales sin número (datos viejos) -> se cruzan por importe con Cuentas Tributarias
+_a = {"impuesto": "11", "nombre": "GANANCIAS PERSONAS FISICAS", "periodo": "20260000", "concepto": "Anticipos", "deuda": 2799223.47, "color": "", "f931": False}
+_sv = datos.solo_vencido({"deudas": [dict(_a), dict(_a), dict(_a)], "deuda_total": 3 * 2799223.47},
+                         {"deudas": [{"impuesto": "11 - GANANCIAS", "periodo": "20260000", "cuota": "1", "capital": 2799223.47, "vencida": True, "vencimiento": "2026-08-14"},
+                                     {"impuesto": "11 - GANANCIAS", "periodo": "20260000", "cuota": "2", "capital": 2799223.47, "vencida": True, "vencimiento": "2026-10-14"},
+                                     {"impuesto": "11 - GANANCIAS", "periodo": "20260000", "cuota": "3", "capital": 2799223.47, "vencida": False, "vencimiento": "2026-12-14"}]})
+ok([f["cuota"] for f in _sv["deudas"]] == ["1", "2"] and _sv["deudas"][1]["vencimiento"] == "2026-10-14"
+   and _sv["no_vencido"][0]["cuota"] == "3", "deuda histórica: número de anticipo y vencimiento de cada uno; el que no venció, aparte")
 # cada colaborador ve solo sus clientes; los administradores ven todo (18/11/2026)
 cb = app.test_client()
 login(cb, "beto", "clavebeto12345")
@@ -1034,6 +1042,16 @@ _cab = [c.value for c in _xa[1]]
 ok(_xa.max_row - 1 == len(datos.lista_clientes()) and "Condición frente al IVA" in _cab
    and [h for h in _cab if "lave" in str(h)] == ["Clave ARCA (estado)"], "Excel de clientes: todos para el admin, con la ficha y sin claves")
 ok(2 <= _xc.max_row <= _xa.max_row, "Excel de clientes: el colaborador baja los suyos")
+# DDJJ pendientes con concepto y subconcepto (Gaby 26/11/2026: el 103 tiene infinidad de subregímenes)
+from robots import lector_situacion as _ls
+_dj = _ls.leer_sct({"deudas": {"encabezados": ["Establecimiento", "Impuesto", "Concepto", "Subconcepto", "Período", "Ant/Cuota", "Vencimiento",
+                                                "Saldo", "Int. Resarcitorio", "Int. Punitorio"], "filas": []},
+                    "vencimientos": {"encabezados": ["Impuesto", "Concepto", "Período", "Ant/Cuota", "Fecha Vencimiento", "Detalle"], "filas": []},
+                    "ddjj": {"encabezados": ["Establecimiento", "Impuesto", "Concepto", "Subconcepto", "Período", "Ant/Cuota", "Vencimiento"],
+                             "filas": [{"celdas": ["0", "103 - REGIMENES DE INFORMACION", "855 - MEMORIA, EST. CONTABLES E INF. DE AUDIT.",
+                                                   "855 - MEMORIA, EST. CONTABLES E INF. DE AUDIT.", "2025", "0", "31/07/2026"]}]}})
+ok(_dj["ddjj_pendientes"][0]["subconcepto"].startswith("855") and _dj["ddjj_pendientes"][0]["concepto"].startswith("855"),
+   "DDJJ pendientes: concepto y subconcepto (régimen de información 103)")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

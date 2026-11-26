@@ -126,11 +126,14 @@ def leer_sct(crudo: dict, hoy: date | None = None) -> dict:
             for d in tabla_a_dicts(crudo["vencimientos"], ["Impuesto", "Concepto", "Período", "Ant/Cuota",
                                                            "Fecha Vencimiento", "Detalle"])]
 
-    ddjj = [{"impuesto": d["Impuesto"], "concepto": d["Concepto"], "periodo": d["Período"],
+    # Gaby 26/11/2026: con el 103 (Regímenes de información) hay muchísimos subregímenes: concepto y subconcepto
+    cols = ["Establecimiento", "Impuesto", "Concepto", "Período", "Vencimiento"]
+    extra = [c for c in ("Subconcepto", "Ant/Cuota") if any(_norm(e).startswith(_norm(c)) for e in crudo["ddjj"].get("encabezados", []))]
+    ddjj = [{"impuesto": d["Impuesto"], "concepto": d["Concepto"], "subconcepto": d.get("Subconcepto", ""),
+             "cuota": d.get("Ant/Cuota", ""), "periodo": d["Período"],
              "periodo_txt": periodo_legible(d["Período"]), "establecimiento": d["Establecimiento"],
              "vencimiento": fecha(d["Vencimiento"])}
-            for d in tabla_a_dicts(crudo["ddjj"], ["Establecimiento", "Impuesto", "Concepto", "Período",
-                                                   "Vencimiento"])]
+            for d in tabla_a_dicts(crudo["ddjj"], cols + extra)]
 
     # Resumen que muestra ARCA arriba de la tabla de deudas
     txt = crudo.get("resumen_texto", "")

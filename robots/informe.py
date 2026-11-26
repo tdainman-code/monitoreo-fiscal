@@ -172,6 +172,7 @@ def armar(grupo: list[str]) -> dict:
                                         "Vencida": "Sí" if x["vencida"] else "No"})
             for x in sct["ddjj_pendientes"]:
                 hojas["ddjj"].append({"CUIT": cuit, "Contribuyente": nom, "Impuesto": x["impuesto"],
+                                      "Concepto": x.get("concepto", ""), "Subconcepto": x.get("subconcepto", ""),
                                       "Período": x["periodo_txt"], "Vencimiento": _f(x["vencimiento"])})
             for x in sct["vencimientos"]:
                 hojas["vencimientos"].append({"CUIT": cuit, "Contribuyente": nom, "Impuesto": x["impuesto"],

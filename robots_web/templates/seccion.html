@@ -98,9 +98,11 @@
   </tbody></table>
 
 {% elif sec == 'ddjj' %}
-  <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Vencimiento</th></tr></thead><tbody>
-  {% for d in (s.sct or {}).get('ddjj_pendientes', []) %}<tr class="fila-roja"><td>{{ d.impuesto }}</td><td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td></tr>
-  {% else %}<tr><td colspan="3" class="sutil">No hay DDJJ pendientes.</td></tr>{% endfor %}
+  <table class="tabla"><thead><tr><th>Impuesto</th><th>Concepto</th><th>Subconcepto</th><th>Período</th><th>Vencimiento</th></tr></thead><tbody>
+  {% for d in (s.sct or {}).get('ddjj_pendientes', []) %}<tr class="fila-roja"><td>{{ d.impuesto }}</td><td data-l="Concepto">{{ d.concepto or '—' }}</td>
+    <td data-l="Subconcepto">{{ d.subconcepto or '—' }}</td>
+    <td data-l="Período">{{ d.periodo_txt }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha }}</td></tr>
+  {% else %}<tr><td colspan="5" class="sutil">No hay DDJJ pendientes.</td></tr>{% endfor %}
   </tbody></table>
 
 {% elif sec == 'notificaciones' %}
@@ -462,12 +464,13 @@
     <td class="num" data-l="Otros créditos">{{ t.otros_creditos|pesos if t.otros_creditos is not none else '—' }}</td><td class="num" data-l="Multas no firmes">{{ t.multas_no_firmes|pesos if t.multas_no_firmes is not none else '—' }}</td></tr>{% endfor %}
   </tbody></table>
   <h2>Deuda por impuesto, período y concepto</h2>
-  <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Concepto</th><th class="num">Deuda</th><th>Para quién</th><th>Estado de pago</th></tr></thead><tbody>
+  <table class="tabla"><thead><tr><th>Impuesto</th><th>Período</th><th>Concepto</th><th>Anticipo / cuota</th><th>Vencimiento</th><th class="num">Deuda</th><th>Para quién</th><th>Estado de pago</th></tr></thead><tbody>
   {% for d in h.deudas %}<tr class="fila-roja"><td>{{ d.impuesto }} {{ d.nombre }}{% if d.f931 and d.impuesto not in ('301', '351') %} <span class="chip">F.931</span>{% endif %}</td>
     <td data-l="Período">{{ d.periodo[4:6] }}/{{ d.periodo[:4] }}</td><td data-l="Concepto">{{ d.concepto }}</td>
+    <td data-l="Anticipo / cuota">{{ d.cuota or '—' }}</td><td data-l="Vencimiento">{{ d.vencimiento|fecha if d.vencimiento else '—' }}</td>
     <td class="num txt-rojo" data-l="Deuda">{{ d.deuda|pesos }}</td>
     <td data-l="Para quién">{{ 'terceros (OS / ART / seguro de vida)' if d.color == 'verde' else 'ARCA' if d.color == 'rojo' else '—' }}</td><td data-l="Estado de pago">{{ d.estado_pago }}</td></tr>
-  {% else %}<tr><td colspan="6" class="sutil">Sin deuda en los años leídos.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="8" class="sutil">Sin deuda en los años leídos.</td></tr>{% endfor %}
   </tbody></table>
   <p class="sutil">Rojo: deuda propia de ARCA (IVA, 301, 351…). Verde: ARCA la recauda para terceros (obras sociales, ART, seguro de vida obligatorio). <b>Las dos se deben igual</b>: por cualquiera de ellas pueden embargar o iniciar juicio. Esa diferencia es solo interna de ARCA.</p>
   <h2>Saldos a recuperar (S.L.D.) — reimputar con el F.399</h2>

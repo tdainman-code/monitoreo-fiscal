@@ -645,7 +645,9 @@ def situacion_fiscal(cuit: str, nombre: str, ruta: str, hoy: date | None = None)
     if sct:
         filas.append(("DDJJ pendientes de presentación (SCT)", len(sct["ddjj_pendientes"])))
         for d in sct["ddjj_pendientes"][:15]:
-            filas.append((f"  {d['impuesto']} {d['periodo_txt']}", f"venció {_f(d['vencimiento']):%d/%m/%Y}" if d.get("vencimiento") else ""))
+            filas.append((f"  {d['impuesto']} · {d.get('concepto') or ''}"
+                          + (f" / {d['subconcepto']}" if d.get("subconcepto") and d.get("subconcepto") != d.get("concepto") else "")
+                          + f" · {d['periodo_txt']}", f"venció {_f(d['vencimiento']):%d/%m/%Y}" if d.get("vencimiento") else ""))
     if os.path.isdir(os.path.join(DATOS, cuit, "sifere")):
         ant = (hoy.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
         if not _leer(os.path.join(DATOS, cuit, "sifere", f"{ant}.json")):

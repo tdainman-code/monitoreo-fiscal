@@ -373,7 +373,7 @@ def guardar_excel(res: dict, ruta: str) -> None:
         hojas["Deudas"] = pd.DataFrame(sct["deudas"])
         hojas["Vencimientos"] = pd.DataFrame(sct["vencimientos"])
         hojas["DDJJ pendientes"] = pd.DataFrame(sct["ddjj_pendientes"],
-                                                columns=["impuesto", "concepto", "periodo", "periodo_txt",
+                                                columns=["impuesto", "concepto", "subconcepto", "periodo", "periodo_txt",
                                                          "establecimiento", "vencimiento"])
     if mf:
         cols = ["numero", "tipo", "presentacion", "con_anticipo", "cuotas_total", "valor_cuota", "cuotas_pagadas",

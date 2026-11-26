@@ -113,36 +113,45 @@ def _cuota(t) -> str:
 
 def solo_vencido(scth: dict | None, sct: dict | None) -> dict | None:
     """Deuda histórica (estado de cumplimiento) SOLO con lo vencido (Gaby 26/11/2026: "me pone deuda histórica en
-    urgente y son anticipos que aún no vencen"). El estado de cumplimiento no trae el vencimiento; la lectura diaria
-    de Cuentas Tributarias sí: lo que allí figura por vencer (mismo impuesto, período y anticipo) sale de la deuda."""
+    urgente y son anticipos que aún no vencen"). El estado de cumplimiento no trae el vencimiento ni siempre el número
+    de anticipo; la lectura diaria de Cuentas Tributarias sí. Cada renglón se cruza con su ítem de Cuentas Tributarias
+    (mismo impuesto y período; por número de anticipo/cuota, o si no lo hay, por importe) y toma su número, su
+    vencimiento y si está vencido. Lo que todavía no vence sale de la deuda y se muestra aparte."""
     if not scth or not scth.get("deudas"):
         return scth
-    venc, por_vencer, fecha_v = set(), set(), {}
+    cands: dict[tuple, list] = {}
     for d in (sct or {}).get("deudas") or []:
-        for k in ((_cod(d.get("impuesto")), str(d.get("periodo") or ""), _cuota(d.get("cuota"))),
-                  (_cod(d.get("impuesto")), str(d.get("periodo") or ""), "*")):
-            (venc if d.get("vencida") else por_vencer).add(k)
-            if not d.get("vencida") and d.get("vencimiento"):
-                v = str(d["vencimiento"])[:10]
-                fecha_v[k] = min(fecha_v.get(k, v), v)
-    def no_vencida(f):
-        imp, per, cu = _cod(f.get("impuesto")), str(f.get("periodo") or ""), _cuota(f.get("cuota"))
+        cands.setdefault((_cod(d.get("impuesto")), str(d.get("periodo") or "")), []).append(d)
+    for v in cands.values():
+        v.sort(key=lambda d: str(d.get("vencimiento") or "9"))
+    usados = set()
+    filas, nv = [], []
+    for f in scth["deudas"]:
+        lista = cands.get((_cod(f.get("impuesto")), str(f.get("periodo") or ""))) or []
+        cu = _cuota(f.get("cuota"))
+        libres = [d for d in lista if id(d) not in usados]
+        m = None
         if cu:
-            return (imp, per, cu) in por_vencer and (imp, per, cu) not in venc
-        return (imp, per, "*") in por_vencer and (imp, per, "*") not in venc
-    filas = [f for f in scth["deudas"] if not no_vencida(f)]
-    if len(filas) == len(scth["deudas"]):
-        return scth
+            m = next((d for d in libres if _cuota(d.get("cuota")) == cu), None)
+        if m is None:
+            m = next((d for d in libres if abs((d.get("capital") or 0) - (f.get("deuda") or 0)) < 1), None)
+        if m is None and not cu and len({_cuota(d.get("cuota")) for d in lista}) == 1 and libres:
+            m = libres[0]
+        g = dict(f)
+        if m is not None:
+            usados.add(id(m))
+            g["cuota"] = g.get("cuota") or _cuota(m.get("cuota"))
+            g["vencimiento"] = str(m.get("vencimiento") or "")[:10]
+            if not m.get("vencida"):
+                nv.append(g)
+                continue
+        filas.append(g)
+    filas.sort(key=lambda f: (str(f.get("impuesto")), str(f.get("periodo")), f.get("vencimiento") or ""))
+    nv.sort(key=lambda f: f.get("vencimiento") or "9")
     por_imp = {}
     for f in filas:
         k = f"{f['impuesto']} - {f['nombre']}"
         por_imp[k] = round(por_imp.get(k, 0.0) + f["deuda"], 2)
-    nv = []
-    for f in scth["deudas"]:
-        if no_vencida(f):
-            imp, per, cu = _cod(f.get("impuesto")), str(f.get("periodo") or ""), _cuota(f.get("cuota"))
-            nv.append({**f, "vencimiento": fecha_v.get((imp, per, cu)) or fecha_v.get((imp, per, "*")) or ""})
-    nv.sort(key=lambda f: f["vencimiento"] or "9")
     tot = round(sum(f["deuda"] for f in filas), 2)
     ter = round(sum(f["deuda"] for f in filas if f.get("color") == "verde"), 2)
     return {**scth, "deudas": filas, "por_impuesto": por_imp, "deuda_total": tot, "deuda_terceros": ter,
