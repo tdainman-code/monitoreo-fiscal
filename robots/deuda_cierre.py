@@ -62,9 +62,7 @@ def mes_cierre(cuit: str) -> int | None:
 def cierres(cuit: str, hoy: date | None = None, n: int = 2) -> list[date]:
     """Las n últimas fechas de cierre de balance ya pasadas."""
     hoy = hoy or date.today()
-    m = mes_cierre(cuit)
-    if not m:
-        return []
+    m = mes_cierre(cuit) or 12                       # sin mes de cierre en la ficha: 31/12 (el más común)
     out, a = [], hoy.year
     while len(out) < n:
         f = date(a, m, calendar.monthrange(a, m)[1])

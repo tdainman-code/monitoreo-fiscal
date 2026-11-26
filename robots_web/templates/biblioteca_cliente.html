@@ -30,7 +30,13 @@
 <section class="mes-bib"><h2>Conciliaciones <span class="sutil">· repositorio permanente</span></h2>
 {% for cc in conciliaciones %}<details class="plegado" {{ 'open' if loop.first }}><summary>{{ cc.nombre }} ({{ cc.archivos|length }})</summary>
   {% if cc.archivos %}<p>{% for a in cc.archivos %}<a href="{{ url_for('biblioteca_conciliacion', cuit=c.cuit, tipo=cc.tipo, nombre=a) }}">⬇ {{ a[8:10] }}/{{ a[5:7] }}/{{ a[:4] }}</a>{{ ' · ' if not loop.last }}{% endfor %}</p>
+  {% elif cc.tipo == 'deuda_cierre' %}<p class="sutil">Todavía no hay: pedila con la fecha de cierre.</p>
   {% else %}<p class="sutil">Todavía no hay: se arma sola cada vez que corre Mis Retenciones, ARBA o AGIP.</p>{% endif %}
+  {% if cc.tipo == 'deuda_cierre' %}<form method="post" action="{{ url_for('pedir_corrida', cuit=c.cuit) }}" class="en-linea">
+    <input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="robot" value="planes_todos"><input type="hidden" name="volver" value="{{ url_for('biblioteca_cliente', cuit=c.cuit) }}">
+    <label>Deuda al <input type="date" name="fecha_cierre" required></label>
+    <button class="chico">Pedir</button> <span class="sutil">el robot lee todos los planes de Mis Facilidades y arma el Excel (unos minutos)</span>
+  </form>{% endif %}
 </details>{% endfor %}</section>
 {% for m in meses %}
 <section class="mes-bib">

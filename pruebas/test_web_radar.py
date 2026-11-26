@@ -474,6 +474,11 @@ _kw = []
 rc.correr_uno = lambda robot, cuit, *a, **k: _kw.append((robot, k.get("fecha_cierre"))) or "OK"
 rp.procesar()
 ok(("planes_todos", "2024-12-31") in _kw, "el robot recibe la fecha de cierre pedida")
+_b = cl.get(f"/cliente/{C2}/biblioteca")
+ok('value="planes_todos"' in _b.text and "pedila con la fecha de cierre" in _b.text, "biblioteca: pedir la deuda al cierre desde Conciliaciones")
+_r = cl.post(f"/cliente/{C2}/pedir", data={"csrf": token(_b.text), "robot": "planes_todos", "fecha_cierre": "2024-12-31",
+             "volver": f"/cliente/{C2}/biblioteca"})
+ok(_r.status_code == 302 and _r.headers["Location"].endswith(f"/cliente/{C2}/biblioteca"), "después de pedir vuelve a la biblioteca")
 # fallas de la última corrida: en el botón de la ficha y en Más -> Robots (22/11/2026)
 escribir(f"{D}/{C2}/corrida_todo_2026-11-15_completo.json", {"fecha": "2026-11-15", "modo": "completo",
          "errores": {"sifere": "TimeoutError: Locator.click: Timeout 45000ms exceeded", "mis_comprobantes": "ErrorRobot: x"},

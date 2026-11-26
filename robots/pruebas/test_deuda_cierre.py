@@ -62,6 +62,10 @@ class T(unittest.TestCase):
         r = dc.calcular(DATOS, date(2025, 3, 20))                         # cuota 6 se pagó el 26/03
         self.assertAlmostEqual(r["total_planes"], round(CONS - 207614.31 - 214257.97 - 221114.22, 2), 2)
 
+    def test_sin_mes_de_cierre_usa_31_12(self):
+        dc.mes_cierre = lambda cuit: None
+        self.assertEqual(dc.cierres("x", date(2026, 11, 26)), [date(2025, 12, 31), date(2024, 12, 31)])
+
     def test_excel(self):
         with tempfile.TemporaryDirectory() as t:
             x = dc.excel("30712227571", dc.calcular(DATOS, date(2024, 12, 31)), os.path.join(t, "a.xlsx"), "2026-11-26")
