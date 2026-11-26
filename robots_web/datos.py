@@ -512,6 +512,29 @@ def registral(cuit: str) -> dict:
     return _leer(_ultimo(os.path.join(DATOS, cuit, "sistema_registral", "*.json"))) or {}
 
 
+def tipo_actividad(codigo: str) -> str:
+    """Código de actividad (CLAE/NAES de 6 dígitos): servicios desde la división 49 (transporte, gastronomía,
+    profesionales, etc.); bienes la producción (01-33) y el comercio (45-47); mixta energía, agua y construcción."""
+    c = re.sub(r"\D", "", str(codigo or ""))[:2]
+    if not c:
+        return ""
+    n = int(c)
+    return "Servicios" if n >= 49 else "Bienes (comercio)" if 45 <= n <= 47 else "Bienes (producción)" if n <= 33 else "Mixta"
+
+
+def actividad_principal(cuit: str) -> dict:
+    """Actividad principal según la inscripción (Gaby 26/11/2026): Sistema Registral (orden 1) o Padrón Web de COMARB."""
+    r = registral(cuit)
+    acts = sorted(r.get("actividades") or [], key=lambda a: int(re.sub(r"\D", "", str(a.get("orden") or "")) or 99))
+    if not acts:
+        cm = _leer(_ultimo(os.path.join(DATOS, cuit, "padron_cm", "*.json"))) or {}
+        acts = [a for a in cm.get("actividades") or [] if a.get("tipo") == "Principal" and not a.get("baja")]
+    if not acts:
+        return {}
+    a = acts[0]
+    return {"codigo": a.get("codigo", ""), "descripcion": a.get("descripcion", ""), "tipo": tipo_actividad(a.get("codigo"))}
+
+
 def completar_desde_registral(cuit: str) -> list[str]:
     """Completa en Datos del cliente lo que esté VACÍO con lo del Sistema Registral (nunca pisa lo cargado a mano).
     Devuelve los campos completados."""
@@ -525,6 +548,9 @@ def completar_desde_registral(cuit: str) -> list[str]:
         nuevos["iva_90_dias"] = "Sí" if py["iva_diferido"] else "No"
     elif py and py.get("tiene_f1272") is False:
         nuevos["iva_90_dias"] = "No"
+    ap = actividad_principal(cuit)
+    if ap.get("tipo"):
+        nuevos["actividad"] = f"{ap['tipo']}: {ap['codigo']} {ap['descripcion']}".strip()
     if not (cm.get("ficha") or {}):                     # constancias de ARBA / AGIP: local si no está en Convenio
         for org in ("arba_constancia", "agip_constancia"):
             ab = _leer(_ultimo(os.path.join(DATOS, cuit, org, "*.json"))) or {}
@@ -716,6 +742,8 @@ def ficha(cuit: str) -> dict:
         else:
             b.append({"id": "relacion", "titulo": "Relación débito crédito", "valor": tot["resultado"], "pesos": True,
                       "sub": f"{len(res)} meses · índice erogaciones/ventas {r_pct(tot.get('indice'))} · margen {r_pct(tot.get('margen'))}"
+                             + (" (presta servicios: pocas compras, margen alto es normal)"
+                                if (actividad_principal(cuit).get("tipo") == "Servicios") else "")
                              + (f" · {len(dif)} mes(es) no coinciden con Mis Comprobantes" if dif else ""),
                       "color": "gris" if tot["resultado"] is None else "rojo" if tot["resultado"] < 0 or dif or sub2_perc else "verde",
                       "sub2": sub2_perc})

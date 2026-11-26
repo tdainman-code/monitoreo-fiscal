@@ -749,6 +749,7 @@ CAMPOS_CLIENTE = {
     "medios_vep": "Medios de pago del VEP (según sus bancos)",
     "no_corresponde": "Organismos que no le corresponden (no se reclaman claves ni se marcan fallas)",
     "iva_90_dias": "IVA a 90 días (beneficio PyME de pago diferido)",
+    "actividad": "Actividad principal (según la inscripción: servicios / bienes)",
     "telefonos": "Teléfonos", "whatsapp": "WhatsApp", "importador": "Importador / exportador (Registro Aduanero)",
     "observaciones": "Observaciones",
 }
