@@ -174,6 +174,20 @@
   </tbody></table>
   <p class="sutil">El cruce con el Libro IVA (si quedaron computados) está en el Excel de conciliación.</p>
   {% endif %}
+  {% if sec == 'compras' %}{% set sal = s.apoc_salieron %}
+  {% if sal and sal.lista %}
+  <h2>APOC que dejaron de figurar en Nuestra Parte: {{ sal.lista|length }} <span class="sutil">· IVA {{ sal.iva|pesos }}</span></h2>
+  <table class="tabla"><thead><tr><th>Fecha</th><th>Emisor</th><th>Comprobante</th><th class="num">IVA</th><th>Dejó de figurar</th><th>DJ de IVA del período</th></tr></thead><tbody>
+  {% for o in sal.lista %}<tr><td>{{ o.fecha|fecha }}</td><td data-l="Emisor">{{ o.nombre }}<div class="sutil">{{ o.cuit }}</div></td>
+    <td data-l="Comprobante">{{ o.tipo_txt }} {{ '%04d'|format(o.punto_venta|int) }}-{{ '%08d'|format(o.numero|int) }}</td>
+    <td class="num" data-l="IVA">{{ o.iva|pesos }}</td><td data-l="Dejó de figurar">{{ o.dejo_de_figurar|fecha }}</td>
+    <td data-l="DJ de IVA">{% if o.rectificado %}<b>rectificada</b>: {{ o.dj_secuencia }} presentada el {{ o.dj_fecha|fecha }} (ya no está en el Libro IVA)
+      {% elif o.en_dj_vigente %}<span class="txt-rojo">sigue computado en la DJ vigente ({{ o.dj_secuencia }})</span>
+      {% else %}<span class="sutil">falta el Libro IVA de {{ o.periodo }}</span>{% endif %}</td></tr>{% endfor %}
+  </tbody></table>
+  {% elif s.observados and not s.observados.comprobantes and sal.desde %}
+  <p class="sutil">Sin comprobantes observados: no tuvo ninguno desde {{ sal.desde|fecha }} (desde ahí se guarda el historial; antes no se puede saber si hubo y se rectificaron).</p>
+  {% endif %}{% endif %}
   {% set tipos = {'compras': ['Conciliación de compras'], 'informes': None}[sec] %}
   <h2>Excel</h2>
   <ul class="informes">

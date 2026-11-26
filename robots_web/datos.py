@@ -512,6 +512,36 @@ def registral(cuit: str) -> dict:
     return _leer(_ultimo(os.path.join(DATOS, cuit, "sistema_registral", "*.json"))) or {}
 
 
+def apoc_salieron(cuit: str) -> dict:
+    """APOC que dejaron de figurar en Nuestra Parte (Gaby 26/11/2026: "si sale en cero, ¿es porque se rectificó o
+    porque no tiene? Si es por rectificado, la lista de APOC y la fecha de la rectificativa que devuelve al fisco el
+    crédito fiscal indebido"). Se cruza cada uno con el Libro IVA de su período: si ya no está en la DJ vigente, la
+    rectificativa (secuencia y fecha de presentación) es la que lo sacó."""
+    h = _leer(os.path.join(DATOS, cuit, "observados", "observados_historial.json")) or {}
+    out = []
+    for c in (h.get("comprobantes") or {}).values():
+        if not c.get("dejo_de_figurar") or c.get("nc"):
+            continue
+        per = str(c.get("fecha") or "")[:7]
+        liva = _leer(os.path.join(DATOS, cuit, "libro_iva", f"{per}.json")) if per else None
+        en_dj = None
+        if liva:
+            en_dj = any(re.sub(r"\D", "", str(x.get("cuit") or "")) == str(c.get("cuit")) and int(x.get("punto_venta") or 0) == int(c.get("punto_venta") or 0)
+                        and int(x.get("numero") or 0) == int(c.get("numero") or 0) for x in liva.get("comprobantes_compras") or [])
+        sec = (liva or {}).get("secuencia_portal")
+        out.append({**c, "periodo": per, "en_dj_vigente": en_dj,
+                    "dj_secuencia": (liva or {}).get("secuencia_txt") or (f"Rectificativa {sec}" if sec else ""),
+                    "dj_fecha": (liva or {}).get("fecha_presentacion") or "",
+                    "rectificado": en_dj is False and bool(sec)})
+    out.sort(key=lambda x: (x["periodo"], x.get("nombre") or ""))
+    return {"lista": out, "desde": h.get("desde") or "", "iva": round(sum(x.get("iva") or 0 for x in out), 2)}
+
+
+def _fecha_txt(v) -> str:
+    d = _fecha(str(v or "")[:10])
+    return d.strftime("%d/%m/%Y") if d else str(v or "")
+
+
 def tipo_actividad(codigo: str) -> str:
     """Código de actividad (CLAE/NAES de 6 dígitos): servicios desde la división 49 (transporte, gastronomía,
     profesionales, etc.); bienes la producción (01-33) y el comercio (45-47); mixta energía, agua y construcción."""
@@ -701,10 +731,14 @@ def ficha(cuit: str) -> dict:
                           if cm else "ARBA"),
                   "color": "rojo" if any(x["tema"] == "Convenio Multilateral" for x in s["revisar"])
                            else "amarillo" if (cm or {}).get("deuda_total") else color(False, hay=bool(cm))})
+    s["apoc_salieron"] = apoc_salieron(cuit)
     if meses_liva or obs:
         n_obs = len((obs or {}).get("comprobantes") or [])
+        _sal = s["apoc_salieron"]["lista"]
         b.append({"id": "compras", "titulo": "Compras y APOC", "valor": n_obs if obs else None,
-                  "sub": "comprobantes observados por ARCA" if obs else "conciliación con el Libro IVA",
+                  "sub": ("comprobantes observados por ARCA" if obs else "conciliación con el Libro IVA")
+                         + (f" · {len(_sal)} dejaron de figurar ({sum(1 for x in _sal if x['rectificado'])} rectificados)" if _sal
+                            else " · nunca tuvo observados desde " + _fecha_txt(s["apoc_salieron"]["desde"]) if obs and not n_obs and s["apoc_salieron"]["desde"] else ""),
                   "color": color(False, bool(n_obs), hay=True) if obs else "gris"})
     from . import analisis
     iva = analisis.iva_mensual(cuit)

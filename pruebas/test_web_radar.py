@@ -1074,6 +1074,19 @@ ok(all("En rojo por:" in (b.get("sub2") or "") for b in datos.ficha(C2).get("bot
    "Relación débito crédito: si está en rojo dice por qué")
 ok(datos.tipo_actividad("692000") == "Servicios" and datos.tipo_actividad("461011").startswith("Bienes")
    and datos.tipo_actividad("141110") == "Bienes (producción)", "actividad: servicios o bienes según el código de la inscripción")
+# APOC que dejaron de figurar (Gaby 26/11/2026): historial y cruce con la DJ de IVA rectificativa
+from robots import robot_observados as _ro
+_dob = os.path.join(D, C2, "observados"); os.makedirs(_dob, exist_ok=True)
+_fc = {"tipo_txt": "Factura A", "tipo": 1, "nc": False, "total": 121000.0, "iva": 21000.0, "cuit": "30719014867", "nombre": "SHOGANAI S.R.L.",
+       "punto_venta": 1, "numero": 57, "fecha": "2025-11-10", "anulada_con": ""}
+_ro.historial(_dob, [_fc], "2026-11-01")
+_ro.historial(_dob, [], "2026-11-26")
+escribir(f"{D}/{C2}/libro_iva/2025-11.json", {"periodo": "2025-11", "secuencia_portal": 1, "secuencia_txt": "Rectificativa 1",
+         "fecha_presentacion": "15/10/2026", "comprobantes_compras": []})
+_as = datos.apoc_salieron(C2)
+ok(len(_as["lista"]) == 1 and _as["lista"][0]["rectificado"] and _as["lista"][0]["dejo_de_figurar"] == "2026-11-26",
+   "APOC: el que dejó de figurar se muestra con la rectificativa que lo sacó")
+os.remove(f"{D}/{C2}/libro_iva/2025-11.json"); os.remove(os.path.join(_dob, "observados_historial.json"))
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

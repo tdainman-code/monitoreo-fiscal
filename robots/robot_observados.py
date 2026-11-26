@@ -142,9 +142,41 @@ def _leer_pantalla(page) -> list[dict]:
         os.remove(tmp)
 
 
+def _clave(c: dict) -> str:
+    return f"{c.get('cuit')}|{c.get('tipo')}|{c.get('punto_venta')}|{c.get('numero')}"
+
+
+def historial(carpeta: str, comps: list[dict], hoy: str) -> dict:
+    """Todos los comprobantes observados que se vieron alguna vez (Gaby 26/11/2026): si hoy hay 0, saber si es porque
+    nunca hubo o porque se rectificó y dejaron de figurar. Cada uno: primera_vez, ultima_vez, dejo_de_figurar."""
+    ruta = os.path.join(carpeta, "observados_historial.json")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            h = json.load(f)
+    except (OSError, ValueError):
+        h = {"comprobantes": {}}
+    vistos = h.setdefault("comprobantes", {})
+    actuales = set()
+    for c in comps:
+        k = _clave(c)
+        actuales.add(k)
+        previo = vistos.get(k) or {}
+        vistos[k] = {**{x: (str(v) if x == "fecha" else v) for x, v in c.items()},
+                     "primera_vez": previo.get("primera_vez") or hoy, "ultima_vez": hoy, "dejo_de_figurar": ""}
+    for k, v in vistos.items():
+        if k not in actuales and not v.get("dejo_de_figurar"):
+            v["dejo_de_figurar"] = hoy
+    h["desde"] = h.get("desde") or hoy
+    h["fecha"] = hoy
+    with open(ruta, "w", encoding="utf-8") as f:
+        json.dump(h, f, ensure_ascii=False, indent=1, default=str)
+    return h
+
+
 def guardar(cuit: str, comps: list[dict], origen: str, aviso: str = "") -> str:
     carpeta = os.path.join(DATOS, cuit, "observados")
     os.makedirs(carpeta, exist_ok=True)
+    historial(carpeta, comps, date.today().isoformat())
     ruta = os.path.join(carpeta, "observados.json")
     with open(ruta, "w", encoding="utf-8") as f:
         json.dump({"cuit": cuit, "fecha": date.today().isoformat(), "origen": origen, "aviso": aviso,
