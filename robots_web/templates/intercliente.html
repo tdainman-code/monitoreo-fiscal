@@ -41,7 +41,7 @@
   </tbody></table>
   {% else %}<p class="sutil">No hay facturas entre clientes del estudio en Mis Comprobantes bajados{{ ' para esos períodos' if desde or hasta }}.</p>{% endif %}
   <p><button>Guardar marcas</button></p>
-  <h2>No van nunca</h2>
+  <details class="plegado"><summary>No van nunca: del estudio y mismo dueño (ver o corregir)</summary>
   <p class="sutil">Del estudio: somos nosotros que le facturamos al cliente. Mismo dueño: lo que se facturan entre ellos no va.
   Tildá "sacar" y guardá si alguno está mal.</p>
   <ul>
@@ -58,5 +58,6 @@
     <td class="num">{{ e.comprobantes }}</td><td class="num">{{ e.total|pesos }}</td></tr>{% endfor %}
   </tbody></table></details>{% endif %}
   <p><button>Guardar</button></p>
+  </details>
 </form>
 {% endblock %}
