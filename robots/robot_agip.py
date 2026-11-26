@@ -582,6 +582,22 @@ def deuda_de(tablas: list[dict]) -> float | None:
     return total
 
 
+def _es_convenio(cuit: str) -> bool:
+    """Convenio Multilateral según la ficha, lo deducido de SIFERE o el Padrón Web de COMARB."""
+    try:
+        from .correr import regimen_iibb
+        if "convenio" in (regimen_iibb(cuit).get("regimen") or "").lower():
+            return True
+    except Exception:
+        pass
+    try:
+        import glob as _g
+        r = sorted(_g.glob(os.path.join(DATOS, cuit, "padron_cm", "*.json")))
+        return bool(r) and bool(json.load(open(r[-1], encoding="utf-8")).get("en_padron"))
+    except Exception:
+        return False
+
+
 def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True, miba: tuple | None = None):
     """Ingresa a AGIP con su propia sesión (como ARBA). usuario = CUIT de quien tiene la Clave Ciudad."""
     def fn():
@@ -597,8 +613,12 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                 inicio = page.url
                 try:                                     # constancia de inscripción de IIBB (Gaby, 25/11/2026)
                     from . import robot_agip_constancia
-                    cons = robot_agip_constancia.bajar(ctx, page, cuit)
-                    r["servicios"]["constancia"] = f"OK ({cons.get('categoria') or 'sin categoría'})"
+                    if _es_convenio(cuit):
+                        # Gaby: la constancia de AGIP existe solo para locales CABA; en Convenio está en el Padrón Web
+                        r["servicios"]["constancia"] = "no corresponde (Convenio Multilateral: constancia en el Padrón Web de COMARB)"
+                    else:
+                        cons = robot_agip_constancia.bajar(ctx, page, cuit)
+                        r["servicios"]["constancia"] = f"OK ({cons.get('categoria') or 'sin categoría'})"
                 except arca.CuitEquivocado:
                     raise
                 except Exception as e:
