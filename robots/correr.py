@@ -42,7 +42,8 @@ ROBOTS = {"mis_comprobantes": robot_mis_comprobantes, "situacion_fiscal": robot_
           "libro_iva": robot_libro_iva, "observados": robot_observados, "arba_dfe": robot_arba_dfe,
           "agip": robot_agip, "fiscalizaciones": robot_fiscalizaciones, "ccma": robot_ccma, "sct_historico": robot_sct_historico,
           "mis_retenciones": robot_mis_retenciones, "arba_retenciones": robot_arba_retenciones,
-          "sistema_registral": robot_sistema_registral, "padron_cm": robot_padron_cm, "pyme_iva": robot_pyme_iva}
+          "sistema_registral": robot_sistema_registral, "padron_cm": robot_padron_cm, "pyme_iva": robot_pyme_iva,
+          "cruce_historico": robot_todo}
 
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -368,7 +369,7 @@ def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, 
         elif robot in ("f931", "sifere") and meses:
             res = ROBOTS[robot].correr(cuit, None, usuario, clave, metodo, visible,
                                        periodos=arca.periodos_ultimos(meses, periodo))
-        elif robot == "todo":
+        elif robot in ("todo", "cruce_historico"):
             fuera = organismos_que_no_van(cuit)          # régimen local: no entra a la otra jurisdicción (25/11/2026)
             try:
                 u_arba, c_arba, _ = alm.obtener_clave(cuit, "ARBA", motivo="todo (IIBB local)")
@@ -377,7 +378,8 @@ def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, 
                 arba = None
             agip = claves_agip(cuit, "todo (AGIP)") if "AGIP" not in fuera else None
             res = robot_todo.correr(cuit, periodo, usuario, clave, metodo, visible, meses=meses or 12,
-                                    forzar=forzar, arba=arba, agip=agip, modo=modo)
+                                    forzar=forzar, arba=arba, agip=agip, modo=modo,
+                                    historico=robot == "cruce_historico")   # 5 años de percepciones (una vez)
             if "Clave Ciudad rechazada" in str((res.get("errores") or {}).get("agip", "")):
                 alm.marcar_estado(cuit, "AGIP", "Clave inválida")
             if "CIT de ARBA rechazada" in str((res.get("errores") or {}).get("arba", "")):

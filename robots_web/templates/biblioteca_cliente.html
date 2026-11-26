@@ -27,6 +27,11 @@
   <form method="post" action="{{ url_for('pedir_corrida', cuit=c.cuit) }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
     <input type="hidden" name="robot" value="mis_retenciones"><button class="chico">Bajar ahora (ARCA · Mis Retenciones)</button></form>
 </details>
+<section class="mes-bib"><h2>Conciliaciones <span class="sutil">· repositorio permanente</span></h2>
+{% for cc in conciliaciones %}<details class="plegado" {{ 'open' if loop.first }}><summary>{{ cc.nombre }} ({{ cc.archivos|length }})</summary>
+  {% if cc.archivos %}<p>{% for a in cc.archivos %}<a href="{{ url_for('biblioteca_conciliacion', cuit=c.cuit, tipo=cc.tipo, nombre=a) }}">⬇ {{ a[8:10] }}/{{ a[5:7] }}/{{ a[:4] }}</a>{{ ' · ' if not loop.last }}{% endfor %}</p>
+  {% else %}<p class="sutil">Todavía no hay: se arma sola cada vez que corre Mis Retenciones, ARBA o AGIP.</p>{% endif %}
+</details>{% endfor %}</section>
 {% for m in meses %}
 <section class="mes-bib">
   <h2>{{ m.periodo[5:] }}/{{ m.periodo[:4] }}

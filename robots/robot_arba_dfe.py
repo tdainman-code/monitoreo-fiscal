@@ -384,7 +384,7 @@ def leer_deducciones(ctx, page, cuit: str, hoy: date) -> list[dict]:
     return out
 
 
-def paso(cuit: str, cit: str, estado: dict):
+def paso(cuit: str, cit: str, estado: dict, meses: int | None = None):
     carpeta = os.path.join(DATOS, cuit, "arba_dfe")
 
     def fn():
@@ -438,7 +438,7 @@ def paso(cuit: str, cit: str, estado: dict):
                     if page.url != inicio_autogestion:
                         page.goto(inicio_autogestion, wait_until="domcontentloaded")
                     from . import robot_arba_retenciones      # 25/11/2026: 2 meses, 3 regímenes, archivos y diagnóstico
-                    rr = robot_arba_retenciones.bajar(ctx, page, cuit, date.today())
+                    rr = robot_arba_retenciones.bajar(ctx, page, cuit, date.today(), meses=meses)
                     percep = []                                # el cruce las toma de la biblioteca
                     estado["deducciones"] = f"OK ({rr['filas']} comprobantes en {len(rr['meses'])} meses)"
                 except arca.CuitEquivocado:

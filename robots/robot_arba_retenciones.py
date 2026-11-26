@@ -197,15 +197,29 @@ def bajar_mes(ded, cuit: str, anio: int, mes: int) -> dict:
             "sin_movimientos": False, "tipo": tipo}
 
 
-def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
-    """Los 2 últimos meses: guarda archivos, versiones y diagnóstico. Devuelve {"meses": {...}, "filas": n}."""
+def bajar(ctx, page, cuit: str, hoy: date | None = None, meses: int | None = None) -> dict:
+    """Los 2 últimos meses (Biblioteca: archivos, versiones y diagnóstico) y, con `meses` (histórico inicial), los
+    anteriores solo al histórico de percepciones. Devuelve {"meses": {...}, "filas": n}."""
+    from . import percepciones_hist as hist
     hoy = hoy or date.today()
     pasos: list = []
-    res = {"meses": {}, "filas": 0}
+    res = {"meses": {}, "filas": 0, "historico": 0}
+    ultimos = bib.periodos(hoy)
+    lista = hist.meses_atras(hoy, meses) if meses and meses > 2 else ultimos
     try:
         ded = abrir_deducciones(ctx, page, cuit, pasos)
-        for anio, mes in bib.periodos(hoy):
+        for anio, mes in lista:
             per = f"{anio}-{mes:02d}"
+            if (anio, mes) not in ultimos:               # histórico: solo para el cruce, sin Biblioteca
+                try:
+                    r = bajar_mes(ded, cuit, anio, mes)
+                    fs = leer_zip(r["zip"])["filas"] if r.get("zip") else []
+                    hist.guardar(cuit, "arba", fs, [per], hoy)
+                    res["historico"] += len(fs)
+                except Exception as e:                   # un mes viejo que falla no corta el resto
+                    pasos.append({"paso": f"Histórico {per}", "ok": False, "detalle": str(e).splitlines()[0][:120] if str(e) else ""})
+                arca.pausa(0.5, 1.2)
+                continue
             r = bajar_mes(ded, cuit, anio, mes)
             filas = []
             if r.get("zip"):
@@ -215,6 +229,7 @@ def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
                     bib.guardar_archivo(cuit, per, FUENTE, nom, crudo)
                 filas = z["filas"]
             bib.guardar_version(cuit, per, FUENTE, filas, hoy, {"totales": r["totales"], "tipo": r.get("tipo", "")})
+            hist.guardar(cuit, "arba", filas, [per], hoy)
             suma = round(sum(f["importe"] for f in filas), 2)
             control = round(sum(r["totales"].values()), 2)
             pasos.append({"paso": f"Descarga para Importar {per}", "ok": True,
@@ -236,7 +251,7 @@ def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
         raise
 
 
-def paso(cuit: str, cit: str, estado: dict):
+def paso(cuit: str, cit: str, estado: dict, meses: int | None = None):
     """Entra a ARBA y baja solo las retenciones y percepciones (sin la ventanilla DFE)."""
     def fn():
         from .robot_arba import login
@@ -264,7 +279,7 @@ def paso(cuit: str, cit: str, estado: dict):
             if page.url != inicio:
                 page.goto(inicio, wait_until="domcontentloaded")
                 page.wait_for_timeout(2000)
-            r = bajar(ctx, page, cuit)
+            r = bajar(ctx, page, cuit, meses=meses)
         estado.update({"retenciones": f"OK ({r['filas']} comprobantes en {len(r['meses'])} meses)", **r})
         try:
             from . import percepciones

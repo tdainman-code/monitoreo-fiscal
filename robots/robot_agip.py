@@ -624,7 +624,8 @@ def _es_convenio(cuit: str) -> bool:
         return False
 
 
-def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True, miba: tuple | None = None):
+def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True, miba: tuple | None = None,
+         meses: int | None = None):
     """Ingresa a AGIP con su propia sesión (como ARBA). usuario = CUIT de quien tiene la Clave Ciudad."""
     def fn():
         hoy = date.today().isoformat()
@@ -699,7 +700,7 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                                 # 25/11/2026 (Gabriel): todas las solapas, 2 meses, archivos y diagnóstico
                                 from . import robot_agip_retenciones
                                 try:
-                                    rr = robot_agip_retenciones.bajar(ctx, pag, cuit)
+                                    rr = robot_agip_retenciones.bajar(ctx, pag, cuit, meses=meses)
                                     r["percepciones"] = rr["percepciones"]
                                     r["retenciones_percepciones"] = rr["meses"]
                                 except arca.CuitEquivocado:

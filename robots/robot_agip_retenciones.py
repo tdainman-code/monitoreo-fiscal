@@ -128,16 +128,35 @@ def consultar_mes(pag, url_form: str, cuit: str, anio: int, mes: int) -> None:
     pag.wait_for_timeout(3500)
 
 
-def bajar(ctx, pag, cuit: str, hoy: date | None = None) -> dict:
+def bajar(ctx, pag, cuit: str, hoy: date | None = None, meses: int | None = None) -> dict:
     """pag = Gestión-AR abierto. Los 2 últimos meses, todas las solapas: archivos, versiones y diagnóstico.
     Devuelve {"meses", "filas", "percepciones"} (percepciones para el cruce con el Libro IVA)."""
+    from . import percepciones_hist as hist
     hoy = hoy or date.today()
     url_form = pag.url
+    ultimos = bib.periodos(hoy)
     pasos = [{"paso": "Clave Ciudad -> representado -> Gestión-AR", "ok": True}]
     res = {"meses": {}, "filas": 0, "percepciones": []}
     try:
-        for anio, mes in bib.periodos(hoy):
+        for anio, mes in (hist.meses_atras(hoy, meses) if meses and meses > 2 else ultimos):
             per = f"{anio}-{mes:02d}"
+            if (anio, mes) not in ultimos:               # histórico inicial: solo el Excel de cada solapa, al histórico
+                try:
+                    consultar_mes(pag, url_form, cuit, anio, mes)
+                    fs = []
+                    for solapa in SOLAPAS:
+                        tab = pag.locator("a, li, button").filter(has_text=re.compile(rf"^\s*{solapa}\s*$", re.I)).filter(visible=True)
+                        if not tab.count():
+                            continue
+                        tab.first.click()
+                        pag.wait_for_timeout(2000)
+                        d = _descargar(pag, BOTONES["excel"])
+                        if d:
+                            fs += leer_csv(solapa, d[1].decode("latin-1"))
+                    hist.guardar(cuit, "agip", fs, [per], hoy)
+                except Exception as e:
+                    pasos.append({"paso": f"Histórico {per}", "ok": False, "detalle": str(e).splitlines()[0][:120] if str(e) else ""})
+                continue
             consultar_mes(pag, url_form, cuit, anio, mes)
             filas, detalle = [], []
             for solapa in SOLAPAS:
@@ -158,6 +177,7 @@ def bajar(ctx, pag, cuit: str, hoy: date | None = None) -> dict:
                 detalle.append(f"{solapa}: {len(nuevas)}" + ("" if "excel" in bajados else " (sin Excel)")
                                + (" + TXT SIFERE" if "txt_sifere" in bajados else ""))
             bib.guardar_version(cuit, per, FUENTE, filas, hoy)
+            hist.guardar(cuit, "agip", filas, [per], hoy)
             pasos.append({"paso": f"Consulta {per}", "ok": True, "detalle": " · ".join(detalle) or "sin solapas"})
             res["meses"][per] = {"filas": len(filas), "importe": round(sum(f["importe"] for f in filas), 2)}
             res["filas"] += len(filas)

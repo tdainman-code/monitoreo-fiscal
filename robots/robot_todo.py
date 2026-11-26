@@ -29,10 +29,14 @@ DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
 
 def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses: int = 12,
            forzar: bool = False, informes: bool = True, arba: tuple | None = None, agip: tuple | None = None,
-           modo: str = "completo", **_):
+           modo: str = "completo", historico: bool = False, **_):
     """arba = (usuario, CIT) y agip = (usuario, Clave Ciudad) si el cliente tiene esas claves en el almacén."""
     hoy = date.today()
     periodos = arca.periodos_ultimos(meses, periodo)
+    # 26/11/2026 (Gaby): cliente nuevo -> el cruce de percepciones arranca con 5 años (una sola vez); después, 2 meses
+    from . import percepciones_hist as hist
+    m_hist = hist.HISTORICO_MESES if (modo == "completo" and (historico or hist.es_cliente_nuevo(cuit))) else None
+    periodos_cruce = arca.periodos_ultimos(m_hist, periodo) if m_hist else periodos
     destino = os.path.join(DATOS, cuit, "situacion", hoy.isoformat())
     os.makedirs(destino, exist_ok=True)
     delegacion = metodo == "Delegación" or usuario != cuit
@@ -56,14 +60,14 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
              ("dfe", robot_dfe.paso(cuit, usuario, est["dfe"])),
              ("sifere", robot_sifere.paso(cuit, periodos, est["sifere"], forzar)),
              ("f931", robot_f931.paso(cuit, periodos, est["f931"], forzar)),
-             ("libro_iva", robot_libro_iva.paso(cuit, periodos, est["liva"], forzar)),
-             ("mis_retenciones", robot_mis_retenciones.paso(cuit, est["mret"])),
+             ("libro_iva", robot_libro_iva.paso(cuit, periodos_cruce, est["liva"], forzar)),
+             ("mis_retenciones", robot_mis_retenciones.paso(cuit, est["mret"], meses=m_hist)),
              ("sistema_registral", robot_sistema_registral.paso(cuit, est["sreg"])),   # ficha del cliente (25/11/2026)
              ("padron_cm", robot_padron_cm.paso(cuit, est["pcm"])),                    # constancia CM y jurisdicciones
              ("pyme_iva", robot_pyme_iva.paso(cuit, est["pyme"])),                     # IVA a 90 días (F.1272)
              ("observados", robot_observados.paso(cuit, est["obs"])),
              ("fiscalizaciones", robot_fiscalizaciones.paso(cuit, est["fisc"])),
-             ("mis_comprobantes", robot_mis_comprobantes.paso_periodos(cuit, periodos, est["mc"], forzar))]
+             ("mis_comprobantes", robot_mis_comprobantes.paso_periodos(cuit, periodos_cruce, est["mc"], forzar))]
     if modo == "diaria":
         # 25/11/2026 (Tomás): la diaria también mira Mis Comprobantes del mes en curso (y del anterior mientras su DJ de
         # IVA no está presentada, hasta el día 20) para ver cómo viene el IVA. Se vuelve a bajar todos los días.
@@ -102,18 +106,28 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
     if arba and "CIT de ARBA rechazada" not in str(r["_errores"].get("arba", "")):
         from . import robot_arba_dfe
         try:
-            robot_arba_dfe.paso(arba[0], arba[1], est["arba_dfe"])()
+            robot_arba_dfe.paso(arba[0], arba[1], est["arba_dfe"], meses=m_hist)()
         except Exception as e:
             r["_errores"]["arba_dfe"] = f"{type(e).__name__}: {str(e).splitlines()[0][:200]}"
 
     # AGIP (Ciudad): ingreso propio con Clave Ciudad, ventana visible (en el servidor: xvfb-run)
     if agip:
         try:
-            robot_agip.paso(agip[0], agip[1], cuit, est["agip"], miba=agip[2] if len(agip) > 2 else None)()
+            robot_agip.paso(agip[0], agip[1], cuit, est["agip"], miba=agip[2] if len(agip) > 2 else None, meses=m_hist)()
         except arca.ClaveInvalida as e:
             r["_errores"]["agip"] = f"Clave Ciudad rechazada: {e}"
         except Exception as e:
             r["_errores"]["agip"] = f"{type(e).__name__}: {str(e).splitlines()[0][:200]}"
+
+    # cruce de percepciones con todo lo acumulado (ARBA y AGIP se bajan después de Mis Retenciones)
+    try:
+        from . import percepciones
+        percepciones.cruzar(cuit)
+    except Exception:
+        pass
+    if m_hist and "mis_retenciones" not in r["_errores"] and "libro_iva" not in r["_errores"]:
+        hist.marcar_historico(cuit, m_hist, hoy, {"arba": "arba_dfe" not in r["_errores"] if arba else None,
+                                                   "agip": "agip" not in r["_errores"] if agip else None})
 
     # situación fiscal (mismo formato que el robot situacion_fiscal)
     sit["reingresos"] = r["_reingresos"]

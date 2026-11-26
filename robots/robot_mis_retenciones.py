@@ -29,7 +29,7 @@ from datetime import date, timedelta
 from . import arca
 
 DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
-MESES = 12
+MESES = 2              # habitual: los 2 últimos meses (Gaby 26/11/2026); el inicial (5 años) pasa meses=60
 IMPUESTOS = ("767", "216")                     # SICORE IVA y SIRE IVA (los que filtra la versión nueva para IVA)
 # Aduaneras (menú "Aduaneras", agente 33-69345023-9 ARCA-Aduana): percepciones de IVA (767) y Ganancias (217) de los
 # despachos de importación; las dos sirven para ver que el despacho exista en el Libro IVA (Gaby, 21/11/2026).
@@ -311,12 +311,12 @@ def _menu(page, nombre: str) -> None:
     raise arca.ErrorRobot(f"Mis Retenciones: no aparece el menú '{nombre}'")
 
 
-def leer(ctx, page, cuit: str, hoy: date) -> dict:
+def leer(ctx, page, cuit: str, hoy: date, meses: int = MESES) -> dict:
     page = _version_anterior(ctx, page)
     filas, consultas = [], []
     for menu, impuestos in (("Impositivas", IMPUESTOS), ("Aduaneras", IMPUESTOS_ADUANA)):
         for imp in impuestos:
-            for d, h in tramos(hoy):
+            for d, h in tramos(hoy, meses):
                 _menu(page, menu)
                 _escuchar_avisos(page)
                 AVISOS.clear()
@@ -328,8 +328,9 @@ def leer(ctx, page, cuit: str, hoy: date) -> dict:
                                   "renglones": len(r)})
                 filas += r
                 arca.pausa(0.8, 1.6)
-    t = tramos(hoy)
-    return {"desde": t[0][0].isoformat(), "hasta": t[-1][1].isoformat(), "consultas": consultas, "filas": filas}
+    t = tramos(hoy, meses)
+    return {"desde": t[0][0].isoformat(), "hasta": t[-1][1].isoformat(), "consultas": consultas, "filas": filas,
+            "meses": meses}
 
 
 ADUANA = "33693450239"
@@ -363,13 +364,15 @@ def guardar_versiones(cuit: str, filas: list[dict], hoy: date) -> list[str]:
     return guardadas
 
 
-def paso(cuit: str, estado: dict):
+def paso(cuit: str, estado: dict, meses: int | None = None):
     def fn(ctx, portal):
         hoy = date.today()
+        from . import percepciones_hist as hist
+        n = meses or (hist.HISTORICO_MESES if hist.es_cliente_nuevo(cuit) else MESES)
         antes = set(ctx.pages)
         page = arca.abrir_servicio(ctx, portal, "mis_retenciones")
         try:
-            r = leer(ctx, page, cuit, hoy)
+            r = leer(ctx, page, cuit, hoy, n)
         finally:
             for p in list(ctx.pages):
                 if p not in antes:
@@ -383,6 +386,12 @@ def paso(cuit: str, estado: dict):
         with open(os.path.join(d, f"{hoy.isoformat()}.json"), "w", encoding="utf-8") as f:
             json.dump(r, f, ensure_ascii=False, indent=1)
         guardar_versiones(cuit, r["filas"], hoy)
+        t = tramos(hoy, n)                               # histórico acumulado por mes (pisa los meses consultados)
+        cons_meses, d0 = [], t[0][0]
+        while d0 <= hoy:
+            cons_meses.append(d0.strftime("%Y-%m"))
+            d0 = (d0.replace(day=28) + timedelta(days=4)).replace(day=1)
+        hist.guardar(cuit, "arca", r["filas"], cons_meses, hoy)
         from . import percepciones
         cr = percepciones.cruzar(cuit)
         n_p = sum(1 for x in r["filas"] if x["operacion"].startswith("PERCEP"))

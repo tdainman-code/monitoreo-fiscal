@@ -165,23 +165,28 @@ def _elegir_persona(pag, cuit: str) -> None:
     pag.wait_for_timeout(3000)
 
 
-def _menu(pag, nombre: str, cuit: str) -> None:
+def _en_marcos(pag):
+    """La página principal y sus marcos (iframes): el Sistema Registral puede dibujar el menú dentro de uno."""
+    return [pag] + [f for f in pag.frames if f is not pag.main_frame]
+
+
+def _menu(pag, nombre: str, cuit: str):
     """Menú izquierdo del Sistema Registral (Inicio / Consulta / Constancias / ... / Registros Especiales).
-    25/11/2026: no aparecía 'Consulta' (la página tarda o quedó en otra vista): se espera y, si no, se entra directo
-    al inicio del representado (ResponsiveIndexInternetAction.do?idPersona=<cuit>) y se reintenta."""
+    Se busca en la página y en sus marcos; si no aparece, se entra directo al inicio del representado y se reintenta.
+    Devuelve el marco donde quedó el contenido."""
     patron = re.compile(rf"^\s*{nombre}\s*$", re.I)
     for intento in range(3):
-        m = pag.locator("a, li, button, span, div").filter(has_text=patron).locator("visible=true")
-        for _ in range(15):
-            if m.count():
-                break
+        for _ in range(12):
+            for fr in _en_marcos(pag):
+                try:
+                    m = fr.locator("a, li, button, span, div").filter(has_text=patron).locator("visible=true")
+                    if m.count():
+                        m.last.click()
+                        pag.wait_for_timeout(3000)
+                        return fr
+                except Exception:
+                    continue
             pag.wait_for_timeout(1000)
-            m = pag.locator("a, li, button, span, div").filter(has_text=patron).locator("visible=true")
-        if m.count():
-            m.last.click()
-            pag.wait_for_load_state("domcontentloaded")
-            pag.wait_for_timeout(2500)
-            return
         menu = pag.locator("button.navbar-toggler, [aria-label*='men' i], .menu-toggle, .hamburger").filter(visible=True)
         if menu.count():                                 # menú plegado en un botón (☰)
             menu.first.click()
@@ -190,7 +195,20 @@ def _menu(pag, nombre: str, cuit: str) -> None:
         if intento == 0:
             pag.goto(URL_INDEX.format(cuit), wait_until="domcontentloaded")
             pag.wait_for_timeout(3000)
-    raise arca.ErrorRobot(f"Sistema Registral: no aparece '{nombre}' en el menú (página: {pag.url[:90]})")
+    raise arca.ErrorRobot(f"Sistema Registral: no aparece '{nombre}' en el menú (página: {pag.url[:90]}; "
+                          f"marcos: {len(pag.frames) - 1})")
+
+
+def _marco_con(pag, patron: str, espera_s: int = 45):
+    for _ in range(espera_s):
+        for fr in _en_marcos(pag):
+            try:
+                if re.search(patron, fr.inner_text("body", timeout=3000), re.I):
+                    return fr
+            except Exception:
+                continue
+        pag.wait_for_timeout(1000)
+    raise arca.ErrorRobot(f"Sistema Registral: no apareció '{patron}'")
 
 
 def leer(ctx, portal, cuit: str) -> dict:
@@ -203,28 +221,28 @@ def leer(ctx, portal, cuit: str) -> dict:
         _elegir_persona(pag, cuit)
         inicio = pag.inner_text("body")
         _menu(pag, "Consulta", cuit)
-        pag.get_by_text(re.compile(r"Impuestos y/o Aportes", re.I)).first.wait_for(timeout=45_000)
-        texto = pag.inner_text("body")
-        if cuit not in re.sub(r"\D", "", texto[:4000]):
+        fr = _marco_con(pag, r"Impuestos y/o Aportes")
+        texto = fr.inner_text("body")
+        if cuit not in re.sub(r"\D", "", texto[:4000]) and cuit not in re.sub(r"\D", "", pag.inner_text("body")[:4000]):
             raise arca.CuitEquivocado(f"Sistema Registral: no muestra el CUIT {arca.cuit_fmt(cuit)}")
-        r = {**leer_datos(inicio + "\n" + texto), **leer_secciones(pag.evaluate(JS_SECCIONES))}
+        r = {**leer_datos(inicio + "\n" + texto), **leer_secciones(fr.evaluate(JS_SECCIONES))}
         try:                                             # importador / exportador (Registro Aduanero)
             vol = pag.get_by_text(re.compile(r"^\s*VOLVER\s*$", re.I)).locator("visible=true")
             if vol.count():
                 vol.first.click()
                 pag.wait_for_timeout(1500)
-            _menu(pag, "Registros Especiales", cuit)
-            d = pag.locator("button, a").filter(has_text=re.compile(r"DESPLEGAR", re.I)).locator("visible=true")
+            fr2 = _menu(pag, "Registros Especiales", cuit)
+            d = fr2.locator("button, a").filter(has_text=re.compile(r"DESPLEGAR", re.I)).locator("visible=true")
             if d.count():
                 d.first.click()
                 pag.wait_for_timeout(1000)
             antes = set(ctx.pages)
-            pag.get_by_text(re.compile(r"Consulta de datos Aduaneros", re.I)).first.click()
+            fr2.get_by_text(re.compile(r"Consulta de datos Aduaneros", re.I)).first.click()
             pag.wait_for_timeout(3500)
             nuevas = [p for p in ctx.pages if p not in antes]
             dest = nuevas[-1] if nuevas else pag
             dest.wait_for_load_state("domcontentloaded")
-            r["aduana"] = leer_aduana(dest.inner_text("body"))
+            r["aduana"] = leer_aduana(_marco_con(dest, r"Tipo de Operador|Situaci[oó]n en el Sistema Registral", 30).inner_text("body"))
             if dest is not pag:
                 dest.close()
         except Exception as e:

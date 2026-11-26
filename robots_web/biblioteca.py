@@ -192,6 +192,19 @@ def detalle(cuit: str, periodo: str, fuente: str) -> list[dict]:
 ROBOT_PEDIDO = {"arca_mr": "mis_retenciones", "arca_aduana": "mis_retenciones", "arba": "arba_retenciones", "agip": "agip"}
 
 
+CONCILIACIONES = {"percepciones": "Percepciones (ARCA, ARBA, AGIP) vs Libro IVA y Mis Comprobantes"}
+
+
+def conciliaciones(cuit: str) -> list[dict]:
+    """Repositorio permanente de conciliaciones (Gaby, 26/11/2026): una solapa por tipo, el más nuevo primero."""
+    out = []
+    for tipo, nombre in CONCILIACIONES.items():
+        d = os.path.join(datos.DATOS, cuit, "biblioteca", "_conciliaciones", tipo)
+        arch = sorted((x for x in (os.listdir(d) if os.path.isdir(d) else []) if x.endswith(".xlsx")), reverse=True)
+        out.append({"tipo": tipo, "nombre": nombre, "archivos": arch})
+    return out
+
+
 def archivos(cuit: str, periodo: str, fuente: str) -> list[str]:
     """Archivos tal como los bajó el organismo (TXT para importar, Excel/CSV, constancias en PDF)."""
     d = os.path.join(datos.DATOS, cuit, "biblioteca", periodo, fuente, "archivos")

@@ -1116,7 +1116,7 @@ def biblioteca_cliente(cuit):
     capturas = [{"nombre": os.path.basename(x), "fecha": datetime.fromtimestamp(os.path.getmtime(x)).strftime("%d/%m %H:%M")}
                 for x in capturas]
     return render_template("biblioteca_cliente.html", c=info, meses=meses, fuentes=bib.FUENTES, elegidas=elegidas, diag=diag,
-                           capturas=capturas,
+                           capturas=capturas, conciliaciones=bib.conciliaciones(cuit),
                            por_defecto=not isinstance(dc.get("importables"), list), estados=bib.ESTADOS)
 
 
@@ -1131,6 +1131,21 @@ def biblioteca_excel(cuit, periodo, fuente):
     return send_file(BytesIO(bib.excel(cuit, info.get("razon_social") or cuit, periodo, [fuente])), as_attachment=True,
                      download_name=f"{periodo}_{fuente}_{cuit}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.route("/cliente/<cuit>/conciliacion/<tipo>/<nombre>")
+@requiere_login
+def biblioteca_conciliacion(cuit, tipo, nombre):
+    """Excel de una conciliación guardada en el repositorio permanente (26/11/2026)."""
+    from . import biblioteca as bib
+    _cliente_info(cuit)
+    if tipo not in bib.CONCILIACIONES or not re.fullmatch(r"\d{4}-\d{2}-\d{2}\.xlsx", nombre):
+        abort(404)
+    r = os.path.join(datos.DATOS, cuit, "biblioteca", "_conciliaciones", tipo, nombre)
+    if not os.path.isfile(r):
+        abort(404)
+    usuarios.registrar(session["usuario"], "bajó conciliación", f"{cuit} {tipo} {nombre}", _ip())
+    return send_file(r, as_attachment=True, download_name=f"conciliacion_{tipo}_{cuit}_{nombre}")
 
 
 @app.route("/cliente/<cuit>/biblioteca/<periodo>/<fuente>/archivo/<nombre>")

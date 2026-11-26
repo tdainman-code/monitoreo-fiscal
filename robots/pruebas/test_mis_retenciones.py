@@ -108,7 +108,7 @@ def ruteo(route):
 
 
 # ---------------------------------------------------------------- tramos y lectura
-t = rm.tramos(date(2026, 11, 21))
+t = rm.tramos(date(2026, 11, 21), 12)
 chk(t[0][0] == date(2025, 11, 1) and t[-1][1] == date(2026, 11, 21) and all((b - a).days < 186 for a, b in t),
     f"últimos 12 meses en tramos de hasta 6 meses ({[(a.isoformat(), b.isoformat()) for a, b in t]})")
 chk(rm._num("6,980.30") == 6980.30 and rm._num("142,188.36") == 142188.36 and rm._num("1.234,56") == 1234.56, "importes 6,980.30")
@@ -120,7 +120,7 @@ with sync_playwright() as p:
     ctx.route("https://seti.afip.gob.ar/**", ruteo)
     pg = ctx.new_page()
     pg.goto(NUEVA)
-    r = rm.leer(ctx, pg, CUIT, date(2026, 11, 21))
+    r = rm.leer(ctx, pg, CUIT, date(2026, 11, 21), 12)
     chk(len(r["filas"]) == 11 and sum(f["operacion"] == "RETENCION" for f in r["filas"]) == 1,
         f"lee todas las páginas de la versión anterior ({len(r['filas'])} renglones)")
     chk(sum(1 for f in r["filas"] if f["aduana"]) == 3 and {c[0] for c in CONSULTAS} >= {"A767", "A217"}
