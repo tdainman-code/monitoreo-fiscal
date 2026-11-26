@@ -72,13 +72,23 @@ def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
     hoy = hoy or date.today()
     tarjeta = page.get_by_text(re.compile(r"^\s*Ingresos Brutos\s*$", re.I)).locator("visible=true")
     if not tarjeta.count():
-        raise arca.ErrorRobot("AGIP: no aparece la tarjeta 'Ingresos Brutos' en el menú de Clave Ciudad")
+        tarjeta = page.locator("a, div, h3, h4, span").filter(has_text=re.compile(r"Portal de consultas y tr[aá]mites de IIBB", re.I))
+    if not tarjeta.count():
+        raise arca.ErrorRobot(f"AGIP: no aparece la tarjeta 'Ingresos Brutos' en el menú de Clave Ciudad (página: {page.url[:80]})")
     antes = set(ctx.pages)
     tarjeta.first.click()
     page.wait_for_timeout(4000)
     nuevas = [p for p in ctx.pages if p not in antes]
     git = nuevas[-1] if nuevas else page
     git.wait_for_load_state("domcontentloaded")
+    git.wait_for_timeout(2000)
+    if re.search(r"Seleccione\s+Representado", git.inner_text("body")[:2000], re.I):
+        from .robot_agip import _elegir_cuit          # NOMBRE [cuit] -> Ingresar (igual que Gestión-AR)
+        _elegir_cuit(git, cuit)
+        nuevas = [p for p in ctx.pages if p not in antes and p is not git]
+        if nuevas:
+            git = nuevas[-1]
+            git.wait_for_load_state("domcontentloaded")
     git.get_by_text(re.compile(r"Gesti[oó]n Integral Tributaria", re.I)).first.wait_for(timeout=45_000)
     item = git.get_by_text(re.compile(r"Impresi[oó]n y Re-Impresi[oó]n de Constancia", re.I)).locator("visible=true")
     if not item.count():
