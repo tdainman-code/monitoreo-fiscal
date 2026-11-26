@@ -92,8 +92,16 @@ def leer_totales(texto: str) -> dict:
     """Total de Deducciones de descargarRet.do: {"PERCEPCION": 1289423.56, ...} (formato $1,289,423.56)."""
     t = texto[texto.find("Total de Deducciones"):] if "Total de Deducciones" in texto else ""
     out = {}
-    for nom, imp in re.findall(r"(PERCEPCI[OÓ]N(?:ES)?(?: ADUANERAS)?|RETENCIONES BANCARIAS/PSP|RETENCI[OÓ]N(?:ES)?[A-Z /]*)\s*\$\s*(-?[\d,]+\.\d{2})", t):
-        out[nom.strip()] = float(imp.replace(",", ""))
+    for nom, imp in re.findall(r"(PERCEPCI[OÓ]N(?:ES)?(?: ADUANERAS)?|RETENCIONES BANCARIAS/PSP|RETENCI[OÓ]N(?:ES)?[A-Z /]*)\s*\$\s*(-?[\d.,]+\d)", t):
+        # 25/11/2026: el total puede venir como $1,289,423.56 o como $ 1.289.423,56
+        if re.search(r",\d{2}$", imp):
+            v = imp.replace(".", "").replace(",", ".")
+        else:
+            v = imp.replace(",", "")
+        try:
+            out[nom.strip()] = float(v)
+        except ValueError:
+            pass
     return out
 
 
