@@ -7,8 +7,9 @@ import re
 from io import BytesIO
 import json
 import os
+import glob
 import secrets
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from functools import wraps
 
 from flask import (Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for)
@@ -1106,7 +1107,11 @@ def biblioteca_cliente(cuit):
     diag = [{"id": f, "nombre": bib.NOMBRE[f], "robot": bib.ROBOT_PEDIDO.get(f), **bib.diagnostico(cuit, f)}
             for f in ("arca_mr", "arba", "agip") if f in elegidas or bib.versiones_alguna(cuit, f)
             or os.path.exists(os.path.join(datos.DATOS, cuit, "biblioteca", "_diagnostico", f + ".json"))]
+    capturas = sorted(glob.glob(os.path.join(datos.DATOS, cuit, "capturas", "*.png")), key=os.path.getmtime, reverse=True)[:12]
+    capturas = [{"nombre": os.path.basename(x), "fecha": datetime.fromtimestamp(os.path.getmtime(x)).strftime("%d/%m %H:%M")}
+                for x in capturas]
     return render_template("biblioteca_cliente.html", c=info, meses=meses, fuentes=bib.FUENTES, elegidas=elegidas, diag=diag,
+                           capturas=capturas,
                            por_defecto=not isinstance(dc.get("importables"), list), estados=bib.ESTADOS)
 
 

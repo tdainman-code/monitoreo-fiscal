@@ -547,6 +547,14 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                         pag = _abrir(ctx, page, textos)
                         if pag is None:
                             r["servicios"][clave_srv] = "no encontrado en el portal"
+                            caps = arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), f"agip_{clave_srv}_no_encontrado")
+                            if clave_srv == "percepciones":          # queda en el diagnóstico de la Biblioteca
+                                from . import biblioteca_archivos as _bib
+                                _bib.guardar_diagnostico(cuit, "agip", {"estado": "error", "pasos": [
+                                    {"paso": "Clave Ciudad -> representado", "ok": True},
+                                    {"paso": "Menú de Clave Ciudad: tarjeta 'Gestión-AR Agtes. de Recaudación'", "ok": False}],
+                                    "error": "no aparece la tarjeta de Gestión-AR en el menú (ver captura)",
+                                    "captura": os.path.basename(caps[0]) if caps else ""})
                             continue
                         if not _elegir_cuit(pag, cuit):
                             r["servicios"][clave_srv] = f"no se pudo confirmar que muestre el CUIT {arca.cuit_fmt(cuit)}"

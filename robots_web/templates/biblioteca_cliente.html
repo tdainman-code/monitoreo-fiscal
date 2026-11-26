@@ -13,7 +13,10 @@
   <td class="sutil" data-l="Pasos">{% for p in d.pasos or [] %}{{ '✓' if p.ok else '✗' }} {{ p.paso }}{% if p.detalle %}: {{ p.detalle }}{% endif %}<br>{% endfor %}</td>
   <td>{% if d.robot %}<form method="post" action="{{ url_for('pedir_corrida', cuit=c.cuit) }}" class="en-linea"><input type="hidden" name="csrf" value="{{ csrf() }}">
     <input type="hidden" name="robot" value="{{ d.robot }}"><button class="chico">Probar ahora</button></form>{% endif %}</td></tr>{% endfor %}
-</tbody></table></section>{% endif %}
+</tbody></table>
+{% if capturas %}<details class="plegado"><summary>Últimas pantallas que guardó el robot ({{ capturas|length }})</summary>
+  <p>{% for x in capturas %}<a href="{{ url_for('captura_robot', cuit=c.cuit, archivo=x.nombre) }}" target="_blank">📷 {{ x.fecha }} · {{ x.nombre }}</a><br>{% endfor %}</p>
+</details>{% endif %}</section>{% endif %}
 <details class="plegado"><summary>Fuentes que se bajan para este cliente ({{ elegidas|length }}){% if por_defecto %} · valores por defecto según su condición{% endif %}</summary>
   <form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}">
   <table class="tabla"><thead><tr><th></th><th>Organismo</th><th>Fuente</th><th>Se usa en</th><th>Robot</th></tr></thead><tbody>
