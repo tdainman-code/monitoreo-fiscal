@@ -42,7 +42,8 @@ SEL = {
 }
 SERVICIOS = [
     ("dfe", ["Domicilio Fiscal Electrónico", "Domicilio Fiscal Electronico", "DFE"]),
-    ("deuda", ["Estado de Cuenta", "Consulta de Deuda", "Estado de deuda"]),   # "Deuda" a secas abría Patentes
+    # "deuda" (Estado de Cuenta) ya no existe en el portal (Gaby 26/11/2026): la deuda sale de la Nueva Cuenta
+    # Corriente Tributaria ("cct").
     ("fiscalizacion", ["Fiscalización Electrónica AGIP", "Fiscalización Electrónica", "Fiscalizacion Electronica"]),
     # Nueva Cuenta Corriente Tributaria (portal-cct.agip.gob.ar), relevada con Gaby el 18/11/2026 (Dinafer S R L)
     ("cct", ["Nueva Cuenta Corriente Tributaria", "Cuenta Corriente Tributaria"]),
@@ -696,6 +697,10 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                             elif clave_srv == "cct":
                                 pag.wait_for_timeout(3000)               # la página arma los importes con JavaScript
                                 r["cct"] = leer_cct(pag.inner_text("body"))
+                                if r["deuda"]["total"] is None and r["cct"].get("saldo_deudor") is not None:
+                                    # la deuda de AGIP sale de la Nueva Cuenta Corriente Tributaria (26/11/2026)
+                                    r["deuda"]["total"] = round((r["cct"].get("saldo_deudor") or 0.0)
+                                                                + (r["cct"].get("intereses") or 0.0), 2)
                             elif clave_srv == "percepciones":
                                 # 25/11/2026 (Gabriel): todas las solapas, 2 meses, archivos y diagnóstico
                                 from . import robot_agip_retenciones

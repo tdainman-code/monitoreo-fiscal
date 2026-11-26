@@ -187,6 +187,16 @@
   </tbody></table>
   {% elif s.observados and not s.observados.comprobantes and sal.desde %}
   <p class="sutil">Sin comprobantes observados: no tuvo ninguno desde {{ sal.desde|fecha }} (desde ahí se guarda el historial; antes no se puede saber si hubo y se rectificaron).</p>
+  {% endif %}
+  {% set rect = s.rectificativas_iva %}
+  {% if rect %}
+  <h2>Libro IVA: última presentación de cada período <span class="sutil">· {{ rect|selectattr('secuencia')|list|length }} rectificado(s)</span></h2>
+  <p class="sutil">Si una factura APOC se sacó con una rectificativa, esta es la fecha en que se devolvió el crédito fiscal (útil si hay una fiscalización y la reclaman).</p>
+  <table class="tabla"><thead><tr><th>Período</th><th>Presentación</th><th>Fecha</th></tr></thead><tbody>
+  {% for x in rect %}<tr class="{{ 'fila-roja' if x.secuencia }}"><td>{{ x.periodo[5:] }}/{{ x.periodo[:4] }}</td>
+    <td data-l="Presentación">{% if x.secuencia %}<b>Rectificativa {{ x.secuencia }}</b>{% else %}Original (0){% endif %}</td>
+    <td data-l="Fecha">{{ x.fecha|fecha if x.fecha else '—' }}</td></tr>{% endfor %}
+  </tbody></table>
   {% endif %}{% endif %}
   {% set tipos = {'compras': ['Conciliación de compras'], 'informes': None}[sec] %}
   <h2>Excel</h2>

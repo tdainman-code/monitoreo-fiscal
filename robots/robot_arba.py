@@ -148,6 +148,10 @@ def _ir_busqueda(page):
         page.goto(URL_BUSCAR, wait_until="domcontentloaded")
         arca.pausa(1.0, 2.0)
     if not page.locator("form[action*='performBuscarDDJJ']").count():
+        if re.search(r"no se encuentra habilitado a presentar ddjj", page.inner_text("body"), re.I):
+            # Nabajuma 26/11/2026: Convenio Multilateral, ARBA no le habilita las DJ locales
+            raise arca.RequiereIntervencion("ARBA: no está habilitado para DJ de IIBB local (¿Convenio Multilateral? "
+                                            "cargar el régimen en la ficha)")
         raise arca.ErrorRobot("ARBA: no se pudo abrir la consulta de DJ cerradas")
     # El formulario abre en la solapa "Por comprobante"; Estado y periodos estan en "Por criterios varios"
     estado = page.locator("form[action*='performBuscarDDJJ'] [name=estado]")

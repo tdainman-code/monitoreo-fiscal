@@ -1086,6 +1086,8 @@ escribir(f"{D}/{C2}/libro_iva/2025-11.json", {"periodo": "2025-11", "secuencia_p
 _as = datos.apoc_salieron(C2)
 ok(len(_as["lista"]) == 1 and _as["lista"][0]["rectificado"] and _as["lista"][0]["dejo_de_figurar"] == "2026-11-26",
    "APOC: el que dejó de figurar se muestra con la rectificativa que lo sacó")
+ok(any(x["periodo"] == "2025-11" and x["secuencia"] == 1 for x in datos.rectificativas_iva(C2))
+   and "Rectificativa 1" in cl.get(f"/cliente/{C2}/compras").text, "Libro IVA: última rectificativa y fecha por período")
 os.remove(f"{D}/{C2}/libro_iva/2025-11.json"); os.remove(os.path.join(_dob, "observados_historial.json"))
 ok('id="b-buscar"' in cl.get("/biblioteca").text and 'data-buscar=' in cl.get("/biblioteca").text, "Biblioteca: buscador que filtra mientras se escribe")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML

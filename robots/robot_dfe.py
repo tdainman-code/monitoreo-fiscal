@@ -62,6 +62,31 @@ def _cerrar_cartel(page, espera_ms: int = 4000):
             pass
 
 
+def _vigilar_cartel_oficio(page) -> None:
+    """Gaby 26/11/2026 (Nabajuma): el modal "Notificaciones de oficio — tenés N comunicaciones notificadas de oficio sin
+    leer" puede aparecer en cualquier momento (al elegir el representado o al aplicar fechas) y tapa los clics: el robot
+    esperaba 45 s y fallaba. Playwright lo cierra solo antes de cada acción, siempre con CERRAR (nunca VISUALIZAR)."""
+    if not hasattr(page, "add_locator_handler"):
+        return
+    cartel = page.get_by_text(re.compile(r"notificadas de oficio sin leer", re.I))
+
+    def cerrar(*_):
+        for loc in (page.get_by_role("button", name=re.compile(r"^\s*Cerrar\s*$", re.I)),
+                    page.locator(".modal button, .modal a, [role=dialog] button").filter(has_text=re.compile(r"^\s*Cerrar\s*$", re.I))):
+            try:
+                if loc.count():
+                    loc.first.click(timeout=5000)
+                    return
+            except Exception:
+                continue
+        page.keyboard.press("Escape")
+
+    try:
+        page.add_locator_handler(cartel, cerrar)
+    except Exception:
+        pass
+
+
 def _valor_selector(page) -> list[str] | None:
     """Valores del selector de representados (o None si todavía no está). Se consulta cada vez desde
     cero porque la página lo vuelve a dibujar al cambiar de solapa."""
@@ -303,6 +328,7 @@ def _guardar_html(page, cuit: str) -> None:
 def paso(cuit: str, usuario: str, estado: dict):
     def fn(ctx, portal):
         page = arca.abrir_servicio(ctx, portal, "domicilio_fiscal")
+        _vigilar_cartel_oficio(page)
         page.wait_for_load_state("domcontentloaded")
         arca.pausa(2.0, 3.5)
         _cerrar_cartel(page, 8000)

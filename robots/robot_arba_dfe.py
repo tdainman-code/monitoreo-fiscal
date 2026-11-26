@@ -418,7 +418,16 @@ def paso(cuit: str, cit: str, estado: dict, meses: int | None = None):
                         # pedido del estudio (16/11/2026): se abren TODAS; al abrirla queda notificada hoy
                         f["estado_robot"] = f"SE NOTIFICÓ HOY ({date.today().strftime('%d-%m-%Y')}) al abrirla: corren plazos"
                         f["notificado_por_robot"] = date.today().isoformat()
-                    leido = _leer_una(ctx, f, os.path.join(carpeta, "pdf"))
+                    try:
+                        leido = _leer_una(ctx, f, os.path.join(carpeta, "pdf"))
+                    except Exception as e:
+                        # Gaby 26/11/2026 (Nabajuma, 216 comunicaciones desde 2014): una notificación que no abre su
+                        # detalle no corta la lectura de las demás ni las percepciones; queda anotada para reintentar.
+                        if arca.es_corte(e):
+                            raise
+                        f["error_lectura"] = f"{type(e).__name__}: {str(e).splitlines()[0][:120] if str(e) else ''}"
+                        estado.setdefault("sin_abrir_por_error", []).append(f["clave"])
+                        continue
                     reg[f["clave"]] = {**f, **leido, **analizar(f["tipo"], f["operativo"], leido["texto"]),
                                        "leida_por_robot": date.today().isoformat()}
                     with open(ruta_reg, "w", encoding="utf-8") as fh:      # se guarda de a una (cortes de sesión)

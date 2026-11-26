@@ -93,6 +93,19 @@ def _abiertas(filas) -> list:
     return out
 
 
+def rectificativas_iva(cuit: str) -> list[dict]:
+    """Última presentación del Libro IVA de cada período (Gaby 26/11/2026): "Libro IVA rectificativa X y la fecha:
+    cuándo se rectificó por última vez, para pescar lo viejo si hay una fiscalización y reclaman APOC"."""
+    out = []
+    for ruta in sorted(glob.glob(os.path.join(DATOS, cuit, "libro_iva", "[0-9][0-9][0-9][0-9]-[0-9][0-9].json")), reverse=True):
+        d = _leer(ruta) or {}
+        if d.get("secuencia_portal") is None:
+            continue
+        out.append({"periodo": os.path.basename(ruta)[:7], "secuencia": int(d.get("secuencia_portal") or 0),
+                    "secuencia_txt": d.get("secuencia_txt") or "", "fecha": d.get("fecha_presentacion") or ""})
+    return out
+
+
 def _fecha_txt(v) -> str:
     d = _fecha(v)
     return d.strftime("%d/%m/%Y") if d else str(v or "")
@@ -732,6 +745,7 @@ def ficha(cuit: str) -> dict:
                   "color": "rojo" if any(x["tema"] == "Convenio Multilateral" for x in s["revisar"])
                            else "amarillo" if (cm or {}).get("deuda_total") else color(False, hay=bool(cm))})
     s["apoc_salieron"] = apoc_salieron(cuit)
+    s["rectificativas_iva"] = rectificativas_iva(cuit)
     if meses_liva or obs:
         n_obs = len((obs or {}).get("comprobantes") or [])
         _sal = s["apoc_salieron"]["lista"]

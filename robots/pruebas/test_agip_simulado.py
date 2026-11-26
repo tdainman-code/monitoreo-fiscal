@@ -119,7 +119,7 @@ def leer():
 caso("ingresa con Clave Ciudad y lee DFE (sin abrir), deuda y fiscalización",
      lambda: (robot_agip.correr(CUIT, None, CUIT, "bien"), leer())[1],
      lambda r: print("   servicios:", r["servicios"]) or len(r["comunicaciones"]) == 2 and r["sin_abrir"] == 1 and r["altas_sin_abrir"] == 1
-     and r["comunicaciones"][0]["importancia"] == "ALTA" and abs(r["deuda"]["total"] - 250000.5) < 0.01
+     and r["comunicaciones"][0]["importancia"] == "ALTA" and abs(r["deuda"]["total"] - (2133601.00 + 885569.26)) < 0.01
      and r["fiscalizacion"] == [["FE-2026-123", "En curso"]] and r["cct"]["saldo_favor"] == 26303826.11
      and r["cct"]["faltas_presentacion"] == 71 and {i["impuesto"] for i in r["cct"]["impuestos"]} == {"IIBB - Convenio Multilateral", "Automotor"}
      and any(a["tipo"] == "AGIP: compensar deuda con saldo a favor" and "Automotor" in a["texto"] for a in r["alertas"])
