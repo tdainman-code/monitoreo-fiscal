@@ -14,8 +14,16 @@
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}">
   <input type="hidden" name="desde" value="{{ desde }}"><input type="hidden" name="hasta" value="{{ hasta }}">
   {% if cliente %}<input type="hidden" name="cliente" value="{{ cliente }}">{% endif %}
-  <p><label>Comisión <input name="porcentaje" value="{{ r.porcentaje }}" size="5"> % sobre el total facturado</label>
-  {% if not r.porcentaje %}<span class="sutil"> · falta cargar el porcentaje</span>{% endif %}</p>
+  <div class="caja-porcentaje">
+    <label for="porcentaje"><b>Comisión por gestión de negocios</b><br><span class="sutil">porcentaje sobre el total facturado final; la paga el comprador</span></label>
+    <div class="fila-porcentaje">
+      <input id="porcentaje" name="porcentaje" type="text" inputmode="decimal" autocomplete="off"
+             value="{{ (r.porcentaje|string).replace('.', ',') if r.porcentaje else '' }}" placeholder="ej.: 10 o 7,5">
+      <span class="pct">%</span>
+      <button>Guardar porcentaje</button>
+    </div>
+    {% if not r.porcentaje %}<p class="aviso-pct">Todavía no hay porcentaje cargado: escribilo acá y tocá Guardar.</p>{% endif %}
+  </div>
   {% if r.pares %}
   <table class="tabla"><thead><tr><th>Comprador (paga)</th><th>Vendedor</th><th class="num">Comp.</th><th class="num">Neto gravado</th><th class="num">No gravado</th><th class="num">Exento</th><th class="num">IVA</th><th class="num">Otros trib.</th><th class="num">Total</th><th>¿Ya se conocían?</th><th class="num">Comisión</th></tr></thead><tbody>
   {% for p in r.pares %}<tr><td>{{ p.nombre_comprador }}<br><span class="sutil">{{ cuit_fmt(p.comprador) }}</span></td>
@@ -28,6 +36,6 @@
     <td class="num">{{ p.comision|pesos }}</td></tr>{% endfor %}
   </tbody></table>
   {% else %}<p class="sutil">No hay facturas entre clientes del estudio en Mis Comprobantes bajados{{ ' para esos períodos' if desde or hasta }}.</p>{% endif %}
-  <p><button>Guardar porcentaje y marcas</button></p>
+  <p><button>Guardar marcas de “ya se conocían”</button></p>
 </form>
 {% endblock %}

@@ -253,3 +253,11 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .baja-x{display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:8px;color:var(--rojo);text-decoration:none;font-weight:700}
 .baja-x:hover{background:#fef2f2}button.peligro{background:var(--rojo)}
 .form-datos label{display:flex;flex-direction:column;gap:4px;margin:8px 0;font-size:13px}.form-datos input{padding:8px 10px;border:1px solid var(--borde);border-radius:8px;font:inherit;max-width:420px}
+
+/* Facturación entre clientes: porcentaje de comisión (26/11/2026) */
+.caja-porcentaje{background:#fff;border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin:14px 0;max-width:560px;box-shadow:var(--sombra)}
+.fila-porcentaje{display:flex;align-items:center;gap:8px;margin-top:8px}
+.fila-porcentaje input{width:110px;font-size:18px;padding:9px 12px;border:2px solid var(--azul);border-radius:10px;text-align:right;background:#f8fafc}
+.fila-porcentaje input:focus{outline:none;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.2)}
+.fila-porcentaje .pct{font-size:18px;font-weight:600}
+.aviso-pct{margin:8px 0 0;color:#b45309;font-size:13px}
