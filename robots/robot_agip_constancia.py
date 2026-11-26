@@ -72,6 +72,10 @@ def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
     hoy = hoy or date.today()
     tarjeta = page.get_by_text(re.compile(r"^\s*Ingresos Brutos\s*$", re.I)).locator("visible=true")
     if not tarjeta.count():
+        from .robot_agip import _cambiar_representado   # las tarjetas dependen del representado elegido arriba
+        if _cambiar_representado(page, None):
+            tarjeta = page.get_by_text(re.compile(r"^\s*Ingresos Brutos\s*$", re.I)).locator("visible=true")
+    if not tarjeta.count():
         tarjeta = page.locator("a, div, h3, h4, span").filter(has_text=re.compile(r"Portal de consultas y tr[aá]mites de IIBB", re.I))
     if not tarjeta.count():
         raise arca.ErrorRobot(f"AGIP: no aparece la tarjeta 'Ingresos Brutos' en el menú de Clave Ciudad (página: {page.url[:80]})")

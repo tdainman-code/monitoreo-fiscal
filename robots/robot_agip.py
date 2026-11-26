@@ -403,6 +403,42 @@ def _elegir_cuit(page, cuit: str) -> bool:
     return cuit in texto or fmt in texto
 
 
+def _cambiar_representado(page, cuit: str | None) -> bool:
+    """Menú de Clave Ciudad: "Seleccione un representado" (la lista de tarjetas cambia según a quién se representa).
+    cuit=None -> la primera opción (el propio usuario). Devuelve True si cambió algo."""
+    try:
+        sel = page.locator("select").filter(has=page.locator("option", has_text=re.compile(r"\[\d{2}-\d{8}-\d\]")))
+        if not sel.count():
+            return False
+        ops = sel.first.locator("option")
+        if cuit:
+            fmt = arca.cuit_fmt(cuit)
+            op = sel.first.locator(f"option:has-text('{fmt}'), option:has-text('{cuit}')")
+            if not op.count():
+                return False
+            v = op.first.get_attribute("value")
+        else:
+            v = ops.first.get_attribute("value")
+        if sel.first.input_value() == v:
+            return False
+        sel.first.select_option(value=v)
+        page.wait_for_timeout(3500)                      # las tarjetas se recargan
+        return True
+    except Exception:
+        return False
+
+
+def _abrir_servicio(ctx, page, cuit: str, textos: list[str]):
+    """25/11/2026 (Gaby, Nabajuma): las tarjetas dependen del representado elegido arriba. Se busca con el cliente
+    elegido; si no está, con el propio usuario (la aplicación pregunta después a quién se representa: _elegir_cuit)."""
+    pag = _abrir(ctx, page, textos)
+    if pag is None and _cambiar_representado(page, None):
+        pag = _abrir(ctx, page, textos)
+        if pag is None or pag is not page:
+            _cambiar_representado(page, cuit)            # el menú vuelve a quedar con el cliente
+    return pag
+
+
 def _abrir(ctx, page, textos: list[str]):
     """Abre un servicio del portal por el texto del enlace. Devuelve la pestaña (nueva o la misma) o None."""
     for t in textos:
@@ -544,7 +580,7 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
                     page.goto(inicio, wait_until="domcontentloaded")
                 for clave_srv, textos in SERVICIOS:
                     try:
-                        pag = _abrir(ctx, page, textos)
+                        pag = _abrir_servicio(ctx, page, cuit, textos)
                         if pag is None:
                             r["servicios"][clave_srv] = "no encontrado en el portal"
                             caps = arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), f"agip_{clave_srv}_no_encontrado")
