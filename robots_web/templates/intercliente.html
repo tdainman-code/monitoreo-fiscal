@@ -46,11 +46,11 @@
   Tildá "sacar" y guardá si alguno está mal.</p>
   <ul>
     {% for x in r.propios %}<li>Del estudio: {{ x.nombre }} <span class="sutil">{{ cuit_fmt(x.cuit) }}</span>
-      <label class="sutil"><input type="checkbox" name="quitar_propio" value="{{ x.cuit }}"> sacar</label></li>
+      {% if x.fijo %}<span class="sutil">· fijo</span>{% else %}<label class="sutil"><input type="checkbox" name="quitar_propio" value="{{ x.cuit }}"> sacar</label>{% endif %}</li>
     {% else %}<li class="sutil">Ningún cliente marcado como del estudio.</li>{% endfor %}
     <li><label>Agregar del estudio por CUIT <input name="agregar_propio" inputmode="numeric" placeholder="20-12345678-9" size="15"></label></li>
     {% for g in r.grupos %}<li>Mismo dueño: {% for x in g %}{{ x.nombre }}
-      <label class="sutil"><input type="checkbox" name="quitar_grupo" value="{{ x.cuit }}"> sacar</label>{{ ' · ' if not loop.last }}{% endfor %}</li>{% endfor %}
+      {% if x.fijo %}<span class="sutil">{{ cuit_fmt(x.cuit) }} · fijo</span>{% else %}<label class="sutil"><input type="checkbox" name="quitar_grupo" value="{{ x.cuit }}"> sacar</label>{% endif %}{{ ' · ' if not loop.last }}{% endfor %}</li>{% endfor %}
   </ul>
   {% if r.excluidos %}<details><summary>Ventas que quedaron afuera por estas reglas ({{ r.excluidos|length }})</summary>
   <table class="tabla"><thead><tr><th>Vendedor</th><th>Comprador</th><th>Motivo</th><th class="num">Comp.</th><th class="num">Total</th></tr></thead><tbody>

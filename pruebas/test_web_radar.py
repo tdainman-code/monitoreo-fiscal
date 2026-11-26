@@ -980,6 +980,10 @@ open(os.path.join(D, C2, "2026-10", "emitidos.csv"), "w", encoding="utf-8").writ
 _hi = cl2.get("/intercliente").text
 ok("Del estudio: BH SOLUCIONES" in _hi and "del estudio</td>" in _hi and 'name="conocidos"' not in _hi,
    "facturación entre clientes: lo que factura el estudio (BH) queda afuera solo, por CUIT")
+import robots_web.intercliente as _ic
+ok("20144460570" in _ic.conf()["propios"] and ["30643914278", "30712227571"] in _ic.conf()["grupos"]
+   and "· fijo" in _hi, "facturación entre clientes: Arturo, BH, Tallpir, Mancovsky, Dainman y Dinafer-Nabajuma fijos por CUIT")
+_ic.PROPIOS_CUITS, _ic.GRUPOS_CUITS = [], []          # para probar el resto con BH como cliente común
 _hi = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "", "quitar_propio": C2}, follow_redirects=True).text
 ok("Facturación entre clientes" in _hi and "121.000,00" in _hi and 'name="conocidos"' in _hi,
    "facturación entre clientes: muestra la factura de un cliente a otro")

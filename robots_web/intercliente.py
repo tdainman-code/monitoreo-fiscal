@@ -23,12 +23,13 @@ import re
 from . import datos
 
 # Solo por CUIT, nunca por nombre (Gaby 26/11/2026: "si algún nombre contiene BH lo eliminarías igual; por CUIT es
-# imposible eliminar lo que no corresponde"). Arturo y Dinafer: falta el CUIT (se cargan en pantalla).
+# imposible eliminar lo que no corresponde"). Estos van SIEMPRE (no se pueden sacar en pantalla); otros se agregan allá.
 PROPIOS_CUITS = ["20205744283",   # Gabriel Mancovsky
                  "20388931311",   # Dainman Tomás
                  "30699625856",   # Tallpir
-                 "30717468631"]   # BH Soluciones Empresariales SRL
-GRUPOS_CUITS: list[list[str]] = []   # Nabajuma 30712227571 + Dinafer (falta su CUIT)
+                 "30717468631",   # BH Soluciones Empresariales SRL
+                 "20144460570"]   # Arturo Giuffre
+GRUPOS_CUITS = [["30643914278", "30712227571"]]   # Dinafer S.R.L. + Nabajuma SA (mismo dueño)
 NOTAS_CREDITO = {3, 8, 13, 53, 110, 112, 113, 114, 203, 208, 213}
 # Columnas como el Libro IVA (Gaby 26/11/2026): (clave, título, columnas posibles del CSV de Mis Comprobantes)
 IMPORTES = [("neto_gravado", "Neto gravado", ("Imp. Neto Gravado Total", "Imp. Neto Gravado")),
@@ -55,10 +56,13 @@ def conf() -> dict:
         d = {}
     out = {"porcentaje": float(d.get("porcentaje") or 0), "conocidos": list(d.get("conocidos") or []),
            "propios": d.get("propios"), "grupos": d.get("grupos")}
-    if out["propios"] is None:
-        out["propios"] = sorted(PROPIOS_CUITS)
-    if out["grupos"] is None:
-        out["grupos"] = [list(g) for g in GRUPOS_CUITS]
+    out["propios"] = sorted(set(out["propios"] or []) | set(PROPIOS_CUITS))
+    grupos = [list(g) for g in out["grupos"] or []]
+    for g in GRUPOS_CUITS:
+        for x in g[1:]:
+            grupos = unir_grupo(grupos, g[0], x)
+    out["grupos"] = grupos
+    out["fijos"] = sorted(set(PROPIOS_CUITS) | {x for g in GRUPOS_CUITS for x in g})
     return out
 
 
@@ -83,6 +87,7 @@ def unir_grupo(grupos: list, a: str, b: str) -> list:
 
 
 def guardar_conf(c: dict) -> None:
+    c = {k: v for k, v in c.items() if k != "fijos"}
     os.makedirs(os.path.dirname(_ruta_conf()), exist_ok=True)
     tmp = _ruta_conf() + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -170,8 +175,8 @@ def resumen(desde: str = "", hasta: str = "", cliente: str = "") -> dict:
             e["comprobantes"] += 1
             e["total"] = round(e["total"] + o["total"], 2)
     return {"porcentaje": c["porcentaje"], "excluidos": sorted(excl.values(), key=lambda e: (e["motivo"], -e["total"])),
-            "propios": [{"cuit": x, "nombre": nombres.get(x, x)} for x in c["propios"]],
-            "grupos": [[{"cuit": x, "nombre": nombres.get(x, x)} for x in g] for g in c["grupos"]],
+            "propios": [{"cuit": x, "nombre": nombres.get(x, x), "fijo": x in c["fijos"]} for x in c["propios"]],
+            "grupos": [[{"cuit": x, "nombre": nombres.get(x, x), "fijo": x in c["fijos"]} for x in g] for g in c["grupos"]],
             "pares": sorted(pares.values(), key=lambda p: (p["nombre_comprador"], -p["total"])),
             "operaciones": ops}
 
