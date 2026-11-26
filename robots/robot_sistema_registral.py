@@ -101,7 +101,10 @@ def leer_aduana(texto: str) -> dict:
     m = re.search(r"Tipo de Operador.*?\n\s*([A-ZÁÉÍÓÚ/ ]{4,})\s+(\d{2}-\d{2}-\d{4})", t, re.S)
     e = re.search(r"Estados del operador.*?Fecha vigencia desde\s*\n?\s*([A-ZÁÉÍÓÚ/ ]{4,}?)\s+(HABILITADO|INHABILITADO|SUSPENDIDO|[A-Z]+)\s",
                   t, re.S)
-    return {"operador": (m[1].strip() if m else ""), "desde": (m[2] if m else ""),
+    # Gaby 26/11/2026 (su CUIT): quien NO es operador ve solo Domicilio aduanero electrónico / Solvencia económica /
+    # Datos digitales, sin "Tipo de Operador": no es importador.
+    no_operador = not m and bool(re.search(r"Solvencia econ[oó]mica|Domicilio aduanero electr[oó]nico", t, re.I))
+    return {"operador": (m[1].strip() if m else ""), "desde": (m[2] if m else ""), "no_operador": no_operador,
             "estado": (e[2] if e else ""), "sicnea": bool(re.search(r"adherido al SICNEA\s*\n?\s*SI", t, re.I))}
 
 
@@ -142,6 +145,8 @@ def resumen_ficha(r: dict) -> dict:
     ad = r.get("aduana") or {}
     if ad.get("operador"):
         out["importador"] = f"{ad['operador']} ({ad.get('estado') or 'sin estado'})"
+    elif ad.get("no_operador"):
+        out["importador"] = "No"
     return out
 
 
@@ -276,7 +281,7 @@ def leer(ctx, portal, cuit: str) -> dict:
             nuevas = [p for p in ctx.pages if p not in antes]
             dest = nuevas[-1] if nuevas else pag
             dest.wait_for_load_state("domcontentloaded")
-            r["aduana"] = leer_aduana(_marco_con(dest, r"Tipo de Operador|Situaci[oó]n en el Sistema Registral", 30).inner_text("body"))
+            r["aduana"] = leer_aduana(_marco_con(dest, r"Tipo de Operador|Situaci[oó]n en el Sistema Registral|Solvencia econ[oó]mica|Domicilio aduanero electr[oó]nico", 30).inner_text("body"))
             if dest is not pag:
                 dest.close()
         except Exception as e:

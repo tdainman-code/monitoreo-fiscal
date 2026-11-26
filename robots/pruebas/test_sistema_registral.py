@@ -58,6 +58,16 @@ IMPORTADOR/EXPORTADOR	HABILITADO	14-12-2021
 """
 r["aduana"] = sr.leer_aduana(ADU)
 ok(r["aduana"]["operador"] == "IMPORTADOR/EXPORTADOR" and r["aduana"]["estado"] == "HABILITADO", "Registro Aduanero: importador habilitado")
+_no = sr.leer_aduana("""CUIT: 20205744283 - Apellido : MANCOVSKY Nombre : GABRIEL ERNESTO
+Domicilio aduanero electrónico - 20205744283
+Está adherido al SICNEA
+NO
+Solvencia económica - 20205744283
+Determinación de solvencia
+Acredita solvencia económica para actuar como importador/exportador
+Datos Digitales Presentados y Confirmados - 20205744283""")
+ok(_no["no_operador"] and not _no["operador"] and sr.resumen_ficha({"aduana": _no}).get("importador") == "No",
+   "Registro Aduanero: sin 'Tipo de Operador' (Gaby) -> no es importador")
 f = sr.resumen_ficha(r)
 ok(f.get("condicion_iva") == "Responsable inscripto" and f.get("condicion_ganancias") == "Inscripto"
    and f.get("regimen_iibb") == "Convenio Multilateral" and f.get("empleador") == "Sí" and f.get("mes_cierre") == "Diciembre"
