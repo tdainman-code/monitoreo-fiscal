@@ -1070,6 +1070,8 @@ for _n in os.listdir(os.path.join(BANDEJA, "pedidos")):
     if _n.endswith(".json"):
         os.remove(os.path.join(BANDEJA, "pedidos", _n))
 os.remove(f"{D}/{C2}/ccma/2026-11-26.json")
+ok(all("En rojo por:" in (b.get("sub2") or "") for b in datos.ficha(C2).get("botones", []) if b.get("id") == "relacion" and b.get("color") == "rojo"),
+   "Relación débito crédito: si está en rojo dice por qué")
 ok(datos.tipo_actividad("692000") == "Servicios" and datos.tipo_actividad("461011").startswith("Bienes")
    and datos.tipo_actividad("141110") == "Bienes (producción)", "actividad: servicios o bienes según el código de la inscripción")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML

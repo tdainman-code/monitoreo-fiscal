@@ -746,7 +746,12 @@ def ficha(cuit: str) -> dict:
                                 if (actividad_principal(cuit).get("tipo") == "Servicios") else "")
                              + (f" · {len(dif)} mes(es) no coinciden con Mis Comprobantes" if dif else ""),
                       "color": "gris" if tot["resultado"] is None else "rojo" if tot["resultado"] < 0 or dif or sub2_perc else "verde",
-                      "sub2": sub2_perc})
+                      "sub2": "En rojo por: " + "; ".join(x for x in (
+                                  "resultado negativo" if tot["resultado"] is not None and tot["resultado"] < 0 else "",
+                                  f"{len(dif)} mes(es) en que el Libro IVA no coincide con Mis Comprobantes" if dif else "",
+                                  (f"{len(pc_['sin_comprobante'])} percepción(es) sin su factura en el Libro IVA "
+                                   f"({_pesos_txt(pc_.get('total_sin_comprobante') or 0)})") if pc_.get("sin_comprobante") else "") if x)
+                              if tot["resultado"] is not None and (tot["resultado"] < 0 or dif or sub2_perc) else ""})
     if s["fisc"] or (s["agip"] or {}).get("fiscalizacion") is not None:
         b.append({"id": "fiscalizaciones", "titulo": "Fiscalizaciones", "valor": s["fiscalizaciones"],
                   "sub": "ARCA (OI, SIACE) y AGIP", "color": "rojo" if s["fiscalizaciones"] else "verde"})
