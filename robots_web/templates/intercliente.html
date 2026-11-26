@@ -25,20 +25,21 @@
     {% if not r.porcentaje %}<p class="aviso-pct">Todavía no hay porcentaje cargado: escribilo acá y tocá Guardar.</p>{% endif %}
   </div>
   {% if r.pares %}
-  <table class="tabla"><thead><tr><th>Comprador (paga)</th><th>Vendedor</th><th class="num">Comp.</th><th class="num">Neto gravado</th><th class="num">No gravado</th><th class="num">Exento</th><th class="num">IVA</th><th class="num">Otros trib.</th><th class="num">Total</th><th>¿Ya se conocían?</th><th class="num">Comisión</th><th>No va nunca</th></tr></thead><tbody>
+  <div style="overflow-x:auto">
+  <table class="tabla"><thead><tr><th>Comprador (paga)</th><th>Vendedor</th><th class="num">Total</th><th class="num">Comisión</th><th>¿Ya se conocían?</th><th>No va nunca</th><th class="num">Comp.</th><th class="num">Neto gravado</th><th class="num">No gravado</th><th class="num">Exento</th><th class="num">IVA</th><th class="num">Otros trib.</th></tr></thead><tbody>
   {% for p in r.pares %}<tr><td>{{ p.nombre_comprador }}<br><span class="sutil">{{ cuit_fmt(p.comprador) }}</span></td>
     <td>{{ p.nombre_vendedor }}<br><span class="sutil">{{ cuit_fmt(p.vendedor) }}</span></td>
-    <td class="num">{{ p.comprobantes }}</td><td class="num" data-l="Neto gravado">{{ p.neto_gravado|pesos }}</td>
-    <td class="num" data-l="No gravado">{{ p.no_gravado|pesos }}</td><td class="num" data-l="Exento">{{ p.exento|pesos }}</td>
-    <td class="num" data-l="IVA">{{ p.iva|pesos }}</td><td class="num" data-l="Otros tributos">{{ p.otros_tributos|pesos }}</td>
     <td class="num" data-l="Total">{{ p.total|pesos }}</td>
-    <td><input type="hidden" name="par" value="{{ p.clave }}"><label><input type="checkbox" name="conocidos" value="{{ p.clave }}" {{ 'checked' if p.conocidos }}> sí</label></td>
-    <td class="num">{{ p.comision|pesos }}</td>
-    <td><select name="excluir"><option value="">—</option>
+    <td class="num" data-l="Comisión">{{ p.comision|pesos }}</td>
+    <td data-l="¿Ya se conocían?"><input type="hidden" name="par" value="{{ p.clave }}">{% if p.conocido_fijo %}<span class="sutil">sí · fijo</span>{% else %}<label><input type="checkbox" name="conocidos" value="{{ p.clave }}" {{ 'checked' if p.conocidos }}> sí</label>{% endif %}</td>
+    <td data-l="No va nunca"><select name="excluir"><option value="">—</option>
       <option value="{{ p.clave }}:vendedor">el vendedor es del estudio</option>
       <option value="{{ p.clave }}:comprador">el comprador es del estudio</option>
-      <option value="{{ p.clave }}:grupo">mismo dueño</option></select></td></tr>{% endfor %}
-  </tbody></table>
+      <option value="{{ p.clave }}:grupo">mismo dueño</option></select></td>
+    <td class="num" data-l="Comprobantes">{{ p.comprobantes }}</td><td class="num" data-l="Neto gravado">{{ p.neto_gravado|pesos }}</td>
+    <td class="num" data-l="No gravado">{{ p.no_gravado|pesos }}</td><td class="num" data-l="Exento">{{ p.exento|pesos }}</td>
+    <td class="num" data-l="IVA">{{ p.iva|pesos }}</td><td class="num" data-l="Otros tributos">{{ p.otros_tributos|pesos }}</td></tr>{% endfor %}
+  </tbody></table></div>
   {% else %}<p class="sutil">No hay facturas entre clientes del estudio en Mis Comprobantes bajados{{ ' para esos períodos' if desde or hasta }}.</p>{% endif %}
   <p><button>Guardar marcas</button></p>
   <details class="plegado"><summary>No van nunca: del estudio y mismo dueño (ver o corregir)</summary>

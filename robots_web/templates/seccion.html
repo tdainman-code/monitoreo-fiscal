@@ -442,7 +442,8 @@
   {% set h = s.scth %}
   {% if h %}
   <div class="tarjetas">
-    <div class="tarjeta"><span class="sutil">Deuda (todos los años leídos)</span><b class="{{ 'txt-rojo' if h.deuda_total }}">{{ h.deuda_total|pesos }}</b></div>
+    <div class="tarjeta"><span class="sutil">Deuda vencida (todos los años leídos)</span><b class="{{ 'txt-rojo' if h.deuda_total }}">{{ h.deuda_total|pesos }}</b></div>
+    {% if h.no_vencido_total %}<div class="tarjeta"><span class="sutil">Todavía no vence (anticipos y cuotas por vencer: no cuenta como deuda)</span><b>{{ h.no_vencido_total|pesos }}</b></div>{% endif %}
     {% if h.deuda_arca is defined %}<div class="tarjeta"><span class="sutil">Propia de ARCA (en rojo)</span><b class="{{ 'txt-rojo' if h.deuda_arca }}">{{ h.deuda_arca|pesos }}</b></div>
     <div class="tarjeta"><span class="sutil">Para terceros: obras sociales, ART, seguro de vida (en verde)</span><b class="{{ 'txt-rojo' if h.deuda_terceros }}">{{ h.deuda_terceros|pesos }}</b></div>{% endif %}
     <div class="tarjeta"><span class="sutil">F.931 fuera de 301 / 351</span><b class="{{ 'txt-rojo' if h.deuda_f931_otros }}">{{ h.deuda_f931_otros|pesos }}</b></div>

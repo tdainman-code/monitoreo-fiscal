@@ -29,7 +29,11 @@ PROPIOS_CUITS = ["20205744283",   # Gabriel Mancovsky
                  "30699625856",   # Tallpir
                  "30717468631",   # BH Soluciones Empresariales SRL
                  "20144460570"]   # Arturo Giuffre
-GRUPOS_CUITS = [["30643914278", "30712227571"]]   # Dinafer S.R.L. + Nabajuma SA (mismo dueño)
+GRUPOS_CUITS = [["30643914278", "30712227571"],   # Dinafer S.R.L. + Nabajuma SA (mismo dueño)
+                ["30718986377", "30715443984"],   # Catedelpisco SRL + Uma Trading (mismos dueños, 80 %)
+                ["30663611565", "20170970242"]]   # La Nata SA + Rodolfo Manes (dueño real)
+# Pares que ya se conocían (sin comisión), en las dos direcciones
+CONOCIDOS_FIJOS = [("20331162788", "20181537001")]   # Gonçalves Vicente Juan José y Domingo Pablo Daniel: proveedor habitual
 NOTAS_CREDITO = {3, 8, 13, 53, 110, 112, 113, 114, 203, 208, 213}
 # Columnas como el Libro IVA (Gaby 26/11/2026): (clave, título, columnas posibles del CSV de Mis Comprobantes)
 IMPORTES = [("neto_gravado", "Neto gravado", ("Imp. Neto Gravado Total", "Imp. Neto Gravado")),
@@ -62,6 +66,7 @@ def conf() -> dict:
         for x in g[1:]:
             grupos = unir_grupo(grupos, g[0], x)
     out["grupos"] = grupos
+    out["conocidos"] = sorted(set(out["conocidos"]) | {f"{a}>{b}" for x, y in CONOCIDOS_FIJOS for a, b in ((x, y), (y, x))})
     out["fijos"] = sorted(set(PROPIOS_CUITS) | {x for g in GRUPOS_CUITS for x in g})
     return out
 
@@ -159,7 +164,9 @@ def resumen(desde: str = "", hasta: str = "", cliente: str = "") -> dict:
         k = f"{o['vendedor']}>{o['comprador']}"
         p = pares.setdefault(k, {"clave": k, "vendedor": o["vendedor"], "nombre_vendedor": o["nombre_vendedor"],
                                  "comprador": o["comprador"], "nombre_comprador": o["nombre_comprador"],
-                                 "comprobantes": 0, "conocidos": k in conocidos, **{x[0]: 0.0 for x in IMPORTES}})
+                                 "comprobantes": 0, "conocidos": k in conocidos,
+                                 "conocido_fijo": any(k in (f"{x}>{y}", f"{y}>{x}") for x, y in CONOCIDOS_FIJOS),
+                                 **{x[0]: 0.0 for x in IMPORTES}})
         p["comprobantes"] += 1
         for x in IMPORTES:
             p[x[0]] = round(p[x[0]] + o[x[0]], 2)

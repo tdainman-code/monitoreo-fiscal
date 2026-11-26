@@ -109,6 +109,7 @@ def analizar(tablas: list[dict]) -> list[dict]:
         i_d = next((i for i, c in enumerate(cab) if c.startswith("DEUDA")), 4)
         col = lambda nombre, defecto: next((i for i, c in enumerate(cab) if c.startswith(nombre)), defecto)
         i_p, i_c, i_ep = col("PER", 1), col("CONCEPTO", 2), col("ESTADO PAGO", 12)
+        i_a = col("ANT", None)
         m = re.match(r"(\d+)\s*-\s*(.+)", t.get("titulo") or "")
         imp, nombre = (m[1], m[2].strip()) if m else ("", t.get("titulo") or "")
         for f in t.get("filas") or []:
@@ -120,7 +121,8 @@ def analizar(tablas: list[dict]) -> list[dict]:
                 continue
             out.append({"impuesto": imp, "nombre": nombre, "periodo": c[i_p], "concepto": c[i_c] if len(c) > i_c else "",
                         "deuda": round(deuda, 2), "color": _color((f.get("colores") or [""] * 20)[i_d]),
-                        "estado_pago": c[i_ep] if len(c) > i_ep else "", "f931": imp in F931})
+                        "estado_pago": c[i_ep] if len(c) > i_ep else "", "f931": imp in F931,
+                        "cuota": (c[i_a].strip() if i_a is not None and len(c) > i_a else "")})
     return out
 
 

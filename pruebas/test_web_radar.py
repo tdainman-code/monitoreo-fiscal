@@ -233,6 +233,16 @@ ok(cl.post("/revision/visto", data={"clave": "cm:99999999999:x", "cuit": C, "mar
    "visto: clave de otro cliente rechazada")
 for _x in ("sifere_deuda", "sct_historico"):
     os.remove(f"{D}/{C}/{_x}/2026-11-17.json")
+# Deuda histórica solo con lo vencido (Gaby 26/11/2026: anticipos que aún no vencen salían como deuda urgente)
+_h = {"deudas": [{"impuesto": "11", "nombre": "GANANCIAS PERSONAS FISICAS", "periodo": "20260000", "cuota": "4", "deuda": 500.0, "color": "rojo", "f931": False},
+                 {"impuesto": "11", "nombre": "GANANCIAS PERSONAS FISICAS", "periodo": "20250000", "cuota": "", "deuda": 300.0, "color": "rojo", "f931": False}],
+      "deuda_total": 800.0}
+_sv = datos.solo_vencido(_h, {"deudas": [{"impuesto": "11 - GANANCIAS PERSONAS FISICAS", "periodo": "20260000", "cuota": "04", "vencida": False},
+                                          {"impuesto": "11 - GANANCIAS PERSONAS FISICAS", "periodo": "20250000", "cuota": "0", "vencida": True}]})
+ok(_sv["deuda_total"] == 300.0 and _sv["no_vencido_total"] == 500.0, "deuda histórica: el anticipo que todavía no vence no cuenta como deuda")
+_sv = datos.solo_vencido({"deudas": [_h["deudas"][0]], "deuda_total": 500.0},
+                         {"deudas": [{"impuesto": "11 - GANANCIAS", "periodo": "20260000", "cuota": "4", "vencida": False}]})
+ok(_sv["deuda_total"] == 0 and not datos.revisiones("x", None, _sv), "deuda histórica: solo anticipos por vencer -> nada para revisar")
 # cada colaborador ve solo sus clientes; los administradores ven todo (18/11/2026)
 cb = app.test_client()
 login(cb, "beto", "clavebeto12345")

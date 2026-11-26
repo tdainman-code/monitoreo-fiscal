@@ -102,6 +102,47 @@ def _pesos_txt(x) -> str:
     return f"$ {x or 0:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _cod(t) -> str:
+    m = re.match(r"\s*0*(\d+)", str(t or ""))
+    return m[1] if m else ""
+
+
+def _cuota(t) -> str:
+    return str(int(re.sub(r"\D", "", str(t)) or 0)) if re.sub(r"\D", "", str(t or "")) else ""
+
+
+def solo_vencido(scth: dict | None, sct: dict | None) -> dict | None:
+    """Deuda histórica (estado de cumplimiento) SOLO con lo vencido (Gaby 26/11/2026: "me pone deuda histórica en
+    urgente y son anticipos que aún no vencen"). El estado de cumplimiento no trae el vencimiento; la lectura diaria
+    de Cuentas Tributarias sí: lo que allí figura por vencer (mismo impuesto, período y anticipo) sale de la deuda."""
+    if not scth or not scth.get("deudas"):
+        return scth
+    venc, por_vencer = set(), set()
+    for d in (sct or {}).get("deudas") or []:
+        for k in ((_cod(d.get("impuesto")), str(d.get("periodo") or ""), _cuota(d.get("cuota"))),
+                  (_cod(d.get("impuesto")), str(d.get("periodo") or ""), "*")):
+            (venc if d.get("vencida") else por_vencer).add(k)
+    def no_vencida(f):
+        imp, per, cu = _cod(f.get("impuesto")), str(f.get("periodo") or ""), _cuota(f.get("cuota"))
+        if cu:
+            return (imp, per, cu) in por_vencer and (imp, per, cu) not in venc
+        return (imp, per, "*") in por_vencer and (imp, per, "*") not in venc
+    filas = [f for f in scth["deudas"] if not no_vencida(f)]
+    if len(filas) == len(scth["deudas"]):
+        return scth
+    por_imp = {}
+    for f in filas:
+        k = f"{f['impuesto']} - {f['nombre']}"
+        por_imp[k] = round(por_imp.get(k, 0.0) + f["deuda"], 2)
+    nv = [f for f in scth["deudas"] if no_vencida(f)]
+    tot = round(sum(f["deuda"] for f in filas), 2)
+    ter = round(sum(f["deuda"] for f in filas if f.get("color") == "verde"), 2)
+    return {**scth, "deudas": filas, "por_impuesto": por_imp, "deuda_total": tot, "deuda_terceros": ter,
+            "deuda_arca": round(tot - ter, 2),
+            "deuda_f931_otros": round(sum(f["deuda"] for f in filas if f.get("f931") and f.get("impuesto") not in ("301", "351")), 2),
+            "no_vencido": nv, "no_vencido_total": round(sum(f["deuda"] for f in nv), 2)}
+
+
 def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None = None, arba: dict | None = None,
                perc: dict | None = None, ccma: dict | None = None) -> list[dict]:
     """Deuda histórica que el ENCARGADO tiene que revisar y marcar "visto, me ocupo" (Gaby, 17/11/2026):
@@ -196,6 +237,7 @@ def situacion(cuit: str) -> dict:
     ccma = _leer(_ultimo(os.path.join(base, "ccma", "*.json")))   # autónomos / monotributo (17/11/2026)
     scth = _leer(_ultimo(os.path.join(base, "sct_historico", "*.json")))   # deuda histórica SCT (17/11/2026)
     perc = _leer(os.path.join(base, "conciliacion", "percepciones.json"))   # percepciones vs Libro IVA (21/11/2026)
+    scth = solo_vencido(scth, sct)
     r["cm"], r["scth"], r["percepciones"] = cm, scth, perc
     r["revisiones"] = revisiones(cuit, cm, scth, agip, arba, perc, ccma)
     r["revisar"] = [x for x in r["revisiones"] if not x["visto"]]
