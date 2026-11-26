@@ -979,7 +979,7 @@ open(os.path.join(D, C2, "2026-10", "emitidos.csv"), "w", encoding="utf-8").writ
     "2026-10-05;1 - Factura A;3;120;" + C + ";100.000,00;21.000,00;21.000,00;0;121.000,00\n")
 _hi = cl2.get("/intercliente").text
 ok("Del estudio: BH SOLUCIONES" in _hi and "del estudio</td>" in _hi and 'name="conocidos"' not in _hi,
-   "facturación entre clientes: lo que factura el estudio (BH) queda afuera solo, por nombre")
+   "facturación entre clientes: lo que factura el estudio (BH) queda afuera solo, por CUIT")
 _hi = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "", "quitar_propio": C2}, follow_redirects=True).text
 ok("Facturación entre clientes" in _hi and "121.000,00" in _hi and 'name="conocidos"' in _hi,
    "facturación entre clientes: muestra la factura de un cliente a otro")

@@ -10,7 +10,7 @@ Marcas y porcentaje: ROBOTS_WEB_DATOS/intercliente.json
 Exclusiones (Gaby 26/11/2026):
   - "propios": somos nosotros (BH, Tallpir, Arturo, Mancovsky, Dainman) que le facturamos al cliente -> nunca van.
   - "grupos": clientes del mismo dueño (Nabajuma y Dinafer) -> lo que se facturan entre ellos nunca va.
-  Si el archivo todavía no tiene esas claves, se arrancan por nombre (PROPIOS_NOMBRES / GRUPOS_NOMBRES) y se corrigen en pantalla.
+  Todo por CUIT (PROPIOS_CUITS fijos + los que se agregan en pantalla), nunca por nombre.
 """
 from __future__ import annotations
 
@@ -22,9 +22,13 @@ import re
 
 from . import datos
 
-# Arturo va por CUIT (Gaby 26/11/2026: "busca por cuit, no existen 2 personas con el mismo cuit"): se carga en pantalla.
-PROPIOS_NOMBRES = r"\bBH SOLUCIONES|\bTALLPIR|\bMANCOVSKY|\bDAINMAN"
-GRUPOS_NOMBRES = [r"\bNABAJUMA", r"\bDINAFER"]
+# Solo por CUIT, nunca por nombre (Gaby 26/11/2026: "si algún nombre contiene BH lo eliminarías igual; por CUIT es
+# imposible eliminar lo que no corresponde"). Arturo y Dinafer: falta el CUIT (se cargan en pantalla).
+PROPIOS_CUITS = ["20205744283",   # Gabriel Mancovsky
+                 "20388931311",   # Dainman Tomás
+                 "30699625856",   # Tallpir
+                 "30717468631"]   # BH Soluciones Empresariales SRL
+GRUPOS_CUITS: list[list[str]] = []   # Nabajuma 30712227571 + Dinafer (falta su CUIT)
 NOTAS_CREDITO = {3, 8, 13, 53, 110, 112, 113, 114, 203, 208, 213}
 # Columnas como el Libro IVA (Gaby 26/11/2026): (clave, título, columnas posibles del CSV de Mis Comprobantes)
 IMPORTES = [("neto_gravado", "Neto gravado", ("Imp. Neto Gravado Total", "Imp. Neto Gravado")),
@@ -51,13 +55,10 @@ def conf() -> dict:
         d = {}
     out = {"porcentaje": float(d.get("porcentaje") or 0), "conocidos": list(d.get("conocidos") or []),
            "propios": d.get("propios"), "grupos": d.get("grupos")}
-    if out["propios"] is None or out["grupos"] is None:
-        cl = [(c["cuit"], (c.get("razon_social") or "").upper()) for c in datos.lista_clientes()]
-        if out["propios"] is None:
-            out["propios"] = sorted(x for x, n in cl if re.search(PROPIOS_NOMBRES, n))
-        if out["grupos"] is None:
-            g = sorted({x for x, n in cl for rx in GRUPOS_NOMBRES if re.search(rx, n)})
-            out["grupos"] = [g] if len(g) > 1 else []
+    if out["propios"] is None:
+        out["propios"] = sorted(PROPIOS_CUITS)
+    if out["grupos"] is None:
+        out["grupos"] = [list(g) for g in GRUPOS_CUITS]
     return out
 
 
