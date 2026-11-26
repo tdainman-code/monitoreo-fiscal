@@ -1174,6 +1174,36 @@ def biblioteca_zip(cuit, periodo):
                      as_attachment=True, download_name=f"importables_{cuit}_{periodo}.zip", mimetype="application/zip")
 
 
+@app.route("/intercliente", methods=["GET", "POST"])
+@requiere_admin
+def intercliente():
+    """Facturación entre clientes del estudio y comisión por gestión de negocios (solo administradores, 26/11/2026)."""
+    from . import intercliente as ic
+    desde = _periodo_ok(request.values.get("desde")) or ""
+    hasta = _periodo_ok(request.values.get("hasta")) or ""
+    if request.method == "POST":
+        _controlar_csrf()
+        c = ic.conf()
+        try:
+            c["porcentaje"] = max(0.0, min(100.0, float((request.form.get("porcentaje") or "0").replace(",", "."))))
+        except ValueError:
+            flash("El porcentaje tiene que ser un número", "error")
+        visibles = set(request.form.getlist("par"))
+        marcados = set(request.form.getlist("conocidos"))
+        c["conocidos"] = sorted((set(c["conocidos"]) - visibles) | (marcados & visibles))
+        ic.guardar_conf(c)
+        usuarios.registrar(session["usuario"], "facturación entre clientes: marcas y porcentaje",
+                           f"{c['porcentaje']} % · {len(c['conocidos'])} pares conocidos", _ip())
+        flash("Guardado", "ok")
+        return redirect(url_for("intercliente", desde=desde, hasta=hasta))
+    if request.args.get("excel"):
+        usuarios.registrar(session["usuario"], "bajó facturación entre clientes", f"{desde}-{hasta}", _ip())
+        return send_file(BytesIO(ic.excel(desde, hasta)), as_attachment=True,
+                         download_name=f"facturacion_entre_clientes_{date.today().isoformat()}.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return render_template("intercliente.html", r=ic.resumen(desde, hasta), desde=desde, hasta=hasta)
+
+
 @app.route("/mas")
 @requiere_login
 def mas():

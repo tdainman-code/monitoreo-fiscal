@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block titulo %}Facturación entre clientes{% endblock %}
+{% block cuerpo %}
+<h1>Facturación entre clientes</h1>
+<p class="sutil">De Mis Comprobantes emitidos de cada cliente: facturas a otros clientes del estudio. La comisión la paga el
+<b>comprador</b>, sobre el <b>total facturado</b>. Tildá los pares que ya se conocían de antes: quedan sin comisión. Solo administradores.</p>
+<form method="get" class="en-linea">
+  <label>Desde <input name="desde" value="{{ desde }}" placeholder="AAAA-MM" size="8"></label>
+  <label>Hasta <input name="hasta" value="{{ hasta }}" placeholder="AAAA-MM" size="8"></label>
+  <button class="chico">Filtrar</button>
+  <a class="boton chico" href="{{ url_for('intercliente', desde=desde, hasta=hasta, excel=1) }}">⬇ Excel (una solapa por cliente)</a>
+</form>
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf() }}">
+  <input type="hidden" name="desde" value="{{ desde }}"><input type="hidden" name="hasta" value="{{ hasta }}">
+  <p><label>Comisión <input name="porcentaje" value="{{ r.porcentaje }}" size="5"> % sobre el total facturado</label>
+  {% if not r.porcentaje %}<span class="sutil"> · falta cargar el porcentaje</span>{% endif %}</p>
+  {% if r.pares %}
+  <table class="tabla"><thead><tr><th>Comprador (paga)</th><th>Vendedor</th><th class="num">Comprobantes</th><th class="num">Total facturado</th><th>¿Ya se conocían?</th><th class="num">Comisión</th></tr></thead><tbody>
+  {% for p in r.pares %}<tr><td>{{ p.nombre_comprador }}<br><span class="sutil">{{ cuit_fmt(p.comprador) }}</span></td>
+    <td>{{ p.nombre_vendedor }}<br><span class="sutil">{{ cuit_fmt(p.vendedor) }}</span></td>
+    <td class="num">{{ p.comprobantes }}</td><td class="num">{{ p.total|pesos }}</td>
+    <td><input type="hidden" name="par" value="{{ p.clave }}"><label><input type="checkbox" name="conocidos" value="{{ p.clave }}" {{ 'checked' if p.conocidos }}> sí</label></td>
+    <td class="num">{{ p.comision|pesos }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="sutil">No hay facturas entre clientes del estudio en Mis Comprobantes bajados{{ ' para esos períodos' if desde or hasta }}.</p>{% endif %}
+  <p><button>Guardar porcentaje y marcas</button></p>
+</form>
+{% endblock %}

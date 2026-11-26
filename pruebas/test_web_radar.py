@@ -956,6 +956,22 @@ _dc = _us.datos_cliente(_C9) or {}
 ok(_dc.get("condicion_iva") == "Responsable inscripto" and _dc.get("regimen_iibb") == "Convenio Multilateral"
    and _dc.get("mes_cierre") == "Junio" and _dc.get("importador", "").startswith("IMPORTADOR"),
    "Sistema Registral: completa la ficha sin pisar lo cargado a mano")
+
+# Facturación entre clientes (26/11/2026): solo admin; comisión del comprador sobre el total; los conocidos sin comisión
+os.makedirs(os.path.join(D, C2, "2026-10"), exist_ok=True)
+open(os.path.join(D, C2, "2026-10", "emitidos.csv"), "w", encoding="utf-8").write(
+    "Fecha;Tipo;Punto de Venta;Número Desde;Nro. Doc. Receptor;Imp. Total\n2026-10-05;1 - Factura A;3;120;" + C + ";121.000,00\n")
+_hi = cl2.get("/intercliente").text
+ok("Facturación entre clientes" in _hi and "121.000,00" in _hi, "facturación entre clientes: muestra la factura de un cliente a otro")
+_r = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "10", "par": f"{C2}>{C}"}, follow_redirects=True)
+ok("12.100,00" in _r.text, "comisión 10 % sobre el total, la paga el comprador")
+_r = cl2.post("/intercliente", data={"csrf": token(_r.text), "porcentaje": "10", "par": f"{C2}>{C}", "conocidos": f"{C2}>{C}"},
+              follow_redirects=True)
+ok("12.100,00" not in _r.text and "checked" in _r.text, "par marcado como conocido: sin comisión")
+ok(cl.get("/intercliente").status_code == 403, "facturación entre clientes: un colaborador no la ve")
+import zipfile as _zf2, io as _io2
+_x = cl2.get("/intercliente?excel=1").data
+ok(_x[:2] == b"PK" and len(_zf2.ZipFile(_io2.BytesIO(_x)).namelist()) > 3, "facturación entre clientes: Excel")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()
