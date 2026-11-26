@@ -5,7 +5,12 @@ gestión de negocios que paga EL QUE COMPRA, sobre el TOTAL FACTURADO FINAL (con
 antes se marcan y quedan afuera. Excel con una solapa por cliente comprador. Más adelante, el resultado va a la app de
 cuentas corrientes como débito interno (no se factura: es reposición de gastos de infraestructura y relaciones públicas).
 
-Marcas y porcentaje: ROBOTS_WEB_DATOS/intercliente.json  {"porcentaje": 0.0, "conocidos": ["vendedor>comprador", ...]}
+Marcas y porcentaje: ROBOTS_WEB_DATOS/intercliente.json
+  {"porcentaje": 0.0, "conocidos": ["vendedor>comprador", ...], "propios": [cuit, ...], "grupos": [[cuit, cuit], ...]}
+Exclusiones (Gaby 26/11/2026):
+  - "propios": somos nosotros (BH, Tallpir, Arturo, Mancovsky, Dainman) que le facturamos al cliente -> nunca van.
+  - "grupos": clientes del mismo dueño (Nabajuma y Dinafer) -> lo que se facturan entre ellos nunca va.
+  Si el archivo todavía no tiene esas claves, se arrancan por nombre (PROPIOS_NOMBRES / GRUPOS_NOMBRES) y se corrigen en pantalla.
 """
 from __future__ import annotations
 
@@ -17,6 +22,8 @@ import re
 
 from . import datos
 
+PROPIOS_NOMBRES = r"\bBH SOLUCIONES|\bTALLPIR|\bMANCOVSKY|\bDAINMAN|\bARTURO\b"
+GRUPOS_NOMBRES = [r"\bNABAJUMA", r"\bDINAFER"]
 NOTAS_CREDITO = {3, 8, 13, 53, 110, 112, 113, 114, 203, 208, 213}
 # Columnas como el Libro IVA (Gaby 26/11/2026): (clave, título, columnas posibles del CSV de Mis Comprobantes)
 IMPORTES = [("neto_gravado", "Neto gravado", ("Imp. Neto Gravado Total", "Imp. Neto Gravado")),
@@ -41,7 +48,36 @@ def conf() -> dict:
             d = json.load(f)
     except (OSError, ValueError):
         d = {}
-    return {"porcentaje": float(d.get("porcentaje") or 0), "conocidos": list(d.get("conocidos") or [])}
+    out = {"porcentaje": float(d.get("porcentaje") or 0), "conocidos": list(d.get("conocidos") or []),
+           "propios": d.get("propios"), "grupos": d.get("grupos")}
+    if out["propios"] is None or out["grupos"] is None:
+        cl = [(c["cuit"], (c.get("razon_social") or "").upper()) for c in datos.lista_clientes()]
+        if out["propios"] is None:
+            out["propios"] = sorted(x for x, n in cl if re.search(PROPIOS_NOMBRES, n))
+        if out["grupos"] is None:
+            g = sorted({x for x, n in cl for rx in GRUPOS_NOMBRES if re.search(rx, n)})
+            out["grupos"] = [g] if len(g) > 1 else []
+    return out
+
+
+def excluido(c: dict, vend: str, comp: str) -> str:
+    """Motivo por el que una venta entre clientes nunca va al listado ('' = va)."""
+    if vend in c["propios"] or comp in c["propios"]:
+        return "del estudio"
+    if any(vend in g and comp in g for g in c["grupos"]):
+        return "mismo dueño"
+    return ""
+
+
+def unir_grupo(grupos: list, a: str, b: str) -> list:
+    juntos = {a, b}
+    resto = []
+    for g in grupos:
+        if juntos & set(g):
+            juntos |= set(g)
+        else:
+            resto.append(g)
+    return resto + [sorted(juntos)]
 
 
 def guardar_conf(c: dict) -> None:
@@ -109,7 +145,8 @@ def operaciones(desde: str = "", hasta: str = "", cliente: str = "") -> list[dic
 def resumen(desde: str = "", hasta: str = "", cliente: str = "") -> dict:
     c = conf()
     conocidos = set(c["conocidos"])
-    ops = operaciones(desde, hasta, cliente)
+    todas = operaciones(desde, hasta, cliente)
+    ops = [o for o in todas if not excluido(c, o["vendedor"], o["comprador"])]
     pares: dict[str, dict] = {}
     for o in ops:
         k = f"{o['vendedor']}>{o['comprador']}"
@@ -121,7 +158,19 @@ def resumen(desde: str = "", hasta: str = "", cliente: str = "") -> dict:
             p[x[0]] = round(p[x[0]] + o[x[0]], 2)
     for p in pares.values():
         p["comision"] = 0.0 if p["conocidos"] else round(p["total"] * c["porcentaje"] / 100, 2)
-    return {"porcentaje": c["porcentaje"], "pares": sorted(pares.values(), key=lambda p: (p["nombre_comprador"], -p["total"])),
+    nombres = {x["cuit"]: x.get("razon_social") or x["cuit"] for x in datos.lista_clientes()}
+    excl: dict[str, dict] = {}
+    for o in todas:
+        m = excluido(c, o["vendedor"], o["comprador"])
+        if m:
+            e = excl.setdefault(f"{o['vendedor']}>{o['comprador']}", {"nombre_vendedor": o["nombre_vendedor"],
+                                "nombre_comprador": o["nombre_comprador"], "motivo": m, "comprobantes": 0, "total": 0.0})
+            e["comprobantes"] += 1
+            e["total"] = round(e["total"] + o["total"], 2)
+    return {"porcentaje": c["porcentaje"], "excluidos": sorted(excl.values(), key=lambda e: (e["motivo"], -e["total"])),
+            "propios": [{"cuit": x, "nombre": nombres.get(x, x)} for x in c["propios"]],
+            "grupos": [[{"cuit": x, "nombre": nombres.get(x, x)} for x in g] for g in c["grupos"]],
+            "pares": sorted(pares.values(), key=lambda p: (p["nombre_comprador"], -p["total"])),
             "operaciones": ops}
 
 

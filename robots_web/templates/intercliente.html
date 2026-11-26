@@ -25,7 +25,7 @@
     {% if not r.porcentaje %}<p class="aviso-pct">Todavía no hay porcentaje cargado: escribilo acá y tocá Guardar.</p>{% endif %}
   </div>
   {% if r.pares %}
-  <table class="tabla"><thead><tr><th>Comprador (paga)</th><th>Vendedor</th><th class="num">Comp.</th><th class="num">Neto gravado</th><th class="num">No gravado</th><th class="num">Exento</th><th class="num">IVA</th><th class="num">Otros trib.</th><th class="num">Total</th><th>¿Ya se conocían?</th><th class="num">Comisión</th></tr></thead><tbody>
+  <table class="tabla"><thead><tr><th>Comprador (paga)</th><th>Vendedor</th><th class="num">Comp.</th><th class="num">Neto gravado</th><th class="num">No gravado</th><th class="num">Exento</th><th class="num">IVA</th><th class="num">Otros trib.</th><th class="num">Total</th><th>¿Ya se conocían?</th><th class="num">Comisión</th><th>No va nunca</th></tr></thead><tbody>
   {% for p in r.pares %}<tr><td>{{ p.nombre_comprador }}<br><span class="sutil">{{ cuit_fmt(p.comprador) }}</span></td>
     <td>{{ p.nombre_vendedor }}<br><span class="sutil">{{ cuit_fmt(p.vendedor) }}</span></td>
     <td class="num">{{ p.comprobantes }}</td><td class="num" data-l="Neto gravado">{{ p.neto_gravado|pesos }}</td>
@@ -33,9 +33,29 @@
     <td class="num" data-l="IVA">{{ p.iva|pesos }}</td><td class="num" data-l="Otros tributos">{{ p.otros_tributos|pesos }}</td>
     <td class="num" data-l="Total">{{ p.total|pesos }}</td>
     <td><input type="hidden" name="par" value="{{ p.clave }}"><label><input type="checkbox" name="conocidos" value="{{ p.clave }}" {{ 'checked' if p.conocidos }}> sí</label></td>
-    <td class="num">{{ p.comision|pesos }}</td></tr>{% endfor %}
+    <td class="num">{{ p.comision|pesos }}</td>
+    <td><select name="excluir"><option value="">—</option>
+      <option value="{{ p.clave }}:vendedor">el vendedor es del estudio</option>
+      <option value="{{ p.clave }}:comprador">el comprador es del estudio</option>
+      <option value="{{ p.clave }}:grupo">mismo dueño</option></select></td></tr>{% endfor %}
   </tbody></table>
   {% else %}<p class="sutil">No hay facturas entre clientes del estudio en Mis Comprobantes bajados{{ ' para esos períodos' if desde or hasta }}.</p>{% endif %}
-  <p><button>Guardar marcas de “ya se conocían”</button></p>
+  <p><button>Guardar marcas</button></p>
+  <h2>No van nunca</h2>
+  <p class="sutil">Del estudio: somos nosotros que le facturamos al cliente. Mismo dueño: lo que se facturan entre ellos no va.
+  Tildá "sacar" y guardá si alguno está mal.</p>
+  <ul>
+    {% for x in r.propios %}<li>Del estudio: {{ x.nombre }} <span class="sutil">{{ cuit_fmt(x.cuit) }}</span>
+      <label class="sutil"><input type="checkbox" name="quitar_propio" value="{{ x.cuit }}"> sacar</label></li>
+    {% else %}<li class="sutil">Ningún cliente marcado como del estudio.</li>{% endfor %}
+    {% for g in r.grupos %}<li>Mismo dueño: {% for x in g %}{{ x.nombre }}
+      <label class="sutil"><input type="checkbox" name="quitar_grupo" value="{{ x.cuit }}"> sacar</label>{{ ' · ' if not loop.last }}{% endfor %}</li>{% endfor %}
+  </ul>
+  {% if r.excluidos %}<details><summary>Ventas que quedaron afuera por estas reglas ({{ r.excluidos|length }})</summary>
+  <table class="tabla"><thead><tr><th>Vendedor</th><th>Comprador</th><th>Motivo</th><th class="num">Comp.</th><th class="num">Total</th></tr></thead><tbody>
+  {% for e in r.excluidos %}<tr><td>{{ e.nombre_vendedor }}</td><td>{{ e.nombre_comprador }}</td><td>{{ e.motivo }}</td>
+    <td class="num">{{ e.comprobantes }}</td><td class="num">{{ e.total|pesos }}</td></tr>{% endfor %}
+  </tbody></table></details>{% endif %}
+  <p><button>Guardar</button></p>
 </form>
 {% endblock %}

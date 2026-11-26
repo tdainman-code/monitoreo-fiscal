@@ -1192,6 +1192,22 @@ def intercliente():
         visibles = set(request.form.getlist("par"))
         marcados = set(request.form.getlist("conocidos"))
         c["conocidos"] = sorted((set(c["conocidos"]) - visibles) | (marcados & visibles))
+        # Exclusiones: del estudio (nosotros le facturamos) y mismo dueño (26/11/2026)
+        for v in request.form.getlist("excluir"):
+            k, _, que = v.partition(":")
+            vend, _, comp = k.partition(">")
+            if not (re.fullmatch(r"\d{11}", vend) and re.fullmatch(r"\d{11}", comp)):
+                continue
+            if que == "vendedor":
+                c["propios"] = sorted(set(c["propios"]) | {vend})
+            elif que == "comprador":
+                c["propios"] = sorted(set(c["propios"]) | {comp})
+            elif que == "grupo":
+                c["grupos"] = ic.unir_grupo(c["grupos"], vend, comp)
+        quitar = set(request.form.getlist("quitar_propio"))
+        c["propios"] = [x for x in c["propios"] if x not in quitar]
+        sacar = set(request.form.getlist("quitar_grupo"))
+        c["grupos"] = [g for g in ([x for x in g if x not in sacar] for g in c["grupos"]) if len(g) > 1]
         ic.guardar_conf(c)
         usuarios.registrar(session["usuario"], "facturación entre clientes: marcas y porcentaje",
                            f"{c['porcentaje']} % · {len(c['conocidos'])} pares conocidos", _ip())

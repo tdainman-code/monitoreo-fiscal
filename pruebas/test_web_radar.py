@@ -963,7 +963,16 @@ open(os.path.join(D, C2, "2026-10", "emitidos.csv"), "w", encoding="utf-8").writ
     "Fecha;Tipo;Punto de Venta;Número Desde;Nro. Doc. Receptor;Imp. Neto Gravado Total;IVA 21%;Total IVA;Imp. Op. Exentas;Imp. Total\n"
     "2026-10-05;1 - Factura A;3;120;" + C + ";100.000,00;21.000,00;21.000,00;0;121.000,00\n")
 _hi = cl2.get("/intercliente").text
-ok("Facturación entre clientes" in _hi and "121.000,00" in _hi, "facturación entre clientes: muestra la factura de un cliente a otro")
+ok("Del estudio: BH SOLUCIONES" in _hi and "del estudio</td>" in _hi and 'name="conocidos"' not in _hi,
+   "facturación entre clientes: lo que factura el estudio (BH) queda afuera solo, por nombre")
+_hi = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "", "quitar_propio": C2}, follow_redirects=True).text
+ok("Facturación entre clientes" in _hi and "121.000,00" in _hi and 'name="conocidos"' in _hi,
+   "facturación entre clientes: muestra la factura de un cliente a otro")
+_g = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "", "par": f"{C2}>{C}", "excluir": f"{C2}>{C}:grupo"},
+              follow_redirects=True).text
+ok("Mismo dueño:" in _g and "mismo dueño</td>" in _g and 'name="conocidos"' not in _g, "facturación entre clientes: mismo dueño no va")
+_hi = cl2.post("/intercliente", data={"csrf": token(_g), "porcentaje": "", "quitar_grupo": C2}, follow_redirects=True).text
+ok('name="conocidos"' in _hi, "facturación entre clientes: se puede sacar del grupo")
 _r = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "10", "par": f"{C2}>{C}"}, follow_redirects=True)
 ok("12.100,00" in _r.text, "comisión 10 % sobre el total, la paga el comprador")
 _r = cl2.post("/intercliente", data={"csrf": token(_r.text), "porcentaje": "10", "par": f"{C2}>{C}", "conocidos": f"{C2}>{C}"},
