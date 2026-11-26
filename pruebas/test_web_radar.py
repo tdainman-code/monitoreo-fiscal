@@ -960,7 +960,8 @@ ok(_dc.get("condicion_iva") == "Responsable inscripto" and _dc.get("regimen_iibb
 # Facturación entre clientes (26/11/2026): solo admin; comisión del comprador sobre el total; los conocidos sin comisión
 os.makedirs(os.path.join(D, C2, "2026-10"), exist_ok=True)
 open(os.path.join(D, C2, "2026-10", "emitidos.csv"), "w", encoding="utf-8").write(
-    "Fecha;Tipo;Punto de Venta;Número Desde;Nro. Doc. Receptor;Imp. Total\n2026-10-05;1 - Factura A;3;120;" + C + ";121.000,00\n")
+    "Fecha;Tipo;Punto de Venta;Número Desde;Nro. Doc. Receptor;Imp. Neto Gravado Total;IVA 21%;Total IVA;Imp. Op. Exentas;Imp. Total\n"
+    "2026-10-05;1 - Factura A;3;120;" + C + ";100.000,00;21.000,00;21.000,00;0;121.000,00\n")
 _hi = cl2.get("/intercliente").text
 ok("Facturación entre clientes" in _hi and "121.000,00" in _hi, "facturación entre clientes: muestra la factura de un cliente a otro")
 _r = cl2.post("/intercliente", data={"csrf": token(_hi), "porcentaje": "10", "par": f"{C2}>{C}"}, follow_redirects=True)
@@ -972,6 +973,15 @@ ok(cl.get("/intercliente").status_code == 403, "facturación entre clientes: un 
 import zipfile as _zf2, io as _io2
 _x = cl2.get("/intercliente?excel=1").data
 ok(_x[:2] == b"PK" and len(_zf2.ZipFile(_io2.BytesIO(_x)).namelist()) > 3, "facturación entre clientes: Excel")
+from openpyxl import load_workbook as _lw
+_wb = _lw(_io2.BytesIO(_x))
+ok("Comprobantes" in _wb.sheetnames and any(r[8] == 100000.0 and r[11] == 21000.0 for r in _wb["Comprobantes"].iter_rows(values_only=True)),
+   "facturación entre clientes: comprobantes uno por uno con neto e IVA como el Libro IVA")
+ok("100.000,00" in cl2.get(f"/intercliente?cliente={C}").text and "100.000,00" not in cl2.get("/intercliente?cliente=20111111112").text,
+   "facturación entre clientes: filtrada por el cliente")
+ok("Facturación entre clientes" in cl2.get(f"/cliente/{C}/informes").text and "Facturación entre clientes" not in cl2.get("/mas").text
+   and "Facturación entre clientes" not in cl.get(f"/cliente/{C}/informes").text,
+   "facturación entre clientes: botón dentro de Informes Excel, solo admin")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

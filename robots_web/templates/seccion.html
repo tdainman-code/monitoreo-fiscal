@@ -178,6 +178,12 @@
   {% for i in s.informes_lista if not tipos or i.tipo in tipos %}{% if loop.index <= 9 %}<li><a class="boton" href="{{ url_for('bajar_informe', ruta=i.ruta) }}">⬇ {{ i.tipo }}</a> <span class="sutil">{{ i.fecha|fecha }} · {{ i.archivo }}</span></li>{% endif %}
   {% else %}<li class="sutil">Todavía no hay informes.</li>{% endfor %}
   </ul>
+  {% if sec == 'informes' and session.rol == 'admin' %}
+  <h2>Solo administradores</h2>
+  <ul class="informes"><li><a class="boton" href="{{ url_for('intercliente', cliente=c.cuit) }}">🤝 Facturación entre clientes</a>
+    <span class="sutil">ventas y compras de este cliente con otros clientes del estudio, como el Libro IVA, y la comisión</span>
+    · <a href="{{ url_for('intercliente') }}">todos los clientes</a></li></ul>
+  {% endif %}
 
 {% elif sec == 'notas' %}
 <form class="nota-form" method="post" action="{{ url_for('nueva_nota', cuit=c.cuit) }}">

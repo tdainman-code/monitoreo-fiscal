@@ -1181,6 +1181,7 @@ def intercliente():
     from . import intercliente as ic
     desde = _periodo_ok(request.values.get("desde")) or ""
     hasta = _periodo_ok(request.values.get("hasta")) or ""
+    cliente = re.sub(r"\D", "", request.values.get("cliente") or "")[:11]
     if request.method == "POST":
         _controlar_csrf()
         c = ic.conf()
@@ -1195,13 +1196,15 @@ def intercliente():
         usuarios.registrar(session["usuario"], "facturación entre clientes: marcas y porcentaje",
                            f"{c['porcentaje']} % · {len(c['conocidos'])} pares conocidos", _ip())
         flash("Guardado", "ok")
-        return redirect(url_for("intercliente", desde=desde, hasta=hasta))
+        return redirect(url_for("intercliente", desde=desde, hasta=hasta, cliente=cliente or None))
     if request.args.get("excel"):
         usuarios.registrar(session["usuario"], "bajó facturación entre clientes", f"{desde}-{hasta}", _ip())
-        return send_file(BytesIO(ic.excel(desde, hasta)), as_attachment=True,
-                         download_name=f"facturacion_entre_clientes_{date.today().isoformat()}.xlsx",
+        return send_file(BytesIO(ic.excel(desde, hasta, cliente)), as_attachment=True,
+                         download_name=f"facturacion_entre_clientes_{cliente + '_' if cliente else ''}{date.today().isoformat()}.xlsx",
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    return render_template("intercliente.html", r=ic.resumen(desde, hasta), desde=desde, hasta=hasta)
+    nom = next((x.get("razon_social") or x["cuit"] for x in datos.lista_clientes() if x["cuit"] == cliente), "") if cliente else ""
+    return render_template("intercliente.html", r=ic.resumen(desde, hasta, cliente), desde=desde, hasta=hasta,
+                           cliente=cliente, nombre_cliente=nom)
 
 
 @app.route("/mas")

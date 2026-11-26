@@ -18,6 +18,17 @@ import re
 from . import datos
 
 NOTAS_CREDITO = {3, 8, 13, 53, 110, 112, 113, 114, 203, 208, 213}
+# Columnas como el Libro IVA (Gaby 26/11/2026): (clave, título, columnas posibles del CSV de Mis Comprobantes)
+IMPORTES = [("neto_gravado", "Neto gravado", ("Imp. Neto Gravado Total", "Imp. Neto Gravado")),
+            ("no_gravado", "No gravado", ("Imp. Neto No Gravado",)),
+            ("exento", "Exento", ("Imp. Op. Exentas",)),
+            ("iva_21", "IVA 21%", ("IVA 21%",)),
+            ("iva_105", "IVA 10,5%", ("IVA 10,5%",)),
+            ("iva_27", "IVA 27%", ("IVA 27%",)),
+            ("iva_otros", "IVA otras alícuotas", ("IVA 2,5%", "IVA 5%")),
+            ("iva", "Total IVA", ("Total IVA", "IVA")),
+            ("otros_tributos", "Otros tributos", ("Otros Tributos",)),
+            ("total", "Total", ("Imp. Total",))]
 
 
 def _ruta_conf() -> str:
@@ -51,7 +62,18 @@ def _num(t) -> float:
         return 0.0
 
 
-def operaciones(desde: str = "", hasta: str = "") -> list[dict]:
+def _importes(r: dict, factor: float) -> dict:
+    out = {}
+    for clave, _, cols in IMPORTES:
+        if clave == "iva_otros":
+            v = sum(_num(r.get(c)) for c in cols)
+        else:
+            v = next((_num(r.get(c)) for c in cols if c in r), 0.0)
+        out[clave] = round(v * factor, 2)
+    return out
+
+
+def operaciones(desde: str = "", hasta: str = "", cliente: str = "") -> list[dict]:
     """Una fila por comprobante emitido de un cliente a otro cliente nuestro."""
     clientes = {c["cuit"]: c.get("razon_social") or c["cuit"] for c in datos.lista_clientes()}
     out = []
@@ -75,34 +97,40 @@ def operaciones(desde: str = "", hasta: str = "") -> list[dict]:
                         out.append({"periodo": per, "fecha": r.get("Fecha") or r.get("Fecha de Emisión", ""), "vendedor": vend, "nombre_vendedor": nom_v,
                                     "comprador": comp, "nombre_comprador": clientes[comp], "tipo": tipo,
                                     "comprobante": f"{r.get('Punto de Venta', '')}-{r.get('Número Desde', '')}",
-                                    "total": round(signo * _num(r.get("Imp. Total")) * tc, 2)})
+                                    "tipo_txt": r.get("Tipo") or r.get("Tipo de Comprobante") or "",
+                                    **_importes(r, signo * tc)})
             except OSError:
                 continue
+    if cliente:
+        out = [o for o in out if cliente in (o["vendedor"], o["comprador"])]
     return out
 
 
-def resumen(desde: str = "", hasta: str = "") -> dict:
+def resumen(desde: str = "", hasta: str = "", cliente: str = "") -> dict:
     c = conf()
     conocidos = set(c["conocidos"])
-    ops = operaciones(desde, hasta)
+    ops = operaciones(desde, hasta, cliente)
     pares: dict[str, dict] = {}
     for o in ops:
         k = f"{o['vendedor']}>{o['comprador']}"
         p = pares.setdefault(k, {"clave": k, "vendedor": o["vendedor"], "nombre_vendedor": o["nombre_vendedor"],
                                  "comprador": o["comprador"], "nombre_comprador": o["nombre_comprador"],
-                                 "comprobantes": 0, "total": 0.0, "conocidos": k in conocidos})
+                                 "comprobantes": 0, "conocidos": k in conocidos, **{x[0]: 0.0 for x in IMPORTES}})
         p["comprobantes"] += 1
-        p["total"] = round(p["total"] + o["total"], 2)
+        for x in IMPORTES:
+            p[x[0]] = round(p[x[0]] + o[x[0]], 2)
     for p in pares.values():
         p["comision"] = 0.0 if p["conocidos"] else round(p["total"] * c["porcentaje"] / 100, 2)
     return {"porcentaje": c["porcentaje"], "pares": sorted(pares.values(), key=lambda p: (p["nombre_comprador"], -p["total"])),
             "operaciones": ops}
 
 
-def excel(desde: str = "", hasta: str = "") -> bytes:
+def excel(desde: str = "", hasta: str = "", cliente: str = "") -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    r = resumen(desde, hasta)
+    from openpyxl.utils import get_column_letter
+    r = resumen(desde, hasta, cliente)
+    tits = [x[1] for x in IMPORTES]
     wb = Workbook()
     ws = wb.active
     ws.title = "Resumen"
@@ -110,7 +138,7 @@ def excel(desde: str = "", hasta: str = "") -> bytes:
                + (f" — períodos {desde or 'inicio'} a {hasta or 'hoy'}" if desde or hasta else "")])
     ws["A1"].font = Font(bold=True)
     ws.append([])
-    cab = ["Comprador (paga)", "CUIT comprador", "Vendedor", "CUIT vendedor", "Comprobantes", "Total facturado",
+    cab = ["Comprador (paga)", "CUIT comprador", "Vendedor", "CUIT vendedor", "Comprobantes", *tits,
            "¿Ya se conocían?", "Comisión"]
     ws.append(cab)
     for c in ws[3]:
@@ -118,9 +146,27 @@ def excel(desde: str = "", hasta: str = "") -> bytes:
         c.fill = PatternFill("solid", fgColor="1F4E78")
     for p in r["pares"]:
         ws.append([p["nombre_comprador"], p["comprador"], p["nombre_vendedor"], p["vendedor"], p["comprobantes"],
-                   p["total"], "Sí (sin comisión)" if p["conocidos"] else "No", p["comision"]])
-    for i, w in enumerate((34, 14, 34, 14, 13, 16, 18, 14), 1):
+                   *[p[x[0]] for x in IMPORTES], "Sí (sin comisión)" if p["conocidos"] else "No", p["comision"]])
+    for i, w in enumerate((34, 14, 34, 14, 13, *[15] * len(IMPORTES), 18, 14), 1):
         ws.column_dimensions[ws.cell(3, i).column_letter].width = w
+    wc = wb.create_sheet("Comprobantes")
+    wc.append(["Todos los comprobantes entre clientes, uno por uno (como el Libro IVA)"])
+    wc["A1"].font = Font(bold=True)
+    wc.append([])
+    wc.append(["Período", "Fecha", "Tipo", "Comprobante", "Vendedor", "CUIT vendedor", "Comprador (paga)", "CUIT comprador",
+               *tits, "¿Ya se conocían?", "Comisión"])
+    for c in wc[3]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="1F4E78")
+    conoc_all = {p["clave"] for p in r["pares"] if p["conocidos"]}
+    for o in sorted(r["operaciones"], key=lambda o: (o["periodo"], o["fecha"], o["nombre_vendedor"])):
+        ex = f"{o['vendedor']}>{o['comprador']}" in conoc_all
+        wc.append([o["periodo"], o["fecha"], o["tipo_txt"], o["comprobante"], o["nombre_vendedor"], o["vendedor"],
+                   o["nombre_comprador"], o["comprador"], *[o[x[0]] for x in IMPORTES], "Sí" if ex else "No",
+                   0.0 if ex else round(o["total"] * r["porcentaje"] / 100, 2)])
+    for i, w in enumerate((10, 12, 22, 18, 30, 14, 30, 14, *[15] * len(IMPORTES), 16, 14), 1):
+        wc.column_dimensions[get_column_letter(i)].width = w
+    wc.freeze_panes = "A4"
     compradores = sorted({p["comprador"] for p in r["pares"]}, key=lambda x: next(p["nombre_comprador"] for p in r["pares"] if p["comprador"] == x))
     for comp in compradores:
         nom = next(p["nombre_comprador"] for p in r["pares"] if p["comprador"] == comp)
@@ -128,21 +174,28 @@ def excel(desde: str = "", hasta: str = "") -> bytes:
         w2.append([f"{nom} — CUIT {comp} — compras a otros clientes del estudio"])
         w2["A1"].font = Font(bold=True)
         w2.append([])
-        w2.append(["Período", "Fecha", "Vendedor", "CUIT vendedor", "Comprobante", "Total", "¿Ya se conocían?", "Comisión"])
+        w2.append(["Período", "Fecha", "Tipo", "Comprobante", "Vendedor", "CUIT vendedor", *tits, "¿Ya se conocían?", "Comisión"])
         for c in w2[3]:
             c.font = Font(bold=True, color="FFFFFF")
             c.fill = PatternFill("solid", fgColor="1F4E78")
         conoc = {p["vendedor"] for p in r["pares"] if p["comprador"] == comp and p["conocidos"]}
         for o in [o for o in r["operaciones"] if o["comprador"] == comp]:
             ex = o["vendedor"] in conoc
-            w2.append([o["periodo"], o["fecha"], o["nombre_vendedor"], o["vendedor"], o["comprobante"], o["total"],
-                       "Sí" if ex else "No", 0.0 if ex else round(o["total"] * r["porcentaje"] / 100, 2)])
+            w2.append([o["periodo"], o["fecha"], o["tipo_txt"], o["comprobante"], o["nombre_vendedor"], o["vendedor"],
+                       *[o[x[0]] for x in IMPORTES], "Sí" if ex else "No", 0.0 if ex else round(o["total"] * r["porcentaje"] / 100, 2)])
         n = w2.max_row
-        w2.append(["Total", None, None, None, None, f"=SUM(F4:F{n})", None, f"=SUM(H4:H{n})"])
+        sumas = [f"=SUM({get_column_letter(i)}4:{get_column_letter(i)}{n})" for i in range(7, 7 + len(IMPORTES))]
+        com = get_column_letter(8 + len(IMPORTES))
+        w2.append(["Total", None, None, None, None, None, *sumas, None, f"=SUM({com}4:{com}{n})"])
         for c in w2[w2.max_row]:
             c.font = Font(bold=True)
-        for i, w in enumerate((10, 12, 34, 14, 18, 16, 16, 14), 1):
+        for i, w in enumerate((10, 12, 22, 18, 34, 14, *[15] * len(IMPORTES), 16, 14), 1):
             w2.column_dimensions[w2.cell(3, i).column_letter].width = w
+    for w in wb.worksheets:
+        for row in w.iter_rows(min_row=4):
+            for c in row:
+                if isinstance(c.value, float) or (isinstance(c.value, str) and c.value.startswith("=SUM")):
+                    c.number_format = "#,##0.00"
     b = io.BytesIO()
     wb.save(b)
     return b.getvalue()
