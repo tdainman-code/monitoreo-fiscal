@@ -199,6 +199,39 @@ def _menu(pag, nombre: str, cuit: str):
                           f"marcos: {len(pag.frames) - 1})")
 
 
+def _ingresar_datos_registrales(pag, fr) -> None:
+    """Gaby 26/11/2026 (su propio CUIT): "Consulta" muestra tarjetas — Datos registrales / Datos registrales
+    jurisdiccionales / Datos aduaneros — cada una con INGRESAR. Se entra a "Datos registrales" (la primera, no la
+    jurisdiccional) y se baja por la página desplegando las secciones."""
+    for _ in range(20):
+        for f in [fr] + _en_marcos(pag):
+            try:
+                if re.search(r"Impuestos y/o Aportes", f.inner_text("body", timeout=2000), re.I):
+                    return
+                tarjeta = f.locator("div, section, article").filter(
+                    has=f.get_by_text(re.compile(r"^\s*Datos registrales\s*$", re.I))).filter(
+                    has=f.get_by_text(re.compile(r"^\s*INGRESAR\s*$", re.I)))
+                if tarjeta.count():
+                    tarjeta.last.get_by_text(re.compile(r"^\s*INGRESAR\s*$", re.I)).first.click()
+                    pag.wait_for_timeout(3000)
+                    _desplegar_todo(pag)
+                    return
+            except Exception:
+                continue
+        pag.wait_for_timeout(1000)
+
+
+def _desplegar_todo(pag) -> None:
+    """Baja hasta el final (algunas secciones se cargan al verlas) y abre las que estén plegadas."""
+    for f in _en_marcos(pag):
+        try:
+            f.evaluate("""() => { document.querySelectorAll('[aria-expanded="false"]').forEach(b => { try { b.click(); } catch (e) {} });
+                                  window.scrollTo(0, document.body.scrollHeight); }""")
+        except Exception:
+            continue
+    pag.wait_for_timeout(1500)
+
+
 def _marco_con(pag, patron: str, espera_s: int = 45):
     for _ in range(espera_s):
         for fr in _en_marcos(pag):
@@ -220,7 +253,8 @@ def leer(ctx, portal, cuit: str) -> dict:
             pass
         _elegir_persona(pag, cuit)
         inicio = pag.inner_text("body")
-        _menu(pag, "Consulta", cuit)
+        frc = _menu(pag, "Consulta", cuit)
+        _ingresar_datos_registrales(pag, frc)
         fr = _marco_con(pag, r"Impuestos y/o Aportes")
         texto = fr.inner_text("body")
         if cuit not in re.sub(r"\D", "", texto[:4000]) and cuit not in re.sub(r"\D", "", pag.inner_text("body")[:4000]):
