@@ -117,11 +117,14 @@ def solo_vencido(scth: dict | None, sct: dict | None) -> dict | None:
     de Cuentas Tributarias sí: lo que allí figura por vencer (mismo impuesto, período y anticipo) sale de la deuda."""
     if not scth or not scth.get("deudas"):
         return scth
-    venc, por_vencer = set(), set()
+    venc, por_vencer, fecha_v = set(), set(), {}
     for d in (sct or {}).get("deudas") or []:
         for k in ((_cod(d.get("impuesto")), str(d.get("periodo") or ""), _cuota(d.get("cuota"))),
                   (_cod(d.get("impuesto")), str(d.get("periodo") or ""), "*")):
             (venc if d.get("vencida") else por_vencer).add(k)
+            if not d.get("vencida") and d.get("vencimiento"):
+                v = str(d["vencimiento"])[:10]
+                fecha_v[k] = min(fecha_v.get(k, v), v)
     def no_vencida(f):
         imp, per, cu = _cod(f.get("impuesto")), str(f.get("periodo") or ""), _cuota(f.get("cuota"))
         if cu:
@@ -134,7 +137,12 @@ def solo_vencido(scth: dict | None, sct: dict | None) -> dict | None:
     for f in filas:
         k = f"{f['impuesto']} - {f['nombre']}"
         por_imp[k] = round(por_imp.get(k, 0.0) + f["deuda"], 2)
-    nv = [f for f in scth["deudas"] if no_vencida(f)]
+    nv = []
+    for f in scth["deudas"]:
+        if no_vencida(f):
+            imp, per, cu = _cod(f.get("impuesto")), str(f.get("periodo") or ""), _cuota(f.get("cuota"))
+            nv.append({**f, "vencimiento": fecha_v.get((imp, per, cu)) or fecha_v.get((imp, per, "*")) or ""})
+    nv.sort(key=lambda f: f["vencimiento"] or "9")
     tot = round(sum(f["deuda"] for f in filas), 2)
     ter = round(sum(f["deuda"] for f in filas if f.get("color") == "verde"), 2)
     return {**scth, "deudas": filas, "por_impuesto": por_imp, "deuda_total": tot, "deuda_terceros": ter,

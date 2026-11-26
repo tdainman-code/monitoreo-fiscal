@@ -237,9 +237,10 @@ for _x in ("sifere_deuda", "sct_historico"):
 _h = {"deudas": [{"impuesto": "11", "nombre": "GANANCIAS PERSONAS FISICAS", "periodo": "20260000", "cuota": "4", "deuda": 500.0, "color": "rojo", "f931": False},
                  {"impuesto": "11", "nombre": "GANANCIAS PERSONAS FISICAS", "periodo": "20250000", "cuota": "", "deuda": 300.0, "color": "rojo", "f931": False}],
       "deuda_total": 800.0}
-_sv = datos.solo_vencido(_h, {"deudas": [{"impuesto": "11 - GANANCIAS PERSONAS FISICAS", "periodo": "20260000", "cuota": "04", "vencida": False},
+_sv = datos.solo_vencido(_h, {"deudas": [{"impuesto": "11 - GANANCIAS PERSONAS FISICAS", "periodo": "20260000", "cuota": "04", "vencida": False, "vencimiento": "2026-12-15"},
                                           {"impuesto": "11 - GANANCIAS PERSONAS FISICAS", "periodo": "20250000", "cuota": "0", "vencida": True}]})
-ok(_sv["deuda_total"] == 300.0 and _sv["no_vencido_total"] == 500.0, "deuda histórica: el anticipo que todavía no vence no cuenta como deuda")
+ok(_sv["deuda_total"] == 300.0 and _sv["no_vencido_total"] == 500.0 and _sv["no_vencido"][0]["vencimiento"] == "2026-12-15",
+   "deuda histórica: el anticipo que todavía no vence no cuenta como deuda, con su vencimiento")
 _sv = datos.solo_vencido({"deudas": [_h["deudas"][0]], "deuda_total": 500.0},
                          {"deudas": [{"impuesto": "11 - GANANCIAS", "periodo": "20260000", "cuota": "4", "vencida": False}]})
 ok(_sv["deuda_total"] == 0 and not datos.revisiones("x", None, _sv), "deuda histórica: solo anticipos por vencer -> nada para revisar")

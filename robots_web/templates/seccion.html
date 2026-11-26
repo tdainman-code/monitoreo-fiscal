@@ -449,6 +449,15 @@
     <div class="tarjeta"><span class="sutil">F.931 fuera de 301 / 351</span><b class="{{ 'txt-rojo' if h.deuda_f931_otros }}">{{ h.deuda_f931_otros|pesos }}</b></div>
     <div class="tarjeta"><span class="sutil">Años revisados</span><b>{{ h.anios|length }}</b></div>
   </div>
+  {% if h.no_vencido %}
+  <h2>Todavía no vence <span class="sutil">· no cuenta como deuda; vencimiento según Cuentas Tributarias</span></h2>
+  <table class="tabla"><thead><tr><th>Vencimiento</th><th>Impuesto</th><th>Período</th><th>Anticipo / cuota</th><th>Concepto</th><th class="num">Importe</th></tr></thead><tbody>
+  {% for f in h.no_vencido %}<tr><td data-l="Vencimiento"><b>{{ f.vencimiento|fecha if f.vencimiento else '—' }}</b></td>
+    <td data-l="Impuesto">{{ f.impuesto }} {{ f.nombre }}</td><td data-l="Período">{{ f.periodo }}</td>
+    <td data-l="Anticipo / cuota">{{ f.cuota or '—' }}</td><td data-l="Concepto">{{ f.concepto }}</td>
+    <td class="num" data-l="Importe">{{ f.deuda|pesos }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% endif %}
   <p class="sutil">Cuentas Tributarias → Estado de cumplimiento, año por año, consultado el {{ h.fecha|fecha }}. Importes como los muestra ARCA (sin actualizar).</p>
   <p class="sutil"><b>Leído:</b> {{ (h.leidos or (h.anios|map(attribute='anio')|list))|join(', ') or '—' }}
   {% if h.pendientes %} · <b class="txt-rojo">Pendiente:</b> {% for p in h.pendientes %}{{ p.anio }}{% if p.impuestos %} ({{ p.impuestos|join(', ') }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}
