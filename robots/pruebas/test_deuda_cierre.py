@@ -66,11 +66,23 @@ class T(unittest.TestCase):
         dc.mes_cierre = lambda cuit: None
         self.assertEqual(dc.cierres("x", date(2026, 11, 26)), [date(2025, 12, 31), date(2024, 12, 31)])
 
+    def test_cuentas_tributarias_solo_ddjj_hasta_el_cierre(self):
+        scth = {"fecha": "2026-11-20", "deudas": [
+            {"impuesto": "302", "nombre": "APORTES OBRAS SOCIALES", "periodo": "20241100", "concepto": "DDJJ", "deuda": 1000.0, "f931": True},
+            {"impuesto": "302", "nombre": "APORTES OBRAS SOCIALES", "periodo": "20241100", "concepto": "Intereses resarcitorios", "deuda": 50.0, "f931": True},
+            {"impuesto": "30", "nombre": "IVA", "periodo": "20241200", "concepto": "DDJJ", "deuda": 700.0, "f931": False},
+            {"impuesto": "30", "nombre": "IVA", "periodo": "20250100", "concepto": "DDJJ", "deuda": 999.0, "f931": False}]}
+        ct = dc.cuentas_tributarias(scth, date(2024, 12, 31))
+        self.assertEqual(ct["total"], 1700.0)
+        self.assertEqual(ct["total_f931"], 1000.0)
+        self.assertTrue(next(x for x in ct["filas"] if x["periodo"] == "20241200")["vence_despues"])
+
     def test_excel(self):
         with tempfile.TemporaryDirectory() as t:
             x = dc.excel("30712227571", dc.calcular(DATOS, date(2024, 12, 31)), os.path.join(t, "a.xlsx"), "2026-11-26")
             from openpyxl import load_workbook
-            self.assertEqual(load_workbook(x).sheetnames, ["Resumen", "Planes", "Obligaciones al cierre", "Cuotas pendientes al cierre"])
+            self.assertEqual(load_workbook(x).sheetnames, ["Resumen", "Planes", "Obligaciones al cierre", "Cuotas pendientes al cierre",
+                                                          "Cuentas Tributarias"])
 
 if __name__ == "__main__":
     unittest.main()
