@@ -177,6 +177,19 @@ def _elegir_representado_portal(page, cuit: str) -> None:
         op = sel.first.locator(f"option:has-text('{fmt}'), option:has-text('{cuit}')").first
         sel.first.select_option(value=op.get_attribute("value"))
         arca.pausa(1.5, 2.5)
+        # 25/11/2026 (Nabajuma): pantalla "Seleccione Representado" con botón Ingresar; sin el clic se queda ahí y
+        # ningún servicio aparece ("no encontrado en el portal")
+        boton = page.locator("a, button, input[type=submit], input[type=button]").filter(
+            has_text=re.compile(r"^\s*Ingresar\s*$", re.I)).filter(visible=True)
+        if not boton.count():
+            boton = page.locator("input[value='Ingresar' i]").filter(visible=True)
+        if boton.count():
+            boton.first.click()
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=30_000)
+            except Exception:
+                pass
+            arca.pausa(2.0, 3.0)
     except Exception:
         pass
 
