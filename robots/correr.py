@@ -449,6 +449,8 @@ def main(argv=None):
                     help="corrida completa de fin de semana: los clientes que tienen fijo el sábado o el domingo (el de hoy)")
     ap.add_argument("--hasta", help="HH:MM: no arrancar clientes nuevos pasada esa hora (la próxima vez que llegue después "
                                     "de arrancar; p. ej. 06:00 para no meterse en el día aunque la corrida haya esperado)")
+    ap.add_argument("--historico-pendientes", action="store_true",
+                    help="cruce_historico: solo los clientes que todavía no tienen el cruce inicial de 5 años (tandas nocturnas)")
     ap.add_argument("--urgentes-primero", action="store_true",
                     help="primero los que tenían deuda vencida o DDJJ sin presentar, después los de datos más viejos")
     ap.add_argument("--grupos", type=int, default=5, help="en cuántos días se reparten los clientes (5 = lunes a viernes)")
@@ -480,6 +482,9 @@ def main(argv=None):
         cuits = [c for c in cuits if le_toca_hoy(c, mapa[c])]
         print(f"Corrida completa del {DIAS[hoy.weekday()]}: {len(cuits)} cliente(s) — inscriptos todas las semanas, "
               "monotributistas semana por medio")
+    if a.todos and a.historico_pendientes:
+        cuits = historico_pendientes(cuits)
+        print(f"Cruce histórico de percepciones (5 años): {len(cuits)} cliente(s) pendiente(s)")
     if a.urgentes_primero:
         cuits = urgentes_primero(cuits)
     if a.todos and a.solo_fallidos:
@@ -506,6 +511,26 @@ def main(argv=None):
     finally:
         if a.todos:
             _progreso(None)
+
+
+def historico_pendientes(cuits: list[str]) -> list[str]:
+    """Clientes sin el cruce inicial de 5 años (Gaby, 26/11/2026: de a tandas en las noches libres). Quedan afuera los
+    monotributistas (no tienen crédito fiscal que rescatar). Primero los que tienen más movimiento de Libro IVA."""
+    from . import percepciones_hist as hist
+    out = []
+    for c in cuits:
+        if hist.historico_hecho(c):
+            continue
+        cat = {}
+        try:
+            with open(os.path.join(DATOS, c, "categoria.json"), encoding="utf-8") as f:
+                cat = json.load(f)
+        except (OSError, ValueError):
+            pass
+        if cat.get("categoria") and not str(cat["categoria"]).startswith("Responsable"):
+            continue
+        out.append(c)
+    return sorted(out, key=lambda c: -len(os.listdir(os.path.join(DATOS, c, "libro_iva"))) if os.path.isdir(os.path.join(DATOS, c, "libro_iva")) else 0)
 
 
 def _progreso(d: dict | None) -> None:

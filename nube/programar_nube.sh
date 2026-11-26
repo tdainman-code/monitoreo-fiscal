@@ -23,9 +23,13 @@ mkdir -p "$HOME/logs"
 [ "$(date +%Z)" = "-03" ] || echo "AVISO: la zona horaria no es la de Argentina ($(date +%Z)); revisar con: timedatectl"
 TAG="# robots-nube"
 CMD="cd \$HOME/app && flock -w 172800 /tmp/robots_todo.lock xvfb-run -a $PY -m robots.correr todo --todos --trabajadores 6"
+# 26/11/2026 (Gaby): cruce histórico de percepciones (5 años, una vez por cliente) en las noches libres, de a tandas
+HIST="cd \$HOME/app && flock -w 600 /tmp/robots_todo.lock xvfb-run -a $PY -m robots.correr cruce_historico --todos --historico-pendientes --trabajadores 3"
 NUEVAS=$(cat <<EOT
 $TAG corrida diaria liviana de todos los clientes (lun-vie 20:00, no arranca clientes nuevos despues de las 6:00)
-0 20 * * 1-5 $CMD --modo diaria --urgentes-primero --horas 10 --hasta 06:00 >> \$HOME/logs/diaria_\$(date +\%F).log 2>&1 $TAG
+0 20 * * 1-5 $CMD --modo diaria --urgentes-primero --horas 10 --hasta 06:00 >> \$HOME/logs/diaria_\$(date +\%F).log 2>&1; $HIST --hasta 05:30 >> \$HOME/logs/historico_\$(date +\%F).log 2>&1 $TAG
+$TAG cruce histórico de percepciones (5 años por cliente): sigue a la diaria si sobra noche, y el sábado de 21:00 a 05:00
+0 21 * * 6 $HIST --hasta 05:00 >> \$HOME/logs/historico_\$(date +\%F).log 2>&1 $TAG
 $TAG corrida completa de fin de semana (sabado y domingo 6:00; cada cliente tiene su dia)
 0 6 * * 6 $CMD --modo completo --fin-de-semana --horas 14 >> \$HOME/logs/finde_\$(date +\%F).log 2>&1 $TAG
 0 6 * * 0 $CMD --modo completo --fin-de-semana --horas 13 >> \$HOME/logs/finde_\$(date +\%F).log 2>&1 $TAG
