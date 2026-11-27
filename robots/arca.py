@@ -226,6 +226,60 @@ def abrir_servicio(ctx: BrowserContext, portal: Page, servicio: str) -> Page:
             portal.wait_for_timeout(1500)
     if not boton.count():
         raise RequiereIntervencion(f"El servicio '{servicio}' no está habilitado para este contribuyente")
+    # Gaby 27/11/2026: ARCA falla seguido al tocar el botón (sobre todo Cuentas Tributarias): la pestaña nueva pide
+    # CUIT y clave como si no se hubiera ingresado, o pide refrescar. Como a mano: se cierra esa pestaña (o se recarga)
+    # y se vuelve a tocar el botón, hasta 3 veces, sin volver a ingresar. Si el propio "Mis servicios" perdió la
+    # sesión, ahí sí es SesionPerdida de verdad (el robot vuelve a ingresar desde cero).
+    for vuelta in range(3):
+        pag = _clic_servicio(ctx, portal, boton, servicio)
+        try:
+            verificar_sesion(pag, servicio)
+            if _pide_refrescar(pag):
+                pag.reload(wait_until="domcontentloaded")
+                pausa(2, 4)
+                verificar_sesion(pag, servicio)
+            return pag
+        except SesionPerdida:
+            if vuelta == 2:
+                raise
+            try:
+                pag.close()
+            except Exception:
+                pass
+            pausa(4, 8)
+            portal.goto(URL_MIS_SERVICIOS, wait_until="domcontentloaded")
+            pausa()
+            verificar_sesion(portal, "portal")
+            boton = _boton_de_nuevo(portal, ident, servicio) or boton
+    raise SesionPerdida(f"Al abrir '{servicio}' ARCA pidió volver a ingresar (3 intentos)")
+
+
+RE_REFRESCAR = re.compile(r"refresc[aá]|reprocesar|volv[eé] a cargar la p[aá]gina|actualiz[aá] la p[aá]gina", re.I)
+
+
+def _pide_refrescar(pag: Page) -> bool:
+    try:
+        return bool(RE_REFRESCAR.search(pag.inner_text("body", timeout=5000)[:3000]))
+    except Exception:
+        return False
+
+
+def _boton_de_nuevo(portal: Page, ident: str, servicio: str):
+    try:
+        if ident.startswith("texto:"):
+            portal.locator("a[role=button] h3").first.wait_for(state="attached", timeout=30_000)
+            b = portal.locator("a[role=button]").filter(has=portal.locator("h3", has_text=re.compile(ident[6:], re.I)))
+        else:
+            portal.locator("a[role=button], button").first.wait_for(state="attached", timeout=30_000)
+            b = portal.get_by_role("button", name=ident, exact=True)
+            if not b.count():
+                b = portal.locator(f"[title='{ident}'], [aria-label='{ident}']")
+        return b if b.count() else None
+    except Exception:
+        return None
+
+
+def _clic_servicio(ctx: BrowserContext, portal: Page, boton, servicio: str) -> Page:
     antes = set(ctx.pages)
     pag = None
     for intento in range(2):                     # COMARB a veces tarda o el primer clic no "agarra"
@@ -245,7 +299,6 @@ def abrir_servicio(ctx: BrowserContext, portal: Page, servicio: str) -> Page:
         raise ErrorRobot(f"El servicio '{servicio}' no abrió su pestaña (2 intentos de 90 s)")
     pag.wait_for_load_state("domcontentloaded")
     pausa()
-    verificar_sesion(pag, servicio)
     return pag
 
 

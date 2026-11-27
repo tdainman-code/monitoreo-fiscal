@@ -116,6 +116,7 @@ SALIDA2=$(cd "$PRUEBA" && timeout 900 sudo -u robot env PYTHONPATH="$PRUEBA" HOM
          /home/robot/venv/bin/python robots/pruebas/test_vep_deuda.py 2>&1 && \
          /home/robot/venv/bin/python robots/pruebas/test_vep_iva90.py 2>&1 && \
          /home/robot/venv/bin/python robots/pruebas/test_dfe_rutinarias.py 2>&1 && \
+         /home/robot/venv/bin/python robots/pruebas/test_abrir_servicio.py 2>&1 && \
          /home/robot/venv/bin/python robots/pruebas/test_arba_retenciones.py 2>&1 && \
          /home/robot/venv/bin/python robots/pruebas/test_sistema_registral.py 2>&1 && \
          /home/robot/venv/bin/python robots/pruebas/test_deuda_cierre.py 2>&1 && \
