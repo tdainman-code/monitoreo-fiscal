@@ -461,7 +461,8 @@ def publicar_contactos() -> None:
                      "emails_cliente": [m.strip() for m in re.split(r"[,;\s]+", d.get("emails", "")) if EMAIL_RE.match(m.strip())],
                      # 25/11/2026: el robot no entra a la jurisdicción que no le corresponde (régimen local)
                      "regimen_iibb": d.get("regimen_iibb", ""), "jurisdicciones_iibb": d.get("jurisdicciones_iibb", ""),
-                     "no_corresponde": d.get("no_corresponde", "")}
+                     "no_corresponde": d.get("no_corresponde", ""),
+                     "iva_90_dias": d.get("iva_90_dias", "")}
     out["_admins"] = admins
     ruta = os.path.join(pedidos.PEDIDOS, "_contactos.txt")
     tmp = ruta + ".tmp"

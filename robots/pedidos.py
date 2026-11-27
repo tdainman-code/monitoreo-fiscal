@@ -51,6 +51,7 @@ ROBOTS_PERMITIDOS["reporte_revisiones"] = "Reporte de revisiones diarias sin hac
 REPORTE_REVISIONES_PARA = ["tdainman@gmail.com"]
 ROBOTS_PERMITIDOS["vep_deuda"] = "VEP de deuda (conceptos tildados en la web)"
 ROBOTS_PERMITIDOS["vep_ccma"] = "VEP de autónomos / monotributo (CCMA)"
+ROBOTS_PERMITIDOS["vep_iva90"] = "VEP del IVA a 90 días (automático, 10 días antes del vencimiento)"
 MAX_ESTADO = 50
 
 
@@ -99,6 +100,10 @@ def _valido(p: dict) -> bool:
         from .robot_vep_ccma import SECCIONES
         s = p.get("secciones")
         ok = p.get("medio") in MEDIOS and isinstance(s, list) and 0 < len(s) <= 3 and all(x in SECCIONES for x in s)
+    if ok and p["robot"] == "vep_iva90":
+        ok = (re.fullmatch(r"\d{6}", str(p.get("periodo", ""))) is not None
+              and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(p.get("vencimiento", ""))) is not None
+              and (p.get("importe") is None or isinstance(p.get("importe"), (int, float))))
     if ok and p["robot"] in AVISOS:
         ok = re.fullmatch(rf"{p['cuit']}:[A-Za-z0-9-]{{1,20}}:\d{{1,3}}", str(p.get("aviso", ""))) is not None
     return ok
@@ -206,6 +211,9 @@ def procesar() -> int:
                     v = robot_vep_ccma.correr(p["cuit"], p["medio"], p["secciones"], por=p.get("por") or "")
                     res = (f"OK VEP {v['vep']} por $ {v.get('importe') or 0:,.2f} ({p['medio']}), autónomos / monotributo"
                            .replace(",", "X").replace(".", ",").replace("X", "."))
+                elif p["robot"] == "vep_iva90":              # VEP del IVA a 90 días (26/11/2026)
+                    from . import avisos
+                    res = avisos.vep_iva90(p)
                 elif p["robot"] == "vep_deuda":              # VEP de deuda pedido desde la web (20/11/2026)
                     from . import avisos, robot_vep_deuda
                     v = robot_vep_deuda.correr(p["cuit"], p["conceptos"], p["medio"], por=p.get("por") or "")

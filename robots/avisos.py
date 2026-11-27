@@ -383,6 +383,20 @@ def _es_anticipo(d):
     return re.search(r"anticip|\b191\b", f"{d.get('concepto') or ''} {d.get('subconcepto') or ''}", re.I)
 
 
+def es_iva_90(d: dict) -> bool:
+    """IVA con el beneficio de pago a 90 días (Gaby 26/11/2026): obligación de IVA de la DDJJ (no intereses ni
+    anticipos) cuyo vencimiento cae 3 meses o más después del período (lo normal es el mes siguiente)."""
+    if not _es_iva(d) or _es_anticipo(d):
+        return False
+    if re.search(r"\b0*51\b|inter[eé]s", f"{d.get('concepto') or ''} {d.get('subconcepto') or ''}", re.I):
+        return False
+    per = re.sub(r"\D", "", str(d.get("periodo") or ""))
+    v = _fecha(d.get("vencimiento"))
+    if len(per) < 6 or not v or not 1 <= int(per[4:6]) <= 12:
+        return False
+    return (v.year * 12 + v.month) - (int(per[:4]) * 12 + int(per[4:6])) >= 3
+
+
 def por_vencer_avisables(cuit: str, hoy: dt.date) -> list[dict]:
     """Lo que se le avisa al responsable 10 días antes (pedido de Gaby 20/11/2026), de Cuentas Tributarias:
       - IVA diferido (pago a 90 días): obligaciones de IVA de la solapa Deudas todavía no vencidas;
@@ -394,7 +408,7 @@ def por_vencer_avisables(cuit: str, hoy: dt.date) -> list[dict]:
         v = _fecha(d.get("vencimiento"))
         if not v or v < hoy or not (d.get("total") or d.get("capital")):
             continue
-        tipo = "IVA diferido" if _es_iva(d) else "Anticipo" if _es_anticipo(d) else None
+        tipo = "IVA diferido" if es_iva_90(d) else "Anticipo" if _es_anticipo(d) and not _es_iva(d) else None
         if tipo:
             out.append({**d, "venc": v, "tipo_aviso": tipo, "importe": d.get("total") or d.get("capital")})
             vistos.add((str(d.get("impuesto"))[:3], str(d.get("periodo")), str(d.get("cuota")), v))
@@ -423,6 +437,13 @@ def avisar_iva_diferido(cont: dict, cuits: list[str], hoy: dt.date) -> int:
             if faltan > DIAS_IVA_DIFERIDO or clave in hechos or (d["tipo_aviso"] == "IVA diferido" and viejo in hechos):
                 continue
             nombre = info.get("razon_social") or _cuit_fmt(cuit)
+            if d["tipo_aviso"] == "IVA diferido":            # 26/11/2026: se genera el VEP y después se avisa
+                pid = encolar_vep_iva90(cuit, d)
+                if pid:
+                    hechos[clave] = {"fecha": hoy.isoformat(), "cuit": cuit, "importe": d.get("importe"),
+                                     "tipo": d["tipo_aviso"], "pedido_vep": pid}
+                    n += 1
+                    continue
             que = (f"IVA diferido, período {d.get('periodo_txt') or d.get('periodo')}" if d["tipo_aviso"] == "IVA diferido"
                    else f"anticipo {d.get('cuota') or ''} de {d.get('impuesto') or ''} ({d.get('periodo_txt') or d.get('periodo')})")
             imp = f", {_pesos(d['importe'])}" if d.get("importe") else " (el importe no figura en Cuentas Tributarias)"
@@ -436,6 +457,67 @@ def avisar_iva_diferido(cont: dict, cuits: list[str], hoy: dt.date) -> int:
             n += 1
     _guardar(ruta, hechos)
     return n
+
+
+def encolar_vep_iva90(cuit: str, d: dict) -> str | None:
+    """Deja en la bandeja de pedidos la generación del VEP del IVA a 90 días (lo toma pedidos.py con el candado de
+    las corridas). None si no se pudo (entonces se manda el aviso de siempre, sin VEP)."""
+    try:
+        from .pedidos import PEDIDOS
+        p = {"id": uuid.uuid4().hex, "fecha": dt.datetime.now().isoformat(timespec="seconds"), "por": "automático",
+             "cuit": cuit, "robot": "vep_iva90", "periodo": re.sub(r"\D", "", str(d.get("periodo") or ""))[:6],
+             "periodo_txt": d.get("periodo_txt") or "", "vencimiento": d["venc"].isoformat(),
+             "importe": d.get("capital") or d.get("importe")}
+        ruta = os.path.join(PEDIDOS, f"{p['fecha'].replace(':', '')}_{p['id'][:8]}.json")
+        with open(ruta + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(p, f)
+        os.replace(ruta + ".tmp", ruta)
+        return p["id"]
+    except Exception:
+        return None
+
+
+def vep_iva90(p: dict) -> str:
+    """Genera el VEP del IVA a 90 días (uno por medio de pago del cliente) y le avisa al ENCARGADO que hay VEP
+    pendientes en el sistema (Gaby 26/11/2026). Al cliente no se le manda nada. Si no se pudo, igual le avisa."""
+    info = contactos().get(p["cuit"]) or {}
+    veps, error = [], ""
+    medios = info.get("medios_vep") or []
+    if not medios:
+        error = "el cliente no tiene cargado el medio de pago del VEP en 'Datos del cliente'"
+    else:
+        try:
+            from . import robot_vep_iva90
+            veps = robot_vep_iva90.correr(p["cuit"], p["periodo"], p["vencimiento"], p.get("importe"), medios)
+        except Exception as e:
+            error = f"{type(e).__name__}: {str(e)[:200]}"
+    return mail_vep_iva90(p, veps, error)
+
+
+def mail_vep_iva90(p: dict, veps: list[dict], error: str = "") -> str:
+    info = contactos().get(p["cuit"]) or {}
+    nombre = info.get("razon_social") or _cuit_fmt(p["cuit"])
+    venc = dt.date.fromisoformat(p["vencimiento"])
+    per = p.get("periodo_txt") or f"{p['periodo'][4:6]}/{p['periodo'][:4]}"
+    if veps:
+        renglones = "\n".join(f"  · VEP N° {v['vep']} — {v.get('medio')} — {_pesos(v.get('importe'))}"
+                               + (f" (el VEP vence el {v['vence_vep']})" if v.get("vence_vep") else "") for v in veps)
+        cuerpo = (f"Hola {info.get('encargado_nombre') or ''}:\n\n{nombre} ({_cuit_fmt(p['cuit'])}) tiene el IVA del período "
+                  f"{per} con el beneficio de pago a 90 días, que vence el {venc:%d/%m/%Y}.\n\nYa quedó generado:\n{renglones}\n\n"
+                  "Está en la ficha del cliente (VEPs generados desde el sistema), con la captura de ARCA. "
+                  "Avisale al cliente para que lo pague a término. Al cliente el sistema no le manda nada.\n")
+        asunto = f"VEP IVA 90 días pendiente de pago: {nombre} (vence {venc:%d/%m})"
+        res = "OK " + ", ".join(f"VEP {v['vep']} ({v.get('medio')})" for v in veps)
+    else:
+        imp = f" por {_pesos(p.get('importe'))}" if p.get("importe") else ""
+        cuerpo = (f"Hola {info.get('encargado_nombre') or ''}:\n\n{nombre} ({_cuit_fmt(p['cuit'])}) tiene el IVA del período "
+                  f"{per} con el beneficio de pago a 90 días{imp}, que vence el {venc:%d/%m/%Y}.\n\n"
+                  f"El sistema no pudo generar el VEP: {error}.\nHay que generarlo a mano en ARCA (Presentación de DDJJ y "
+                  "Pagos -> Gestión de VEP -> Generar VEP -> Desde deuda) y avisarle al cliente.\n")
+        asunto = f"IVA 90 días vence el {venc:%d/%m}: {nombre} (VEP NO generado)"
+        res = f"sin VEP: {error}"
+    mid = encolar_mail([info.get("encargado_email", "")], asunto, cuerpo, motivo=f"VEP IVA 90 {p['cuit']} {p['periodo']}")
+    return f"{res} · mail al encargado: {estado_mail(mid)}"
 
 
 def vep_programado() -> bool:

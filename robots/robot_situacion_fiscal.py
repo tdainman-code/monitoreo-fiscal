@@ -258,8 +258,56 @@ def _tabla_por_texto(page: Page, texto: str, id_: str | None = None) -> dict:
     for i in range(tablas.count()):
         t = tablas.nth(i)
         if texto.lower() in (t.text_content() or "").lower():
-            return t.evaluate(JS_TABLA)
+            r = t.evaluate(JS_TABLA)
+            if not _con_datos(r):
+                r = _tabla_sin_filas(page, texto, r)
+            return r
     raise arca.ErrorRobot(f"Mis Facilidades: no se encontró la tabla '{texto}'")
+
+
+def _con_datos(r: dict) -> bool:
+    return any(any(c for c in f.get("celdas") or []) and len(f.get("celdas") or []) > 1 for f in r.get("filas") or [])
+
+
+JS_TABLAS_TEXTO = """(texto) => {
+  const T = [...document.querySelectorAll('table')];
+  const i = T.findIndex(t => (t.textContent || '').toLowerCase().includes(texto));
+  if (i < 0) return null;
+  // la más interna que tiene el texto (la de afuera puede ser de diagramación)
+  let j = i;
+  for (let k = i + 1; k < T.length; k++) if (T[i].contains(T[k]) && (T[k].textContent || '').toLowerCase().includes(texto)) j = k;
+  T.forEach(t => t.removeAttribute('data-robot-t'));
+  T[j].setAttribute('data-robot-t', 'cab');
+  // la siguiente tabla (no anidada en la del encabezado) con renglones de datos: grilla con encabezado fijo aparte
+  for (let k = j + 1; k < T.length; k++) {
+    if (T[j].contains(T[k])) continue;
+    if ([...T[k].rows].some(r => r.cells.length > 1)) { T[k].setAttribute('data-robot-t', 'cuerpo'); break; }
+  }
+  return true; }"""
+
+
+def _tabla_sin_filas(page: Page, texto: str, r: dict) -> dict:
+    """26/11/2026 (Nabajuma, "Obligaciones al cierre" vacía): la tabla con el título no trajo renglones. Puede ser que
+    la grilla todavía estaba cargando, que la tabla encontrada sea la de diagramación, o que el encabezado esté en una
+    tabla y los renglones en la siguiente (encabezado fijo). Se prueba en ese orden."""
+    page.wait_for_timeout(3000)
+    try:
+        if not page.evaluate(JS_TABLAS_TEXTO, texto.lower()):
+            return r
+        cab = page.locator("[data-robot-t='cab']").first.evaluate(JS_TABLA)
+        if _con_datos(cab):
+            return cab
+        cuerpo = page.locator("[data-robot-t='cuerpo']")
+        if cuerpo.count():
+            c = cuerpo.first.evaluate(JS_TABLA)
+            filas = ([{"clase": "", "celdas": c["encabezados"]}] if c["encabezados"] and len(c["encabezados"]) == len(cab["encabezados"])
+                     and not any(texto.lower() in x.lower() for x in c["encabezados"]) else []) + c["filas"]
+            filas = [f for f in filas if len(f["celdas"]) == len(cab["encabezados"])] or filas
+            if any(len(f["celdas"]) > 1 for f in filas):
+                return {"encabezados": cab["encabezados"], "filas": filas}
+        return cab if cab.get("encabezados") else r
+    except Exception:
+        return r
 
 
 def _ir(page: Page, url: str) -> None:

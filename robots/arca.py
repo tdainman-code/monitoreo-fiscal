@@ -44,6 +44,8 @@ SERVICIOS = {
     # relevados con Gaby el 17/11/2026 (control de pagos de autónomos y monotributo)
     "ccma": "texto:CCMA\\s*-\\s*CUENTA\\s+CORRIENTE\\s+DE\\s+CONTRIBUYENTES",   # NO "CCMA - ARBA - ..."
     "monotributo": "texto:^\\s*MONOTRIBUTO\\s*$",
+    # relevado con Gaby el 26/11/2026 (VEP del IVA a 90 días): portal "Presentación de DDJJ y Pagos" (seti)
+    "presentacion_ddjj_pagos": "texto:PRESENTACI[OÓ]N\\s+DE\\s+DDJJ\\s+Y\\s+PAGOS",
 }
 
 

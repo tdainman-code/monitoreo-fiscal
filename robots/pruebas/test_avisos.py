@@ -109,9 +109,31 @@ antes = set(os.listdir(av.SALIDA))
 chk(av.avisar_iva_diferido(av.contactos(), [C], dt.date(2026, 12, 7)) == 0, "IVA diferido: 11 días antes todavía no avisa")
 chk(av.avisar_iva_diferido(av.contactos(), [C], dt.date(2026, 12, 8)) == 1 and
     av.avisar_iva_diferido(av.contactos(), [C], dt.date(2026, 12, 9)) == 0, "IVA diferido: 10 días antes avisa una sola vez")
+# 26/11/2026: el IVA a 90 días ya no manda el mail directo: deja el pedido del VEP y el mail sale al generarlo
+from robots.pedidos import PEDIDOS as _PED, _valido as _val
+_peds = [json.load(open(os.path.join(_PED, n))) for n in os.listdir(_PED) if n.endswith(".json")]
+_pv = [x for x in _peds if x.get("robot") == "vep_iva90"]
+chk(len(_pv) == 1 and _pv[0]["periodo"] == "202609" and _pv[0]["vencimiento"] == "2026-12-18" and _pv[0]["importe"] == 812345.67
+    and _val(_pv[0]), "IVA 90 días: 10 días antes deja un pedido de VEP válido (una sola vez)")
+chk(set(os.listdir(av.SALIDA)) == antes, "IVA 90 días: todavía no manda mail (sale cuando se genera el VEP)")
+_r = av.mail_vep_iva90(_pv[0], [{"vep": "123456789", "medio": "Interbanking", "importe": 812345.67}])
 _m = [json.load(open(os.path.join(av.SALIDA, n))) for n in set(os.listdir(av.SALIDA)) - antes]
-chk(len(_m) == 1 and _m[0]["para"] == ["tomas@estudio.com"] and "18/12/2026" in _m[0]["cuerpo"] and "812.345,67" in _m[0]["cuerpo"],
-    "IVA diferido: el mail va al encargado (no al cliente) con fecha e importe")
+chk(_r.startswith("OK VEP 123456789") and len(_m) == 1 and _m[0]["para"] == ["tomas@estudio.com"] and "18/12/2026" in _m[0]["cuerpo"]
+    and "812.345,67" in _m[0]["cuerpo"] and "123456789" in _m[0]["cuerpo"] and "pendiente" in _m[0]["asunto"],
+    "IVA 90 días: el mail va al encargado (no al cliente) con el N° de VEP, fecha e importe")
+antes = set(os.listdir(av.SALIDA))
+_r = av.mail_vep_iva90(_pv[0], [], "ErrorRobot: no está en la deuda")
+_m = [json.load(open(os.path.join(av.SALIDA, n))) for n in set(os.listdir(av.SALIDA)) - antes]
+chk(_r.startswith("sin VEP") and len(_m) == 1 and "NO generado" in _m[0]["asunto"] and "a mano" in _m[0]["cuerpo"],
+    "IVA 90 días: si el VEP no se pudo generar, igual se le avisa al encargado")
+for n in os.listdir(_PED):
+    if n.endswith(".json") and json.load(open(os.path.join(_PED, n))).get("robot") == "vep_iva90":
+        os.remove(os.path.join(_PED, n))
+# qué es IVA a 90 días: vencimiento 3 meses o más después del período, solo la DDJJ
+_i = lambda per, v, c="19 - DDJJ", sc="19 - DDJJ": av.es_iva_90({"impuesto": "30 - IVA", "concepto": c, "subconcepto": sc,
+                                                                   "periodo": per, "vencimiento": v})
+chk(_i("202610", "2027-02-18") and not _i("202610", "2026-11-25") and not _i("202610", "2027-02-18", sc="51 - INTERESES")
+    and not _i("20261000", "2026-12-20") and _i("20261000", "2027-01-20"), "IVA 90 días: detecta el vencimiento corrido")
 
 # Anticipos: igual que el IVA diferido (Gaby 20/11/2026); de la solapa Vencimientos (sin importe)
 _d = json.load(open(_sit))

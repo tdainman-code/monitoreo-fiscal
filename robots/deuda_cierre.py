@@ -210,7 +210,7 @@ def cuentas_tributarias(scth: dict | None, f: date) -> dict:
 
 def pagos_posteriores(pagos_sct: dict | None, f: date) -> dict:
     """Pagos con fecha posterior al cierre e imputados a períodos hasta el cierre (Gaby 26/11/2026: "no tomaste en
-    cuenta los pagos posteriores"): eran deuda a la fecha del cierre. El F.800 se separa: suele ser de intereses."""
+    cuenta los pagos posteriores"): eran deuda a la fecha del cierre. El F.800 se separa: son intereses (confirmado por Gaby 26/11/2026)."""
     filas = []
     from datetime import timedelta
     # los pagos leídos tienen que arrancar a más tardar el día siguiente al cierre
@@ -259,7 +259,7 @@ def excel(cuit: str, r: dict, destino: str, leido: str = "") -> str:
                   r["pp"]["total"] if r.get("pp", {}).get("hay") else "falta leer los pagos (pedir de nuevo la deuda al cierre)"),
                  ("TOTAL deuda fiscal al cierre", round(r["total_planes"] + (r.get("ct", {}).get("total") or 0.0)
                                                        + (r.get("pp", {}).get("total") or 0.0), 2)),
-                 ("   aparte, pagos con F.800 posteriores (verificar: suelen ser intereses; no suman)", r.get("pp", {}).get("total_f800", 0.0)),
+                 ("   aparte, pagos con F.800 posteriores (intereses: no suman)", r.get("pp", {}).get("total_f800", 0.0)),
                  ("Estado de cumplimiento leído el", r.get("ct", {}).get("leido", ""))):
         ws.append([k, v])
     for fila in (4, 5, 6, 7, 8, 9):
@@ -291,7 +291,7 @@ def excel(cuit: str, r: dict, destino: str, leido: str = "") -> str:
     hoja(wb.create_sheet("Pagos posteriores al cierre"),
          ["Fecha de pago", "Formulario", "Impuesto", "Período", "Importe", "Observaciones", "Suma"],
          [[x["fecha"], x["formulario"], x["impuesto"], x["periodo_txt"], x["importe"], x["observaciones"],
-           "no (F.800: verificar si es interés)" if x["posible_interes"] else "sí"] for x in pp.get("filas") or []],
+           "no (F.800: intereses)" if x["posible_interes"] else "sí"] for x in pp.get("filas") or []],
          (13, 11, 38, 12, 16, 40, 30))
     for w in wb.worksheets[1:]:
         for row in w.iter_rows(min_row=2):
