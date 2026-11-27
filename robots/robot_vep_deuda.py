@@ -214,6 +214,8 @@ def correr(cuit: str, conceptos: list[dict], medio: str, visible: bool = False, 
     res: dict = {}
 
     def paso(ctx, portal):
+        if res.get("vep"):                       # ya se generó antes del corte: no hace otro
+            return "OK"
         page = arca.abrir_servicio(ctx, portal, "cuentas_tributarias")
         page.wait_for_load_state("domcontentloaded")
         rsf._elegir_cuit_sct(page, cuit, None)
@@ -223,7 +225,7 @@ def correr(cuit: str, conceptos: list[dict], medio: str, visible: bool = False, 
         page.close()
         return "OK"
 
-    arca.ejecutar(usuario, clave, [("vep_deuda", paso)], os.path.join(DATOS, cuit, "capturas"), visible, max_reingresos=0)
+    arca.ejecutar(usuario, clave, [("vep_deuda", paso)], os.path.join(DATOS, cuit, "capturas"), visible, max_reingresos=2)
     v = res.get("vep")
     if not v:
         raise arca.ErrorRobot("No se pudo generar el VEP de deuda")

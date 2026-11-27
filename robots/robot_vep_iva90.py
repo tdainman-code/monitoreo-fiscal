@@ -234,7 +234,7 @@ def correr(cuit: str, periodo: str, vencimiento: str, importe: float | None, med
         page.close()
         return "OK"
 
-    arca.ejecutar(usuario, clave, [("vep_iva90", paso)], os.path.join(DATOS, cuit, "capturas"), visible, max_reingresos=0)
+    arca.ejecutar(usuario, clave, [("vep_iva90", paso)], os.path.join(DATOS, cuit, "capturas"), visible, max_reingresos=2)
     if not hechos:
         raise arca.ErrorRobot("No se pudo generar el VEP del IVA")
     carpeta = os.path.join(DATOS, cuit, "vep")

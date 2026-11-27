@@ -127,6 +127,8 @@ def correr(cuit: str, medio: str, secciones: list[str] | None = None, visible: b
     res: dict = {}
 
     def paso(ctx, portal):
+        if res.get("vep"):                       # ya se generó antes del corte: no hace otro
+            return "OK"
         page, motivo = robot_ccma._abrir_ccma(ctx, portal, cuit, usuario)
         if page is None:
             raise arca.ErrorRobot(f"CCMA: {motivo}")
@@ -134,7 +136,7 @@ def correr(cuit: str, medio: str, secciones: list[str] | None = None, visible: b
         res["vep"] = generar(page, cuit, medio, secciones)
         return "OK"
 
-    arca.ejecutar(usuario, clave, [("vep_ccma", paso)], os.path.join(DATOS, cuit, "capturas"), visible, max_reingresos=0)
+    arca.ejecutar(usuario, clave, [("vep_ccma", paso)], os.path.join(DATOS, cuit, "capturas"), visible, max_reingresos=2)
     v = res.get("vep")
     if not v:
         raise arca.ErrorRobot("No se pudo generar el VEP de autónomos / monotributo")
