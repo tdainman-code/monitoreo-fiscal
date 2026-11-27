@@ -68,7 +68,10 @@ def _vigilar_cartel_oficio(page) -> None:
     esperaba 45 s y fallaba. Playwright lo cierra solo antes de cada acción, siempre con CERRAR (nunca VISUALIZAR)."""
     if not hasattr(page, "add_locator_handler"):
         return
-    cartel = page.get_by_text(re.compile(r"notificadas de oficio sin leer", re.I))
+    # 27/11/2026: solo el modal (no un texto suelto de la página) y sin esperar a que desaparezca: si el texto
+    # quedaba visible, Playwright frenaba cada clic hasta los 45 s (Nabajuma: "Locator.click: Timeout 45000ms")
+    cartel = page.locator(".modal.show, .modal.in, .modal[style*='block'], [role=dialog], [role=alertdialog]").filter(
+        has_text=re.compile(r"notificadas de oficio sin leer", re.I))
 
     def cerrar(*_):
         for loc in (page.get_by_role("button", name=re.compile(r"^\s*Cerrar\s*$", re.I)),
@@ -82,6 +85,8 @@ def _vigilar_cartel_oficio(page) -> None:
         page.keyboard.press("Escape")
 
     try:
+        page.add_locator_handler(cartel, cerrar, no_wait_after=True)
+    except TypeError:                                  # Playwright viejo, sin no_wait_after
         page.add_locator_handler(cartel, cerrar)
     except Exception:
         pass

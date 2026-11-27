@@ -1735,7 +1735,9 @@ def _procesar_claves(cuit, razon, hay_razon):
             err = f"El usuario de {org}, si lo completás, tiene que ser un CUIT válido"
             break
         u = "".join(ch for ch in u if ch.isdigit())
-        if org == "AGIP" and not u:
+        if org == "AGIP" and not u and cuit[:2] not in ("30", "33", "34"):
+            u = cuit                                      # 27/11/2026 (Garbuglia): una persona entra con su propio CUIT
+        elif org == "AGIP" and not u:
             # AGIP (Gaby, 25/11/2026): una persona jurídica entra con el CUIT del REPRESENTANTE (persona física)
             acc = _cliente_info(cuit).get("accesos") or []
             ant = next((a.get("usuario") for a in acc if a.get("organismo") == "AGIP" and not a.get("detalle")), "")

@@ -320,7 +320,7 @@ def login_miba(ctx, usuario: str, clave: str):
     return page
 
 
-def login(ctx, usuario: str, clave: str, miba: tuple | None = None):
+def login(ctx, usuario: str, clave: str, miba: tuple | None = None, cliente: str = ""):
     """Clave Ciudad (CUIT del administrador de relaciones + clave); si AGIP la rechaza, la cuenta miBA cargada aparte
     (Gaby 25/11/2026: dos casilleros, usuario CUIL o mail) o, si no hay, la misma clave como cuenta miBA."""
     if not usuario and miba:
@@ -328,6 +328,18 @@ def login(ctx, usuario: str, clave: str, miba: tuple | None = None):
     try:
         return _login_clave_ciudad(ctx, usuario, clave)
     except arca.ClaveInvalida as e:
+        # 27/11/2026 (Garbuglia): una persona física entra con su propio CUIT; si la clave quedó cargada con el CUIT
+        # de otro (el de ARCA), se prueba con el del cliente antes de seguir con miBA
+        if cliente and usuario != cliente and cliente[:2] not in ("30", "33", "34"):
+            for p in list(ctx.pages):
+                try:
+                    p.close()
+                except Exception:
+                    pass
+            try:
+                return _login_clave_ciudad(ctx, cliente, clave)
+            except arca.ClaveInvalida:
+                pass
         if miba:
             for p in list(ctx.pages):
                 try:
@@ -641,7 +653,7 @@ def paso(usuario: str, clave: str, cuit: str, estado: dict, visible: bool = True
              "fiscalizacion": [], "servicios": {}, "alertas": []}
         with arca.navegador(visible=visible) as ctx:
             try:
-                page = login(ctx, usuario, clave, miba)
+                page = login(ctx, usuario, clave, miba, cliente=cuit)
                 _elegir_representado_portal(page, cuit)
                 inicio = page.url
                 try:                                     # constancia de inscripción de IIBB (Gaby, 25/11/2026)
