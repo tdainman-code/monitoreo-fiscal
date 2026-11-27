@@ -34,6 +34,7 @@ def leer(ctx, portal, cuit: str, hoy: date) -> dict:
         lista = rsf._tabla_por_texto(page, "Consolidado")
         planes = ls.leer_lista_planes(lista)
         detalle = {}
+        vistas: dict = {}
         for p in planes:
             try:
                 id_ = rsf._abrir_detalle(page, p["numero"])
@@ -48,6 +49,14 @@ def leer(ctx, portal, cuit: str, hoy: date) -> dict:
                         d[clave] = rsf._tabla_por_texto(page, marca, tid)
                     except arca.ErrorRobot:
                         d[clave] = {"encabezados": [], "filas": []}      # plan anulado: puede no tener cronograma
+                    if clave == "obligaciones" and not d[clave].get("filas") and not vistas.get("oblig"):
+                        # 27/11/2026 (Nabajuma): la hoja "Obligaciones al cierre" sale vacía en todos los planes. Se guarda
+                        # UNA captura de la pantalla para ver cómo la muestra ARCA (Biblioteca -> pantallas del robot)
+                        vistas["oblig"] = True
+                        try:
+                            arca.capturar(ctx, os.path.join(DATOS, cuit, "capturas"), f"planes_obligaciones_{p['numero']}")
+                        except Exception:
+                            pass
                 detalle[p["numero"]] = d
             except (arca.SesionPerdida, arca.CuitEquivocado):
                 raise
