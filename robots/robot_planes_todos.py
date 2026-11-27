@@ -91,4 +91,9 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, fecha
     r = arca.ejecutar(usuario, clave, pasos, os.path.join(DATOS, cuit, "capturas"), visible, seguir_si_falla=True)
     if (r or {}).get("_errores", {}).get("planes_todos"):
         raise arca.ErrorRobot(str(r["_errores"]["planes_todos"]))
+    e_p = (r or {}).get("_errores", {}).get("pagos_sct")
+    if e_p:                                   # 27/11/2026: que se vea por qué faltan los pagos posteriores
+        estado["resultado"] = f"{estado.get('resultado') or 'OK'} · PAGOS POSTERIORES NO LEÍDOS: {str(e_p)[:200]}"
+    elif est_p.get("resultado"):
+        estado["resultado"] = f"{estado.get('resultado') or 'OK'} · pagos: {est_p['resultado']}"
     return {"cuit": cuit, "planes_todos": estado.get("resultado"), "archivos": {"planes_todos": {"alertas": []}}}

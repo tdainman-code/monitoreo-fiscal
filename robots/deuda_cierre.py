@@ -188,7 +188,9 @@ def cuentas_tributarias(scth: dict | None, f: date) -> dict:
     cierre vencen después: se marcan."""
     filas = []
     for d in (scth or {}).get("deudas") or []:
-        if not re.search(r"DDJJ|DECLARACI", str(d.get("concepto") or ""), re.I) or re.search(r"INTER", str(d.get("concepto") or ""), re.I):
+        # 27/11/2026: se excluyen intereses y multas (antes se exigía que diga "DDJJ" y en los datos reales el
+        # concepto puede venir con otro texto o un código)
+        if re.search(r"INTER|MULTA|\b0*51\b|RESARC|PUNIT", str(d.get("concepto") or ""), re.I):
             continue
         per = str(d.get("periodo") or "")
         if not re.fullmatch(r"\d{8}", per):
@@ -204,7 +206,9 @@ def cuentas_tributarias(scth: dict | None, f: date) -> dict:
                       "vence_despues": clave == f.year * 100 + f.month or (not mes and anio == f.year)})
     filas.sort(key=lambda x: (x["impuesto"], x["periodo"]))
     return {"filas": filas, "total": round(sum(x["deuda"] for x in filas), 2),
-            "total_f931": round(sum(x["deuda"] for x in filas if x["f931"]), 2), "leido": (scth or {}).get("fecha", ""),
+            "total_f931": round(sum(x["deuda"] for x in filas if x["f931"]), 2),
+            "leido": (scth or {}).get("fecha") or (scth or {}).get("fecha_lectura", ""),
+            "anios": ", ".join(sorted({str(a.get("anio")) for a in (scth or {}).get("anios") or [] if a.get("anio")})),
             "hay": bool(scth)}
 
 
@@ -265,7 +269,8 @@ def excel(cuit: str, r: dict, destino: str, leido: str = "") -> str:
                  ("TOTAL deuda fiscal al cierre", round(r["total_planes"] + (r.get("ct", {}).get("total") or 0.0)
                                                        + (r.get("pp", {}).get("total") or 0.0), 2)),
                  ("   aparte, pagos con F.800 posteriores (intereses: no suman)", r.get("pp", {}).get("total_f800", 0.0)),
-                 ("Estado de cumplimiento leído el", r.get("ct", {}).get("leido", ""))):
+                 ("Estado de cumplimiento leído el", r.get("ct", {}).get("leido", "")),
+                 ("   años del estado de cumplimiento leídos", r.get("ct", {}).get("anios") or "")):
         ws.append([k, v])
     for e in r.get("errores") or []:
         ws.append(["ERROR (avisar)", e])
