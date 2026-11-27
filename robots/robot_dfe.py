@@ -377,7 +377,7 @@ def paso(cuit: str, usuario: str, estado: dict):
         from .notificaciones import clasificar, responsable
         resp = responsable(cuit)
         for f in filas:
-            cl = clasificar(f["asunto"], f["clasificacion"])
+            cl = clasificar(f["asunto"], f["clasificacion"], sistema=f.get("organismo") or "")
             leida = f.get("leida_pantalla", f["notificado"] is not None)
             com.append({"fecha": f["recibido"], "notificado": f["notificado"], "leida": leida,
                         "notificada_sin_leer": bool(f["notificado"]) and not leida,

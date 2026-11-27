@@ -16,7 +16,11 @@ import ast
 import re
 from contextlib import closing
 
-NO_IMPORTANTE = re.compile(r"sicnea|libro de sueldos|\blsd\b|malvina", re.I)
+NO_IMPORTANTE = re.compile(r"sicnea|libro de sueldos|\blsd\b|malvina|"
+                           # Gaby 27/11/2026: también SIM servicios extraordinarios, SIM - SECOEXPO y Mi PyME
+                           r"servicios?\s+extraordinari|secoexpo|mi\s*pyme|categorizaci[oó]n\s+y/?o\s+beneficios", re.I)
+# aunque venga de uno de esos sistemas, si habla de intimación, fiscalización o embargo NO se toma como no importante
+GRAVE = re.compile(r"intimaci|fiscaliz|inspecci|requerimiento|embargo|ejecuci[oó]n fiscal|apremio|sumario", re.I)
 FALTA_PRESENTACION = re.compile(r"falta de presentaci|omisi[oó]n de presentaci|no present|ddjj (omitida|pendiente)|"
                                 r"intimaci[oó]n.{0,40}presentaci|incumplimiento.{0,30}(presentaci|declaraci)", re.I)
 PAGO = re.compile(r"intimaci[oó]n.{0,40}pago|falta de pago|deuda|mora|vep|saldo impago|ejecuci[oó]n fiscal|"
@@ -25,10 +29,11 @@ FISCALIZACION = re.compile(r"fiscaliz|inspecci|requerimiento|fire\b|inconsistenc
 SECLO = re.compile(r"seclo", re.I)
 
 
-def clasificar(asunto: str, clasificacion: str = "", texto: str = "", tipo: str = "") -> dict:
-    """Devuelve {'importancia', 'para', 'motivo'}.  para: 'nadie (no importante)' | 'estudio' | 'estudio y cliente'."""
+def clasificar(asunto: str, clasificacion: str = "", texto: str = "", tipo: str = "", sistema: str = "") -> dict:
+    """Devuelve {'importancia', 'para', 'motivo'}.  para: 'nadie (no importante)' | 'estudio' | 'estudio y cliente'.
+    sistema = quién la publica en la ventanilla de ARCA (columna organismo: "Sistema Informático Malvina", ...)."""
     t = " ".join(x for x in (asunto, clasificacion, tipo, (texto or "")[:3000]) if x)
-    if NO_IMPORTANTE.search(f"{asunto} {clasificacion}"):
+    if NO_IMPORTANTE.search(f"{asunto} {clasificacion} {sistema}") and not GRAVE.search(t):
         return {"importancia": "Baja", "para": "nadie (no importante)", "motivo": "aviso genérico"}
     if FALTA_PRESENTACION.search(t):
         return {"importancia": "ALTA", "para": "estudio", "motivo": "falta de presentación"}
