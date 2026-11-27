@@ -468,7 +468,8 @@ def _notificaciones(base: str, dfe: dict | None) -> list[dict]:
                     "importancia": c.get("importancia"), "para": c.get("para", ""), "motivo": c.get("motivo", ""),
                     "responsable": c.get("responsable", ""),
                     "estado": (f"NOTIFICADA{' DE OFICIO' if c.get('de_oficio') else ''} el {c.get('notificado')} — SIN LEER"
-                               if c.get("notificada_sin_leer") else c.get("notificado") or "SIN ABRIR"),
+                               if c.get("notificada_sin_leer") else "abierta por el robot (sin importancia)"
+                               if c.get("abierta_por_robot") else c.get("notificado") or "SIN ABRIR"),
                     "notificada_sin_leer": bool(c.get("notificada_sin_leer")),
                     "pendiente": not c.get("leida"), "plazo": "", "resumen": ""})
     arba = _leer(_ultimo(os.path.join(base, "arba_dfe", "[0-9]*", "resultado.json")))

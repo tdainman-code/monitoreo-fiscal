@@ -32,7 +32,7 @@ echo "== Probando el código nuevo (no toca nada todavía)"
 sudo -u $U "$H/venv/bin/python" -m py_compile "$TMP"/robots/*.py || { echo "ERROR de sintaxis en robots: no se cambió nada"; exit 1; }
 WEBPY=/opt/robots-web/venv/bin/python; [ -x "$WEBPY" ] || WEBPY="$H/venv/bin/python"
 "$WEBPY" -m py_compile "$TMP"/robots_web/*.py || { echo "ERROR de sintaxis en la web: no se cambió nada"; exit 1; }
-for t in robots/pruebas/test_conciliacion_compras.py robots/pruebas/test_ccma.py robots/pruebas/test_sct_historico.py robots/pruebas/test_mis_retenciones.py robots/pruebas/test_vep_deuda.py robots/pruebas/test_vep_iva90.py \
+for t in robots/pruebas/test_conciliacion_compras.py robots/pruebas/test_ccma.py robots/pruebas/test_sct_historico.py robots/pruebas/test_mis_retenciones.py robots/pruebas/test_vep_deuda.py robots/pruebas/test_vep_iva90.py robots/pruebas/test_dfe_rutinarias.py \
          pruebas/test_web_radar.py pruebas/test_asientos.py; do
   [ -f "$TMP/$t" ] || continue
   if (cd "$TMP" && sudo -u $U env PYTHONPATH="$TMP" HOME=$H timeout 900 "$H/venv/bin/python" "$t" > "$TMP/prueba.log" 2>&1); then

@@ -29,6 +29,14 @@ FISCALIZACION = re.compile(r"fiscaliz|inspecci|requerimiento|fire\b|inconsistenc
 SECLO = re.compile(r"seclo", re.I)
 
 
+def rutinaria(asunto: str, clasificacion: str = "", sistema: str = "") -> bool:
+    """Las que se abren para que queden leídas (Gaby 27/11/2026): SOLO las de los sistemas de la lista, nunca si
+    hablan de intimación, fiscalización, embargo, etc."""
+    t = f"{asunto} {clasificacion} {sistema}"
+    return bool(NO_IMPORTANTE.search(t)) and not GRAVE.search(t) and not FALTA_PRESENTACION.search(t) \
+        and not PAGO.search(t)
+
+
 def clasificar(asunto: str, clasificacion: str = "", texto: str = "", tipo: str = "", sistema: str = "") -> dict:
     """Devuelve {'importancia', 'para', 'motivo'}.  para: 'nadie (no importante)' | 'estudio' | 'estudio y cliente'.
     sistema = quién la publica en la ventanilla de ARCA (columna organismo: "Sistema Informático Malvina", ...)."""

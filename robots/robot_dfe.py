@@ -10,8 +10,10 @@ Recorrido (relevado el 15/11/2026, usuario 20-14283675-1):
      Notificado = fecha, o "-" si todavía NO se abrió (no notificada).
   Rango por defecto: últimos 60 días. Filas por página: select#per-page-select (10/50/100).
 
-IMPORTANTE: abrir una comunicación no leída la da por NOTIFICADA (corren plazos). Este robot NUNCA hace
-clic en una comunicación: solo lee la lista y clasifica la importancia por asunto y clasificación.
+IMPORTANTE: abrir una comunicación no leída la da por NOTIFICADA (corren plazos). Este robot solo lee la lista y
+clasifica la importancia por asunto y clasificación. ÚNICA excepción (Gaby 27/11/2026): abre las de los sistemas sin
+importancia (Libro de sueldos, SIM servicios extraordinarios, SICNEA, Malvina, SECOEXPO, Mi PyME) para que queden
+leídas, salvo que hablen de intimación, pago, fiscalización o falta de presentación. Ver abrir_rutinarias.
 """
 from __future__ import annotations
 
@@ -319,6 +321,63 @@ def _leer_tabla_nueva(page) -> tuple[list[dict], str]:
     return filas, aviso
 
 
+MAX_ABRIR = 25
+
+JS_MARCAR_FILA = """([asunto, recibido, representado]) => {
+  document.querySelectorAll('[data-robot-abrir]').forEach(e => e.removeAttribute('data-robot-abrir'));
+  const limpiar = s => (s || '').replace(/\\s+/g, ' ').trim();
+  const t = [...document.querySelectorAll('.tab-pane.active table, [role=tabpanel].active table, table')]
+            .find(x => x.offsetParent !== null);
+  if (!t) return 'sin tabla';
+  const filas = [...t.querySelectorAll('tbody tr')].filter(r => {
+    const c = [...r.cells].map(x => limpiar(x.innerText));
+    return c.includes(asunto) && c.includes(recibido) && (!representado || c.includes(representado));
+  });
+  if (filas.length !== 1) return 'filas: ' + filas.length;
+  const celda = [...filas[0].cells].find(x => limpiar(x.innerText) === asunto);
+  const el = celda.querySelector('a, button, [role=link], span, div') || celda;
+  el.setAttribute('data-robot-abrir', '1');
+  return 'ok';
+}"""
+
+
+def abrir_rutinarias(page, filas: list[dict], cuit: str, razon_social: str) -> int:
+    """Gaby 27/11/2026: abre (para que queden leídas en ARCA) las comunicaciones NO LEÍDAS de los sistemas sin
+    importancia (Libro de sueldos, SIM servicios extraordinarios, SICNEA, Malvina, SECOEXPO, Mi PyME). Solo esas:
+    clic en el asunto -> detalle ("N° de comunicación", adjuntos) -> VOLVER. Nunca toca otra comunicación. Si algo no
+    coincide (fila repetida, otro representado, otra pantalla), no abre y sigue."""
+    from .notificaciones import rutinaria
+    n = 0
+    for f in filas:
+        if n >= MAX_ABRIR:
+            break
+        if f.get("leida_pantalla") or not rutinaria(f["asunto"], f["clasificacion"], f.get("organismo") or ""):
+            continue
+        if f.get("representado") and razon_social and not coincide_representado(f["representado"], cuit, razon_social):
+            continue
+        try:
+            if razon_social and not coincide_representado(_texto_solapa(page), cuit, razon_social):
+                break                                # volvió a "Todos tus representados" u otro: no se abre nada más
+            if page.evaluate(JS_MARCAR_FILA, [f["asunto"], f["recibido"], f.get("representado") or ""]) != "ok":
+                continue
+            page.locator("[data-robot-abrir='1']").first.click()
+            page.get_by_text(re.compile(r"N[°º]\s*de\s*comunicaci[oó]n\s*:", re.I)).first.wait_for(timeout=30_000)
+            arca.pausa(1.0, 2.0)
+            detalle = page.inner_text("body")
+            ok = f["asunto"][:40].lower() in detalle.lower()
+            page.get_by_role("button", name=re.compile(r"^\s*VOLVER\s*$", re.I)).first.click()
+            _tabla_activa(page).first.wait_for(state="visible", timeout=30_000)
+            arca.pausa(1.0, 2.0)
+            _cerrar_cartel(page, 1500)
+            if ok:
+                f["leida_pantalla"] = True
+                f["abierta_por_robot"] = True
+                n += 1
+        except Exception:
+            break                                   # pantalla inesperada: no se sigue abriendo nada
+    return n
+
+
 def _guardar_html(page, cuit: str) -> None:
     """Copia de la página (sin claves) para relevar cambios de pantalla de ARCA."""
     try:
@@ -338,6 +397,7 @@ def paso(cuit: str, usuario: str, estado: dict):
         arca.pausa(2.0, 3.5)
         _cerrar_cartel(page, 8000)
         aviso = ""
+        abiertas = 0
         if es_pantalla_nueva(page):
             from .almacen_claves import razon_social as _rs
             try:
@@ -355,6 +415,7 @@ def paso(cuit: str, usuario: str, estado: dict):
                 _elegir_representado_nuevo(page, cuit, rs)
             _guardar_html(page, cuit)
             filas, aviso = _leer_tabla_nueva(page)
+            abiertas = abrir_rutinarias(page, filas, cuit, rs if cuit != usuario else "")
         else:
             if cuit == usuario:
                 try:
@@ -384,6 +445,7 @@ def paso(cuit: str, usuario: str, estado: dict):
                         "de_oficio": f.get("de_oficio", False),
                         "organismo": f["organismo"], "asunto": f["asunto"], "clasificacion": f["clasificacion"],
                         "importancia": cl["importancia"], "para": cl["para"], "motivo": cl["motivo"],
+                        "abierta_por_robot": bool(f.get("abierta_por_robot")),
                         "responsable": resp if cl["motivo"] == "falta de presentación" else ""})
         no_leidas_altas = [c for c in com if not c["leida"] and c["importancia"] == "ALTA"]
         for c in com:
@@ -398,6 +460,7 @@ def paso(cuit: str, usuario: str, estado: dict):
                                          + (" (SIN ABRIR)" if not c["leida"] else f" (notificada {c['notificado']})")})
         res = {"cuit": cuit, "fecha": hoy.isoformat(), "rango": "últimos 60 días (por defecto de ARCA)",
                "comunicaciones": com, "total": len(com), "sin_abrir": sum(1 for c in com if not c["leida"]),
+               "abiertas_por_robot": abiertas,
                "altas_sin_abrir": len(no_leidas_altas),
                "notificadas_sin_leer": sum(1 for c in com if c["notificada_sin_leer"]),
                "aviso": aviso, "alertas": alertas}
