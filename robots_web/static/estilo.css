@@ -261,3 +261,12 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .fila-porcentaje input:focus{outline:none;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.2)}
 .fila-porcentaje .pct{font-size:18px;font-weight:600}
 .aviso-pct{margin:8px 0 0;color:#b45309;font-size:13px}
+
+/* predictor de clientes (Biblioteca, 27/11/2026): fijo arriba al bajar, con lista de coincidencias */
+.predictor{position:sticky;top:0;z-index:30;background:var(--fondo,#f1f5f9);padding:8px 0;margin:8px 0 12px}
+.predictor .sugerencias{position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid var(--borde);border-radius:12px;
+  box-shadow:0 8px 24px rgba(15,23,42,.12);max-height:360px;overflow:auto}
+.predictor .sugerencias a{display:block;padding:9px 14px;text-decoration:none;color:inherit;border-top:1px solid #f1f5f9}
+.predictor .sugerencias a:first-child{border-top:0}
+.predictor .sugerencias a:hover,.predictor .sugerencias a.activo{background:#eff6ff}
+.predictor .sugerencias div{padding:8px 14px}

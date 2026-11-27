@@ -1,6 +1,8 @@
 {% extends "base.html" %}{% block titulo %}Biblioteca{% endblock %}
 {% block cuerpo %}
 <h1>Biblioteca de archivos</h1>
+<div class="buscar-grande predictor" id="b-caja"><input id="b-buscar" type="search" placeholder="🔍  Escribí el nombre o CUIT del cliente: filtra mientras escribís (Enter abre el primero)" autocomplete="off">
+  <div class="sugerencias" id="b-sug" hidden></div></div>
 <p class="sutil">Retenciones, percepciones y más · AGIP · ARCA · ARBA · Otros</p>
 <p class="sutil">Retenciones, percepciones y recaudaciones de cada cliente, por período y fuente, listas para bajar e importar en la liquidación de IVA e IIBB.
  Tocá un cliente para ver sus archivos, los totales y los saldos del mes anterior. Las fuentes marcadas "robot pendiente" se suman cuando se relevan sus pantallas.</p>
@@ -17,7 +19,6 @@
 </form>
 <p class="sutil">{{ filas|length }} cliente(s) ·
  {% for k in ('bajado', 'sin_mov', 'pendiente', 'error') %}<span class="estado-bib {{ k }}">{{ estados[k] }}: {{ cuenta[k] }}</span> {% endfor %}</p>
-<div class="buscar-grande" style="margin:12px 0"><input id="b-buscar" type="search" placeholder="🔍  Buscar cliente por nombre o CUIT… (Enter abre el primero)" autocomplete="off"></div>
 <div class="panel tabla-ancha">
 <table class="tabla biblioteca" id="b-tabla"><thead><tr><th>Cliente</th>
   {% for f in fuentes %}<th title="{{ f[1] }} · {{ f[2] }} — se usa en {{ f[4] }}">{{ f[1] }}<br><small>{{ f[2]|truncate(22, True, '…') }}</small></th>{% endfor %}</tr></thead><tbody>
@@ -31,11 +32,26 @@
 (() => {
   const filas = [...document.querySelectorAll('#b-tabla tbody tr[data-buscar]')], b = document.getElementById('b-buscar');
   const norm = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[-.\s]/g, '');
-  b.addEventListener('input', () => { const q = norm(b.value.trim()); let n = 0;
-    filas.forEach(r => { const ok = !q || norm(r.dataset.buscar).includes(q); r.hidden = !ok; if (ok) n++; });
-    document.getElementById('b-vacio').hidden = n > 0; });
-  b.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault();
-    const r = filas.find(x => !x.hidden); if (r) location.href = r.querySelector('a').href; } });
+  const sug = document.getElementById('b-sug'); let act = -1, vis = [];
+  const esc = t => t.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+  function pintar() {
+    sug.innerHTML = vis.slice(0, 8).map((r, i) => { const a = r.querySelector('a');
+      return `<a href="${a.href}" class="${i === act ? 'activo' : ''}"><b>${esc(a.innerText)}</b> <span class="sutil">${esc(r.querySelector('.sutil').innerText)}</span></a>`; }).join('')
+      + (vis.length > 8 ? `<div class="sutil">y ${vis.length - 8} más (en la tabla)</div>` : '');
+    sug.hidden = !b.value.trim() || !vis.length;
+  }
+  b.addEventListener('input', () => { const q = norm(b.value.trim()); act = -1;
+    filas.forEach(r => { r.hidden = !(!q || norm(r.dataset.buscar).includes(q)); });
+    vis = filas.filter(r => !r.hidden);
+    document.getElementById('b-vacio').hidden = vis.length > 0; pintar(); });
+  b.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const m = Math.min(vis.length, 8);
+      if (m) { act = e.key === 'ArrowDown' ? (act + 1) % m : (act <= 0 ? m - 1 : act - 1); pintar(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); const r = vis[act >= 0 ? act : 0] || filas.find(x => !x.hidden);
+      if (r) location.href = r.querySelector('a').href; }
+    else if (e.key === 'Escape') { sug.hidden = true; } });
+  b.addEventListener('focus', () => { if (b.value.trim()) pintar(); });
+  document.addEventListener('click', e => { if (!document.getElementById('b-caja').contains(e.target)) sug.hidden = true; });
   if (window.innerWidth > 700) b.focus();
 })();
 </script>
