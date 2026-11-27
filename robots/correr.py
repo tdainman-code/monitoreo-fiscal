@@ -402,6 +402,8 @@ def correr_uno(robot: str, cuit: str, periodo: str, visible: bool, partes=None, 
                                 if k in ("mis_comprobantes", "f931", "sifere", "libro_iva", "arba", "arba_dfe", "dfe", "agip", "fiscalizaciones", "ccma", "sct_historico", "mis_retenciones", "sistema_registral", "padron_cm", "pyme_iva") and v)
             extra_txt += "".join(f"\n     ERROR {k}: {v[:150]}" for k, v in errores.items())
             extra_txt += "".join(f"\n     informe: {v}" for v in (res.get("informes") or []))
+        if robot == "planes_todos" and res.get("planes_todos"):    # 27/11/2026: que se vea si armó el Excel
+            return f"{res['planes_todos']}{extra_txt}"
         return f"OK ({n_alertas} alertas){extra_txt}"
     except arca.ClaveInvalida as e:
         alm.marcar_estado(cuit, "ARCA", "Clave inválida")
