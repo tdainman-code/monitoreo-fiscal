@@ -67,6 +67,27 @@ def _cuit_en_campos(pag, campos, cuit: str) -> None:
             c.fill(v)
 
 
+def _donde(ctx, patron, timeout_ms: int = 60_000):
+    """Busca el texto en todas las ventanas y en todos sus marcos (el portal GIT es JSF y puede usar marcos; la
+    ventana nueva puede tardar en abrir). Devuelve el marco (frame) donde está visible."""
+    import time
+    fin = time.time() + timeout_ms / 1000
+    re_ = re.compile(patron, re.I)
+    while True:
+        for pg in reversed(ctx.pages):
+            for fr in pg.frames:
+                try:
+                    loc = fr.get_by_text(re_).locator("visible=true")
+                    if loc.count():
+                        return fr
+                except Exception:
+                    continue
+        if time.time() > fin:
+            raise arca.ErrorRobot(f"AGIP constancia: no apareció '{patron}' (ventanas: "
+                                  + ", ".join(pg.url[:60] for pg in ctx.pages) + ")")
+        ctx.pages[-1].wait_for_timeout(1000)
+
+
 def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
     """page = menú principal de Clave Ciudad (con el representado ya elegido)."""
     hoy = hoy or date.today()
@@ -102,7 +123,11 @@ def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
         if nuevas:
             git = nuevas[-1]
             git.wait_for_load_state("domcontentloaded")
-    git.get_by_text(re.compile(r"Gesti[oó]n Integral Tributaria", re.I)).first.wait_for(timeout=45_000)
+    git = _donde(ctx, r"Gesti[oó]n Integral Tributaria|Impresi[oó]n y Re-Impresi[oó]n de Constancia", 60_000)
+    try:
+        git = _donde(ctx, r"Impresi[oó]n y Re-Impresi[oó]n de Constancia", 3000)
+    except arca.ErrorRobot:
+        pass
     item = git.get_by_text(re.compile(r"Impresi[oó]n y Re-Impresi[oó]n de Constancia", re.I)).locator("visible=true")
     if not item.count():
         m = git.get_by_text(re.compile(r"^\s*Ingresos Brutos\s*$", re.I)).locator("visible=true")
@@ -110,8 +135,11 @@ def bajar(ctx, page, cuit: str, hoy: date | None = None) -> dict:
             m.first.click()
             git.wait_for_timeout(1000)
         item = git.get_by_text(re.compile(r"Impresi[oó]n y Re-Impresi[oó]n de Constancia", re.I)).locator("visible=true")
+    if not item.count():
+        git = _donde(ctx, r"Impresi[oó]n y Re-Impresi[oó]n de Constancia", 20_000)
+        item = git.get_by_text(re.compile(r"Impresi[oó]n y Re-Impresi[oó]n de Constancia", re.I)).locator("visible=true")
     item.first.click()
-    git.get_by_text(re.compile(r"Selecci[oó]n de Persona", re.I)).first.wait_for(timeout=45_000)
+    git = _donde(ctx, r"Selecci[oó]n de Persona", 60_000)
     git.wait_for_timeout(1500)
     # los tres cuadritos de "CUIT / CUIL personal" (los segundos tres): si se pueden escribir, va el CUIT del cliente
     cajas = git.locator("input[type=text], input:not([type])").filter(visible=True)

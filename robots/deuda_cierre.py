@@ -217,12 +217,17 @@ def pagos_posteriores(pagos_sct: dict | None, f: date) -> dict:
     if pagos_sct and date.fromisoformat(pagos_sct.get("desde") or "1900-01-01") <= f + timedelta(days=1):
         for p in pagos_sct.get("pagos") or []:
             per = str(p.get("periodo") or "")
-            if not re.fullmatch(r"\d{8}", per) or date.fromisoformat(p["fecha"]) <= f:
+            try:
+                fp = date.fromisoformat(str(p.get("fecha") or "")[:10])
+            except ValueError:
+                continue
+            if not re.fullmatch(r"\d{8}", per) or fp <= f:
                 continue
             anio, mes = int(per[:4]), int(per[4:6])
             if anio * 100 + (mes or 12) > f.year * 100 + f.month:
                 continue
-            filas.append({**p, "periodo_txt": f"{mes:02d}/{anio}" if mes else f"Anual {anio}",
+            filas.append({**p, "importe": p.get("importe") or 0.0, "impuesto": str(p.get("impuesto") or ""),
+                          "periodo_txt": f"{mes:02d}/{anio}" if mes else f"Anual {anio}",
                           "posible_interes": str(p.get("formulario")) == "800"})
     filas.sort(key=lambda x: (x["impuesto"], x["periodo"], x["fecha"]))
     return {"filas": filas, "total": round(sum(x["importe"] for x in filas if not x["posible_interes"]), 2),
@@ -262,6 +267,8 @@ def excel(cuit: str, r: dict, destino: str, leido: str = "") -> str:
                  ("   aparte, pagos con F.800 posteriores (intereses: no suman)", r.get("pp", {}).get("total_f800", 0.0)),
                  ("Estado de cumplimiento leído el", r.get("ct", {}).get("leido", ""))):
         ws.append([k, v])
+    for e in r.get("errores") or []:
+        ws.append(["ERROR (avisar)", e])
     for fila in (4, 5, 6, 7, 8, 9):
         ws[f"B{fila}"].number_format = "#,##0.00"
     ws["A4"].font = ws["B4"].font = ws["A8"].font = ws["B8"].font = neg
@@ -335,8 +342,20 @@ def generar(cuit: str, hoy: date | None = None, fechas: list[date] | None = None
     hechas = []
     for f in fechas or cierres(cuit, hoy):
         res = calcular(datos, f)
-        res["ct"] = cuentas_tributarias(_ultimo_scth(cuit), f)
-        res["pp"] = pagos_posteriores(_ultimo_json(cuit, "pagos_sct"), f)
+        # 27/11/2026: si una parte falla con los datos reales, el Excel igual se rehace y dice qué falló
+        # (antes quedaba el Excel viejo y la corrida figuraba "terminado")
+        errores = []
+        try:
+            res["ct"] = cuentas_tributarias(_ultimo_scth(cuit), f)
+        except Exception as e:
+            res["ct"] = {"hay": False, "total": 0.0, "total_f931": 0.0, "filas": []}
+            errores.append(f"Cuentas Tributarias: {type(e).__name__}: {str(e)[:150]}")
+        try:
+            res["pp"] = pagos_posteriores(_ultimo_json(cuit, "pagos_sct"), f)
+        except Exception as e:
+            res["pp"] = {"hay": False, "total": 0.0, "total_f800": 0.0, "filas": []}
+            errores.append(f"Pagos posteriores: {type(e).__name__}: {str(e)[:150]}")
+        res["errores"] = errores
         excel(cuit, res, os.path.join(DATOS, cuit, "biblioteca", "_conciliaciones", "deuda_cierre", f"{f.isoformat()}.xlsx"),
               datos.get("fecha", ""))
         hechas.append(f.strftime("%d/%m/%Y"))
