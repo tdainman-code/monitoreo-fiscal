@@ -112,6 +112,24 @@ def cambiar_clave(usuario: str, nueva: str) -> str:
 USUARIO_RE = re.compile(r"^[a-z0-9._-]{2,30}$")
 
 
+# supervisor (27/11/2026, para Daniela): ve y atiende a TODOS los clientes como un administrador, pero sin las
+# funciones de administrador (Facturación entre clientes, usuarios, sistema, bajas, asignar encargados)
+ROLES = ("colaborador", "supervisor", "admin")
+NOMBRE_ROL = {"colaborador": "colaborador", "supervisor": "supervisor", "admin": "administrador"}
+
+
+def cambiar_rol(usuario: str, rol: str) -> str:
+    if rol not in ROLES:
+        return "Rol inválido"
+    con = conectar()
+    try:
+        with con:
+            con.execute("UPDATE usuarios SET rol=? WHERE usuario=?", (rol, usuario))
+    finally:
+        con.close()
+    return ""
+
+
 def crear(usuario: str, nombre: str, clave: str, rol: str = "colaborador") -> str:
     """Alta desde la pantalla. Devuelve un mensaje de error, o '' si salió bien."""
     usuario = usuario.strip().lower()
@@ -121,7 +139,7 @@ def crear(usuario: str, nombre: str, clave: str, rol: str = "colaborador") -> st
         return f"La contraseña tiene que tener al menos {MIN_LARGO} caracteres"
     if rol == "empleado":                                   # nombre viejo del rol
         rol = "colaborador"
-    if rol not in ("colaborador", "admin"):
+    if rol not in ROLES:
         return "Rol inválido"
     con = conectar()
     try:

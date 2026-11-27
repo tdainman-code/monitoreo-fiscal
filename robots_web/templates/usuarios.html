@@ -11,7 +11,10 @@
   <label>Contraseña inicial (mínimo 10 caracteres)
     <input class="clave-vis" name="clave" type="text" minlength="10" required autocomplete="off" autocapitalize="none" spellcheck="false"></label>
   <label class="en-linea"><input type="checkbox" onchange="ocultar(this)"> Ocultar mientras escribo</label>
-  <label class="en-linea"><input type="checkbox" name="rol" value="admin"> Es administrador (puede ver Actividad y manejar usuarios)</label>
+  <label>Rol <select name="rol">
+    <option value="colaborador">Colaborador: ve los clientes que lleva (encargado o equipo)</option>
+    <option value="supervisor">Supervisor: ve y atiende a todos los clientes, sin funciones de administrador</option>
+    <option value="admin">Administrador: todo (usuarios, Actividad, Facturación entre clientes, sistema)</option></select></label>
   <button>Crear usuario</button>
 </form>
 
@@ -20,7 +23,9 @@
 {% for u in lista %}
 <tr><td data-l="Usuario">{{ u[0] }}</td><td data-l="Nombre">{{ u[1] }}</td>
 <td data-l="Mail"><form class="en-linea" method="post"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="email"><input type="hidden" name="usuario" value="{{ u[0] }}">
-  <input name="email" type="email" value="{{ u[5] or '' }}" placeholder="mail@estudio.com" style="width:180px"> <button>Guardar</button></form></td><td data-l="Rol">{{ 'administrador' if u[2] == 'admin' else 'colaborador' }}</td><td data-l="Estado">{{ 'activo' if u[3] else 'baja' }}</td>
+  <input name="email" type="email" value="{{ u[5] or '' }}" placeholder="mail@estudio.com" style="width:180px"> <button>Guardar</button></form></td><td data-l="Rol">{% if u[0] != session.usuario %}<form class="en-linea" method="post"><input type="hidden" name="csrf" value="{{ csrf() }}"><input type="hidden" name="accion" value="rol"><input type="hidden" name="usuario" value="{{ u[0] }}">
+  <select name="rol" onchange="this.form.submit()">{% for r, t in (('colaborador', 'colaborador'), ('supervisor', 'supervisor'), ('admin', 'administrador')) %}<option value="{{ r }}" {{ 'selected' if u[2] == r }}>{{ t }}</option>{% endfor %}</select></form>
+  {% else %}{{ 'administrador' if u[2] == 'admin' else u[2] }}{% endif %}</td><td data-l="Estado">{{ 'activo' if u[3] else 'baja' }}</td>
 <td data-l="Último ingreso">{{ (u[4] or '—')[:16]|replace('T',' ') }}</td>
 <td>
   <form class="en-linea" method="post" autocomplete="off">
@@ -36,7 +41,9 @@
 </td></tr>
 {% endfor %}
 </tbody></table>
-<p class="sutil">Una baja no borra al usuario ni su historial: solo le impide ingresar.</p>
+<p class="sutil">Una baja no borra al usuario ni su historial: solo le impide ingresar. El cambio de rol lo toma en su próximo ingreso.
+ <b>Supervisor</b>: ve todos los clientes, aprueba envíos y avisos, revisa asientos y pide corridas de cualquier cliente;
+ no ve Facturación entre clientes, Actividad, Usuarios ni Sistema, y no asigna encargados ni da de baja clientes.</p>
 <script>
 function ocultar(c){document.querySelectorAll('.clave-vis').forEach(function(i){i.type=c.checked?'password':'text'})}
 </script>

@@ -258,9 +258,14 @@ SECCIONES = {"deuda": "Deuda ARCA (vencida)", "por_vencer": "Por vencer", "plane
              "ventas_bancos": "Reporte de ventas para bancos"}
 
 
+def _ve_todos() -> bool:
+    """Administrador o supervisor (27/11/2026): ve y atiende a todos los clientes."""
+    return session.get("rol") in ("admin", "supervisor")
+
+
 def _solo():
-    """None = ve todos (administrador). Si no, el conjunto de CUITs que lleva (encargado o equipo). 18/11/2026."""
-    if session.get("rol") == "admin":
+    """None = ve todos (administrador o supervisor). Si no, el conjunto de CUITs que lleva (encargado o equipo). 18/11/2026."""
+    if _ve_todos():
         return None
     if "_asignados" not in g:
         g._asignados = usuarios.asignados(session.get("usuario", ""))
@@ -572,7 +577,7 @@ def revision_visto():
         abort(400)
     _cliente_info(cuit)
     enc = (usuarios.datos_cliente(cuit) or {}).get("encargado")
-    if session.get("rol") != "admin" and enc and enc != session["usuario"]:
+    if not _ve_todos() and enc and enc != session["usuario"]:
         flash("Ese cliente tiene otro encargado", "error")
     else:
         marcar = request.form.get("marcar") == "1"
@@ -594,7 +599,7 @@ def dfe_mail():
     _cliente_info(cuit)
     n = next((x for x in datos.ficha(cuit)["notificaciones"] if x["id"] == id_), None)
     enc = (usuarios.datos_cliente(cuit) or {}).get("encargado")
-    if a == "cliente" and session.get("rol") != "admin" and enc and enc != session["usuario"]:
+    if a == "cliente" and not _ve_todos() and enc and enc != session["usuario"]:
         flash("Solo el encargado del cliente aprueba el envío al cliente", "error")   # acuerdo Gaby/Tomás 19/11/2026
     elif not n:
         flash("La comunicación ya no figura", "error")
@@ -1130,8 +1135,8 @@ def revisiones_diarias():
     from . import revisiones as rv
     es_admin = session.get("rol") == "admin"
     con_rev = rv.usuarios_con_revisiones()
-    quien = request.args.get("u") if es_admin and request.args.get("u") else session["usuario"]
-    if es_admin and quien == session["usuario"] and session["usuario"] not in con_rev and con_rev:
+    quien = request.args.get("u") if _ve_todos() and request.args.get("u") else session["usuario"]
+    if _ve_todos() and quien == session["usuario"] and session["usuario"] not in con_rev and con_rev:
         quien = con_rev[0]
     hoy = date.today()
     mes = _periodo_ok(request.args.get("mes")) or hoy.strftime("%Y-%m")
@@ -1383,7 +1388,7 @@ def pantalla_asientos(tipo):
     if tipo not in asientos.TIPOS:
         abort(404)
     clientes, cuit, info = _cliente_asientos()
-    puede = bool(cuit) and asientos.puede_revisar(cuit, session["usuario"], session.get("rol", ""))
+    puede = bool(cuit) and asientos.puede_revisar(cuit, session["usuario"], "admin" if _ve_todos() else session.get("rol", ""))
     if request.method == "POST":
         _controlar_csrf()
         if not cuit:
@@ -1554,7 +1559,7 @@ def pantalla_avisos():
             flash("Ese aviso ya no existe", "error")
         elif a.get("estado") != "para el encargado":
             flash(f"Ese aviso ya está '{a.get('estado')}'", "error")
-        elif session.get("rol") != "admin" and a.get("encargado") and a["encargado"] != session["usuario"]:
+        elif not _ve_todos() and a.get("encargado") and a["encargado"] != session["usuario"]:
             flash("Ese cliente tiene otro encargado", "error")
         else:
             try:
@@ -1685,13 +1690,22 @@ def pantalla_usuarios():
         u = request.form.get("usuario", "").strip().lower()
         err = ""
         if accion == "crear":
+            rol = request.form.get("rol", "colaborador")
             err = usuarios.crear(u, request.form.get("nombre", ""), request.form.get("clave", ""),
-                                 "admin" if request.form.get("rol") == "admin" else "colaborador")
+                                 rol if rol in usuarios.ROLES else "colaborador")
             if not err:
                 usuarios.registrar(session["usuario"], "alta de usuario", u, _ip())
                 flash(f"Usuario '{u}' creado. Pasale la contraseña en persona.", "ok")
         elif not usuarios.existe(u):
             err = "No existe ese usuario"
+        elif accion == "rol":
+            if u == session["usuario"]:
+                err = "No podés cambiarte el rol a vos mismo"
+            else:
+                err = usuarios.cambiar_rol(u, request.form.get("rol", ""))
+                if not err:
+                    usuarios.registrar(session["usuario"], "cambio de rol", f"{u}: {request.form.get('rol')}", _ip())
+                    flash(f"Rol de '{u}': {usuarios.NOMBRE_ROL.get(request.form.get('rol'), '')}. Lo toma en su próximo ingreso.", "ok")
         elif accion == "clave":
             err = usuarios.cambiar_clave(u, request.form.get("clave", ""))
             if not err:
@@ -1789,7 +1803,7 @@ def cliente_nuevo():
             flash("Para dar de alta un cliente hace falta al menos la clave fiscal de ARCA", "error")
         else:
             env, err = _procesar_claves(cuit, razon, True)
-            if env and session.get("rol") != "admin" and not (usuarios.datos_cliente(cuit) or {}).get("encargado"):
+            if env and not _ve_todos() and not (usuarios.datos_cliente(cuit) or {}).get("encargado"):
                 usuarios.guardar_datos_cliente(cuit, {**(usuarios.datos_cliente(cuit) or {}), "encargado": session["usuario"]},
                                                session["usuario"])
             if env:

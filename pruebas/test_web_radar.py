@@ -1115,6 +1115,24 @@ _ag = datos.agente_impago({"deudas": [{"impuesto": "217 - SICORE", "concepto": "
                           {"cct": {"impuestos": [{"impuesto": "IIBB - Ag. de Recaudación", "adeudado": 174012.55}]}},
                           {"cuenta": {"impuestos": [{"impuesto": "Agentes de Recaudación", "deuda": 1482675.5}]}})
 ok({x["organismo"] for x in _ag} == {"ARCA", "AGIP", "ARBA"} and len(_ag) == 3, "agente: retenciones no depositadas en ARCA, AGIP y ARBA")
+# Supervisor (27/11/2026, Daniela): ve y atiende a todos, sin funciones de administrador
+_hu = cl2.get("/usuarios").text
+ok("Supervisor: ve y atiende" in _hu, "usuarios: se puede crear un supervisor")
+cl2.post("/usuarios", data={"csrf": token(_hu), "accion": "crear", "usuario": "daniela", "nombre": "Daniela",
+                            "clave": "clavedaniela123", "rol": "colaborador"})
+cl2.post("/usuarios", data={"csrf": token(cl2.get("/usuarios").text), "accion": "rol", "usuario": "daniela", "rol": "supervisor"})
+ok(any(x[0] == "daniela" and x[2] == "supervisor" for x in usuarios.listar()),
+   "usuarios: el admin le cambia el rol a supervisor")
+_cd = app.test_client()
+login(_cd, "daniela", "clavedaniela123")
+_lc = _cd.get("/clientes").text
+ok(all(datos.cuit_fmt(x) in _lc for x in (C, C2)), "supervisor: ve todos los clientes")
+ok(_cd.get(f"/cliente/{C2}").status_code == 200, "supervisor: abre la ficha de un cliente de otro encargado")
+ok(all(_cd.get(u).status_code == 403 for u in ("/intercliente", "/usuarios", "/sistema", "/actividad")),
+   "supervisor: no ve Facturación entre clientes, Usuarios, Sistema ni Actividad")
+ok(cl2.post("/usuarios", data={"csrf": token(cl2.get("/usuarios").text), "accion": "rol", "usuario": "gabriel",
+                               "rol": "colaborador"}, follow_redirects=True) and
+   any(x[0] == "gabriel" and x[2] == "admin" for x in usuarios.listar()), "usuarios: nadie se cambia el rol a sí mismo")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

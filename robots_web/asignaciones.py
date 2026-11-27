@@ -88,7 +88,7 @@ def generar(clientes: list[dict], datos_de: dict, usuarios: list[tuple], campos:
     wu = wb.create_sheet("Usuarios")
     wu.append(["Usuario (va en Encargado / Equipo)", "Nombre", "Rol"])
     for u in usuarios:
-        wu.append([u[0], u[1] or "", "administrador (ve todos)" if u[2] == "admin" else "colaborador"])
+        wu.append([u[0], u[1] or "", "administrador (ve todos)" if u[2] == "admin" else "supervisor (ve todos)" if u[2] == "supervisor" else "colaborador"])
     wu.column_dimensions["A"].width = 34
     wu.column_dimensions["B"].width = 30
     wi = wb.create_sheet("Instrucciones")
