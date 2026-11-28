@@ -270,3 +270,5 @@ details.descartar.todo-cliente{margin-top:10px;padding-top:8px;border-top:1px da
 .predictor .sugerencias a:first-child{border-top:0}
 .predictor .sugerencias a:hover,.predictor .sugerencias a.activo{background:#eff6ff}
 .predictor .sugerencias div{padding:8px 14px}
+
+.pill.verde{background:#ecfdf5;color:var(--verde)}

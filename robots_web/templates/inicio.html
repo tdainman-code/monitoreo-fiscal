@@ -55,6 +55,7 @@
 <thead><tr>
   <th data-orden="sem" class="ordenable" title="Ordenar por estado"></th>
   <th data-orden="nombre" class="ordenable">Cliente</th>
+  <th data-orden="afavor" class="num ordenable" title="Saldo de libre disponibilidad de IVA + saldos a recuperar con el F.399 (sumados, para ver de un vistazo)">A favor (SLD + F.399)</th>
   <th data-orden="deuda" class="num ordenable">Deuda vencida</th>
   <th data-orden="ddjj" class="num ordenable">DDJJ</th>
   <th data-orden="cuotas" class="num ordenable">Cuotas</th>
@@ -68,7 +69,7 @@
 <tr class="sem-{{ c.semaforo }}" onclick="location.href='{{ url_for('cliente', cuit=c.cuit) }}'"
     data-sem="{{ {'rojo': 0, 'amarillo': 1, 'verde': 2, 'gris': 3}[c.semaforo] }}" data-estado="{{ c.semaforo }}"
     data-nombre="{{ nombre|upper }}" data-buscar="{{ (nombre ~ ' ' ~ c.cuit ~ ' ' ~ cuit_fmt(c.cuit))|lower }}"
-    data-deuda="{{ c.deuda_vencida or 0 }}" data-ddjj="{{ c.ddjj or 0 }}" data-cuotas="{{ c.cuotas_impagas or 0 }}"
+    data-afavor="{{ c.a_favor or 0 }}" data-deuda="{{ c.deuda_vencida or 0 }}" data-ddjj="{{ c.ddjj or 0 }}" data-cuotas="{{ c.cuotas_impagas or 0 }}"
     data-dfe="{{ c.dfe_sin_abrir or 0 }}" data-clave="{{ 1 if c.clave_mal else 0 }}" data-enc="{{ c.encargado or '-' }}"
     data-dias="{{ c.dias if c.dias is not none else 9999 }}">
   <td><span class="punto {{ c.semaforo }}" title="{{ c.motivo }}"></span></td>
@@ -78,6 +79,7 @@
       {% if c.clave_mal %}<span class="etq rojo">🔑 clave inválida: actualizar</span>{% endif %}
       {% for color, txt in c.tags[:3] %}<span class="etq {{ color }}">{{ txt }}</span>{% endfor %}
       {% if c.tags|length > 3 %}<span class="etq gris">+{{ c.tags|length - 3 }} más</span>{% endif %}</div>{% endif %}</td>
+  <td class="num" data-l="A favor (SLD + F.399)">{% if c.a_favor %}<span class="pill verde" title="SLD de IVA {{ (c.sld_iva or 0)|pesos }} + F.399 {{ (c.f399 or 0)|pesos }}">{{ c.a_favor|pesos }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>
   <td class="num" data-l="Deuda vencida">{% if c.deuda_vencida %}<span class="pill rojo">{{ c.deuda_vencida|pesos }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>
   <td class="num" data-l="DDJJ sin presentar">{% if c.ddjj %}<span class="pill rojo">{{ c.ddjj }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>
   <td class="num" data-l="Cuotas impagas">{% if c.cuotas_impagas %}<span class="pill rojo">{{ c.cuotas_impagas }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>
@@ -87,7 +89,7 @@
     {% else %}<span class="{{ 'txt-ambar' if c.dias > 10 }}" title="{{ c.fecha|fecha }}">{{ 'hoy' if c.dias == 0 else 'ayer' if c.dias == 1 else 'hace ' ~ c.dias ~ ' días' }}</span>{% endif %}</td>
 </tr>
 {% endfor %}
-<tr id="t-vacio" {{ 'hidden' if filas }}><td colspan="8" class="sutil">No hay clientes que coincidan con lo que elegiste.</td></tr>
+<tr id="t-vacio" {{ 'hidden' if filas }}><td colspan="9" class="sutil">No hay clientes que coincidan con lo que elegiste.</td></tr>
 </tbody></table>
 </div>
 

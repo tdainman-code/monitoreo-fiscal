@@ -235,6 +235,17 @@ def revisiones(cuit: str, cm: dict | None, scth: dict | None, agip: dict | None 
     return out
 
 
+def sld_iva(scth: dict | None) -> float | None:
+    """Saldo de libre disponibilidad de IVA (28/11/2026, columna del tablero): el del último período de IVA del estado
+    de cumplimiento de Cuentas Tributarias (lo lee la deuda histórica)."""
+    movs = [m for m in (scth or {}).get("movimientos") or [] if str(m.get("impuesto")) == "30"
+            and re.fullmatch(r"\d{8}", str(m.get("periodo") or ""))]
+    if not movs:
+        return None
+    ult = max(str(m["periodo"]) for m in movs)
+    return round(sum(float(m.get("sld") or 0) for m in movs if str(m["periodo"]) == ult), 2)
+
+
 def situacion(cuit: str) -> dict:
     """Todo lo último de un cliente + semáforo."""
     base = os.path.join(DATOS, cuit)
@@ -268,6 +279,8 @@ def situacion(cuit: str) -> dict:
     ccma = _leer(_ultimo(os.path.join(base, "ccma", "*.json")))   # autónomos / monotributo (17/11/2026)
     scth = _leer(_ultimo(os.path.join(base, "sct_historico", "*.json")))   # deuda histórica SCT (17/11/2026)
     perc = _leer(os.path.join(base, "conciliacion", "percepciones.json"))   # percepciones vs Libro IVA (21/11/2026)
+    r["sld_iva"], r["f399"] = sld_iva(scth), round((scth or {}).get("saldos_recuperar_total") or 0.0, 2)
+    r["a_favor"] = round((r["sld_iva"] or 0.0) + r["f399"], 2) if scth else None
     scth = solo_vencido(scth, sct)
     r["cm"], r["scth"], r["percepciones"] = cm, scth, perc
     r["revisiones"] = revisiones(cuit, cm, scth, agip, arba, perc, ccma)

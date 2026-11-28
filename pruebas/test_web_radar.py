@@ -1149,6 +1149,16 @@ ok(cl.get("/sistema/oficina/monitoreo_oficina_20261128_abc1234.tgz").status_code
 cl2.post("/sistema/oficina_instalada", data={"csrf": token(_hs)})
 ok(datos.aviso_oficina(_dt2.date(2026, 11, 28)) is None and "anotado el" in cl2.get("/sistema").text,
    "oficina: 'Ya lo instalé' deja de avisar hasta la próxima versión")
+# Tablero: columna "A favor (SLD + F.399)" (Gaby 28/11/2026)
+os.makedirs(f"{R}/datos/{C3}/sct_historico", exist_ok=True)
+json.dump({"fecha": "2026-11-28", "deudas": [], "saldos_recuperar_total": 1000.0,
+           "movimientos": [{"impuesto": "30", "periodo": "20260900", "sld": 50.0},
+                           {"impuesto": "30", "periodo": "20261000", "sld": 234.56},
+                           {"impuesto": "301", "periodo": "20261000", "sld": 9.0}]},
+          open(f"{R}/datos/{C3}/sct_historico/2026-11-28.json", "w"))
+ok(datos.sld_iva(json.load(open(f"{R}/datos/{C3}/sct_historico/2026-11-28.json"))) == 234.56, "tablero: SLD de IVA del último período")
+_ht = cl2.get("/").text
+ok("A favor (SLD + F.399)" in _ht and "1.234,56" in _ht, "tablero: columna A favor = SLD de IVA + F.399")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()
