@@ -246,6 +246,43 @@ def sld_iva(scth: dict | None) -> float | None:
     return round(sum(float(m.get("sld") or 0) for m in movs if str(m["periodo"]) == ult), 2)
 
 
+F931_COD = {"28", "301", "302", "312", "351", "352", "360"}
+ANIOS_PRESCRIPCION = 4
+
+
+def _prescripto(per: str, hoy: date) -> bool:
+    if not re.fullmatch(r"\d{8}", per or ""):
+        return False
+    a, m = int(per[:4]), int(per[4:6]) or 12
+    if not 1 <= m <= 12:
+        return False
+    fin = date(a + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
+    try:
+        return fin.replace(year=fin.year + ANIOS_PRESCRIPCION) < hoy
+    except ValueError:
+        return date(fin.year + ANIOS_PRESCRIPCION, 2, 28) < hoy
+
+
+def a_favor_detalle(cuit: str, scth: dict | None, hoy: date | None = None) -> dict:
+    """Columna "A favor" del tablero (Gaby 28/11/2026): saldo de libre disponibilidad + F.399, sin lo prescripto
+    (más de 4 años). Si está la lectura de Compensaciones de Cuentas Tributarias (todos los impuestos, período por
+    período), se usa esa y del F.399 solo la seguridad social (que no figura ahí). Si no, SLD de IVA + F.399."""
+    hoy = hoy or date.today()
+    comp = _leer(_ultimo(os.path.join(DATOS, cuit, "saldos_compensables", "[0-9]*.json")))
+    f399 = [f for f in (scth or {}).get("saldos_recuperar") or [] if not _prescripto(str(f.get("periodo")), hoy)]
+    if isinstance(comp, dict) and comp.get("impuestos") is not None:
+        ss = round(sum(float(f.get("sld") or 0) for f in f399 if str(f.get("impuesto")) in F931_COD), 2)
+        return {"sld_iva": None, "sld_comp": comp.get("vigente") or 0.0, "f399": ss,
+                "a_favor": round((comp.get("vigente") or 0.0) + ss, 2), "a_favor_prescripto": comp.get("prescripto") or 0.0,
+                "a_favor_al": comp.get("fecha", "")}
+    if not scth:
+        return {"sld_iva": None, "sld_comp": None, "f399": 0.0, "a_favor": None, "a_favor_prescripto": 0.0, "a_favor_al": ""}
+    iva = sld_iva(scth)
+    tot = round(sum(float(f.get("sld") or 0) for f in f399), 2)
+    return {"sld_iva": iva, "sld_comp": None, "f399": tot, "a_favor": round((iva or 0.0) + tot, 2),
+            "a_favor_prescripto": 0.0, "a_favor_al": scth.get("fecha", "")}
+
+
 def situacion(cuit: str) -> dict:
     """Todo lo último de un cliente + semáforo."""
     base = os.path.join(DATOS, cuit)
@@ -279,8 +316,7 @@ def situacion(cuit: str) -> dict:
     ccma = _leer(_ultimo(os.path.join(base, "ccma", "*.json")))   # autónomos / monotributo (17/11/2026)
     scth = _leer(_ultimo(os.path.join(base, "sct_historico", "*.json")))   # deuda histórica SCT (17/11/2026)
     perc = _leer(os.path.join(base, "conciliacion", "percepciones.json"))   # percepciones vs Libro IVA (21/11/2026)
-    r["sld_iva"], r["f399"] = sld_iva(scth), round((scth or {}).get("saldos_recuperar_total") or 0.0, 2)
-    r["a_favor"] = round((r["sld_iva"] or 0.0) + r["f399"], 2) if scth else None
+    r.update(a_favor_detalle(cuit, scth))
     scth = solo_vencido(scth, sct)
     r["cm"], r["scth"], r["percepciones"] = cm, scth, perc
     r["revisiones"] = revisiones(cuit, cm, scth, agip, arba, perc, ccma)

@@ -21,7 +21,7 @@ import os
 import glob
 from datetime import date, timedelta
 
-from . import arca, robot_agip, robot_ccma, robot_mis_retenciones, robot_sct_historico, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_sistema_registral, robot_padron_cm, robot_pyme_iva, robot_planes_todos
+from . import arca, robot_agip, robot_ccma, robot_mis_retenciones, robot_sct_historico, robot_arba, robot_ddjj_presentadas, robot_fiscalizaciones, robot_dfe, robot_f931, robot_libro_iva, robot_mis_comprobantes, robot_observados, robot_sifere, robot_sistema_registral, robot_padron_cm, robot_pyme_iva, robot_planes_todos, robot_saldos_compensables
 from . import robot_situacion_fiscal as rsf
 
 DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
@@ -74,6 +74,9 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
              ("observados", robot_observados.paso(cuit, est["obs"])),
              ("fiscalizaciones", robot_fiscalizaciones.paso(cuit, est["fisc"])),
              ("mis_comprobantes", robot_mis_comprobantes.paso_periodos(cuit, periodos_cruce, est["mc"], forzar))]
+    if modo == "completo":
+        # saldos a favor por impuesto y período, sin lo prescripto (Gaby 28/11/2026): corrida completa del fin de semana
+        pasos.append(("saldos_compensables", robot_saldos_compensables.paso(cuit, est.setdefault("scomp", {}))))
     # Deuda fiscal al cierre (Gaby 28/11/2026): una vez por año por cliente, a los 45 días de su cierre, en la corrida
     # de la NOCHE (de día Cuentas Tributarias falla seguido): pagos posteriores al cierre + todos los planes + Excel.
     from . import deuda_cierre, robot_pagos_sct
@@ -188,7 +191,7 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
                "fiscalizaciones": est["fisc"].get("servicios", {}),
                "ccma": est["ccma"].get("resultado", ""), "sct_historico": est["scth"].get("resultado", ""),
                "mis_retenciones": est["mret"].get("resultado", ""), "sistema_registral": est["sreg"].get("resultado", ""),
-               "padron_cm": est["pcm"].get("resultado", ""), "pyme_iva": est["pyme"].get("resultado", ""), "planes_todos": est["ptodos"].get("resultado", ""), "dfe": {k: est["dfe"].get(k) for k in ("total", "sin_abrir", "altas_sin_abrir")}}
+               "padron_cm": est["pcm"].get("resultado", ""), "pyme_iva": est["pyme"].get("resultado", ""), "planes_todos": est["ptodos"].get("resultado", ""), "saldos_compensables": est.get("scomp", {}).get("resultado", ""), "dfe": {k: est["dfe"].get(k) for k in ("total", "sin_abrir", "altas_sin_abrir")}}
     with open(os.path.join(DATOS, cuit, f"corrida_todo_{hoy.isoformat()}_{modo}.json"), "w", encoding="utf-8") as f:
         json.dump(resumen, f, ensure_ascii=False, indent=1, default=str)
 

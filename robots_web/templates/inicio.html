@@ -79,7 +79,7 @@
       {% if c.clave_mal %}<span class="etq rojo">🔑 clave inválida: actualizar</span>{% endif %}
       {% for color, txt in c.tags[:3] %}<span class="etq {{ color }}">{{ txt }}</span>{% endfor %}
       {% if c.tags|length > 3 %}<span class="etq gris">+{{ c.tags|length - 3 }} más</span>{% endif %}</div>{% endif %}</td>
-  <td class="num" data-l="A favor (SLD + F.399)">{% if c.a_favor %}<span class="pill verde" title="SLD de IVA {{ (c.sld_iva or 0)|pesos }} + F.399 {{ (c.f399 or 0)|pesos }}">{{ c.a_favor|pesos }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>
+  <td class="num" data-l="A favor (SLD + F.399)">{% if c.a_favor %}<span class="pill verde" title="{% if c.sld_comp is not none %}Saldos de libre disponibilidad (Compensaciones) {{ c.sld_comp|pesos }} + F.399 seguridad social {{ (c.f399 or 0)|pesos }}{% if c.a_favor_prescripto %} · prescripto (más de 4 años, no suma) {{ c.a_favor_prescripto|pesos }}{% endif %}{% else %}SLD de IVA {{ (c.sld_iva or 0)|pesos }} + F.399 {{ (c.f399 or 0)|pesos }}{% endif %} · al {{ c.a_favor_al }}">{{ c.a_favor|pesos }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>
   <td class="num" data-l="Deuda vencida">{% if c.deuda_vencida %}<span class="pill rojo">{{ c.deuda_vencida|pesos }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>
   <td class="num" data-l="DDJJ sin presentar">{% if c.ddjj %}<span class="pill rojo">{{ c.ddjj }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>
   <td class="num" data-l="Cuotas impagas">{% if c.cuotas_impagas %}<span class="pill rojo">{{ c.cuotas_impagas }}</span>{% else %}<span class="nada">—</span>{% endif %}</td>

@@ -1151,7 +1151,9 @@ ok(datos.aviso_oficina(_dt2.date(2026, 11, 28)) is None and "anotado el" in cl2.
    "oficina: 'Ya lo instalé' deja de avisar hasta la próxima versión")
 # Tablero: columna "A favor (SLD + F.399)" (Gaby 28/11/2026)
 os.makedirs(f"{R}/datos/{C3}/sct_historico", exist_ok=True)
-json.dump({"fecha": "2026-11-28", "deudas": [], "saldos_recuperar_total": 1000.0,
+json.dump({"fecha": "2026-11-28", "deudas": [], "saldos_recuperar_total": 1500.0,
+           "saldos_recuperar": [{"impuesto": "301", "periodo": "20260900", "sld": 1000.0},
+                                {"impuesto": "301", "periodo": "20200900", "sld": 500.0}],
            "movimientos": [{"impuesto": "30", "periodo": "20260900", "sld": 50.0},
                            {"impuesto": "30", "periodo": "20261000", "sld": 234.56},
                            {"impuesto": "301", "periodo": "20261000", "sld": 9.0}]},
@@ -1159,6 +1161,12 @@ json.dump({"fecha": "2026-11-28", "deudas": [], "saldos_recuperar_total": 1000.0
 ok(datos.sld_iva(json.load(open(f"{R}/datos/{C3}/sct_historico/2026-11-28.json"))) == 234.56, "tablero: SLD de IVA del último período")
 _ht = cl2.get("/").text
 ok("A favor (SLD + F.399)" in _ht and "1.234,56" in _ht, "tablero: columna A favor = SLD de IVA + F.399")
+os.makedirs(f"{R}/datos/{C3}/saldos_compensables", exist_ok=True)
+json.dump({"fecha": "2026-11-29", "vigente": 5000.0, "prescripto": 11050.82, "impuestos": [{"impuesto": "IVA"}]},
+          open(f"{R}/datos/{C3}/saldos_compensables/2026-11-29.json", "w"))
+_af = datos.a_favor_detalle(C3, json.load(open(f"{R}/datos/{C3}/sct_historico/2026-11-28.json")), _dt2.date(2026, 11, 29))
+ok(_af["a_favor"] == 6000.0 and _af["a_favor_prescripto"] == 11050.82,
+   "tablero: con Compensaciones suma sus saldos no prescriptos + F.399 de seguridad social (sin lo de más de 4 años)")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()
