@@ -27,6 +27,12 @@ from . import robot_situacion_fiscal as rsf
 DATOS = os.environ.get("ROBOTS_DATOS", "/var/lib/robots/datos")
 
 
+def _de_noche() -> bool:
+    from datetime import datetime
+    h = datetime.now().hour
+    return h >= 19 or h < 7
+
+
 def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses: int = 12,
            forzar: bool = False, informes: bool = True, arba: tuple | None = None, agip: tuple | None = None,
            modo: str = "completo", historico: bool = False, **_):
@@ -68,7 +74,16 @@ def correr(cuit, periodo, usuario, clave, metodo="Directo", visible=False, meses
              ("observados", robot_observados.paso(cuit, est["obs"])),
              ("fiscalizaciones", robot_fiscalizaciones.paso(cuit, est["fisc"])),
              ("mis_comprobantes", robot_mis_comprobantes.paso_periodos(cuit, periodos_cruce, est["mc"], forzar))]
-    if historico:
+    # Deuda fiscal al cierre (Gaby 28/11/2026): una vez por año por cliente, a los 45 días de su cierre, en la corrida
+    # de la NOCHE (de día Cuentas Tributarias falla seguido): pagos posteriores al cierre + todos los planes + Excel.
+    from . import deuda_cierre, robot_pagos_sct
+    cierre_auto = deuda_cierre.toca_anual(cuit, hoy) if _de_noche() else None
+    if cierre_auto and not deuda_cierre.tomar_cupo(hoy):
+        cierre_auto = None                             # ya se hicieron los de esta noche: sigue otra noche
+    if cierre_auto:
+        pasos.append(("pagos_sct", robot_pagos_sct.paso(cuit, cierre_auto + timedelta(days=1), est.setdefault("psct", {}))))
+        pasos.append(("planes_todos", robot_planes_todos.paso(cuit, est["ptodos"], cierre_auto.isoformat())))
+    elif historico:
         # Deuda fiscal al cierre (Gaby, 26/11/2026): todos los planes de pago, también caducos y cancelados (tanda nocturna).
         pasos.append(("planes_todos", robot_planes_todos.paso(cuit, est["ptodos"])))
     if modo == "diaria":

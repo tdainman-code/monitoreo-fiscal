@@ -95,6 +95,23 @@ class T(unittest.TestCase):
         self.assertEqual(pp["total"], 100.0)
         self.assertEqual(pp["total_f800"], 7.0)
 
+    def test_anual_a_los_45_dias(self):
+        import tempfile
+        viejo, dc.DATOS = dc.DATOS, tempfile.mkdtemp()
+        try:
+            orig = dc.mes_cierre
+            dc.mes_cierre = lambda c: None
+            self.assertIsNone(dc.toca_anual("30712227571", date(2026, 2, 13)))
+            self.assertEqual(dc.toca_anual("30712227571", date(2026, 2, 14)), date(2025, 12, 31))
+            dc.mes_cierre = lambda c: 6
+            self.assertIsNone(dc.toca_anual("30712227571", date(2026, 8, 13)))
+            self.assertEqual(dc.toca_anual("30712227571", date(2026, 8, 14)), date(2026, 6, 30))
+            dc.mes_cierre = orig
+            self.assertTrue(all(dc.tomar_cupo(date(2026, 8, 14)) for _ in range(dc.CUPO_POR_NOCHE)))
+            self.assertFalse(dc.tomar_cupo(date(2026, 8, 14)))
+        finally:
+            dc.DATOS = viejo
+
     def test_csv_pagos(self):
         from robots import robot_pagos_sct as rp
         t = ("CUIT: 30-71222757-1 - Fecha de emisión: 26/11/2026\nFecha Operación;Formulario;Version;Impuesto;Periodo;Importe;Observaciones\n"

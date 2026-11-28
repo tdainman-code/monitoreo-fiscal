@@ -16,7 +16,7 @@ import glob
 import json
 import os
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from . import lector_situacion as ls
 
@@ -70,6 +70,44 @@ def cierres(cuit: str, hoy: date | None = None, n: int = 2) -> list[date]:
             out.append(f)
         a -= 1
     return out
+
+
+DIAS_DESPUES_DEL_CIERRE = 45
+
+
+def toca_anual(cuit: str, hoy: date | None = None) -> date | None:
+    """Gaby 28/11/2026: el informe de deuda al cierre se arma solo, una vez por año por cliente, cuando pasaron 45 días
+    del cierre (mes de cierre de la ficha; si no hay, 31/12). Devuelve la fecha de cierre si toca, o None. No toca si ya
+    hay un Excel de ese cierre armado después de los 45 días (uno pedido antes desde la web no cuenta)."""
+    hoy = hoy or date.today()
+    f = cierres(cuit, hoy, 1)[0]
+    desde = f + timedelta(days=DIAS_DESPUES_DEL_CIERRE)
+    if hoy < desde:
+        return None
+    x = os.path.join(DATOS, cuit, "biblioteca", "_conciliaciones", "deuda_cierre", f"{f.isoformat()}.xlsx")
+    if os.path.exists(x) and date.fromtimestamp(os.path.getmtime(x)) >= desde:
+        return None
+    return f
+
+
+CUPO_POR_NOCHE = 25
+
+
+def tomar_cupo(hoy: date | None = None) -> bool:
+    """Tope de informes automáticos por noche (para no alargar la corrida: la primera vez le toca a casi todos)."""
+    hoy = hoy or date.today()
+    d = os.path.join(DATOS, "_deuda_cierre_cupo")
+    os.makedirs(d, exist_ok=True)
+    r = os.path.join(d, f"{hoy.isoformat()}.txt")
+    try:
+        n = int(open(r).read().strip() or 0)
+    except (OSError, ValueError):
+        n = 0
+    if n >= CUPO_POR_NOCHE:
+        return False
+    with open(r, "w") as fh:
+        fh.write(str(n + 1))
+    return True
 
 
 def _norm(t) -> str:
