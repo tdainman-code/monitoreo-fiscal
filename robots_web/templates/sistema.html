@@ -7,6 +7,18 @@
   <div class="tarjeta"><span class="sutil">Pedidos de corrida</span><b>{{ 'habilitados' if pedidos_listo else 'no habilitados' }}</b></div>
   <div class="tarjeta"><span class="sutil">Carga de claves desde la web</span><b>{{ 'habilitada' if claves_listo else 'no habilitada' }}</b></div>
 </div>
+<h2 id="oficina">Máquina "robots" de la oficina</h2>
+{% if paquete %}<div class="panel" style="padding:14px">
+  <p>Paquete con la versión <b>{{ paquete.version }}</b> del {{ paquete.fecha }} (solo código: no lleva claves ni datos).
+   {% if oficina.version %}En la oficina está instalada la <b>{{ oficina.version }}</b> (anotado el {{ oficina.fecha[:16]|replace('T', ' ') }} por {{ oficina.por }}).{% else %}Todavía no se anotó ninguna instalación.{% endif %}</p>
+  <p><a class="boton" href="{{ url_for('paquete_oficina', archivo=paquete.archivo) }}">⬇ {{ paquete.archivo }}</a>
+   {% if paquete.script %}<a class="boton" href="{{ url_for('paquete_oficina', archivo='actualizar_oficina.sh') }}">⬇ actualizar_oficina.sh</a>{% endif %}</p>
+  <ol class="sutil"><li>WinSCP: sitio <b>robot@192.168.1.102</b>, arrastrar los dos archivos a /home/robot.</li>
+   <li>PuTTY (Ctrl+P en WinSCP): <code>sudo bash actualizar_oficina.sh</code> y esperar "LISTO".</li>
+   <li>Tocar "Ya lo instalé" para que no vuelva a avisar hasta la próxima versión.</li></ol>
+  {% if oficina.version != paquete.version %}<form method="post" action="{{ url_for('oficina_instalada') }}"><input type="hidden" name="csrf" value="{{ csrf() }}">
+   <button>Ya lo instalé en la oficina</button></form>{% endif %}
+</div>{% else %}<p class="sutil">El paquete se arma solo con la próxima versión que instale el servidor.</p>{% endif %}
 <h2>Cómo cambiar el robot o la web</h2>
 <p>Pedile el cambio a Claude Code sobre el repositorio de GitHub. Cuando el cambio queda en la rama <b>main</b>, el servidor
 lo detecta (cada 5 minutos), <b>corre las pruebas</b> y, si pasan, lo instala sin cortar una corrida en curso. Si fallan, no lo

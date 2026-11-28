@@ -1133,6 +1133,22 @@ ok(all(_cd.get(u).status_code == 403 for u in ("/intercliente", "/usuarios", "/s
 ok(cl2.post("/usuarios", data={"csrf": token(cl2.get("/usuarios").text), "accion": "rol", "usuario": "gabriel",
                                "rol": "colaborador"}, follow_redirects=True) and
    any(x[0] == "gabriel" and x[2] == "admin" for x in usuarios.listar()), "usuarios: nadie se cambia el rol a sí mismo")
+# Paquete semanal para la oficina (Gaby 28/11/2026): solo administradores
+import datetime as _dt2  # noqa: E402
+os.makedirs(f"{R}/publico/paquete_oficina", exist_ok=True)
+open(f"{R}/publico/paquete_oficina/monitoreo_oficina_20261128_abc1234.tgz", "wb").write(b"x")
+open(f"{R}/publico/paquete_oficina/actualizar_oficina.sh", "w").write("echo")
+ok(datos.aviso_oficina(_dt2.date(2026, 11, 28))["version"] == "abc1234" and datos.aviso_oficina(_dt2.date(2026, 11, 30)) is None,
+   "oficina: avisa sábado y domingo, no en la semana")
+_hs = cl2.get("/sistema").text
+ok("abc1234" in _hs and "monitoreo_oficina_20261128_abc1234.tgz" in _hs, "oficina: el admin ve el paquete en Sistema")
+ok(cl2.get("/sistema/oficina/monitoreo_oficina_20261128_abc1234.tgz").status_code == 200
+   and cl2.get("/sistema/oficina/otro.tgz").status_code == 404, "oficina: el admin lo baja (y nada más que eso)")
+ok(cl.get("/sistema/oficina/monitoreo_oficina_20261128_abc1234.tgz").status_code == 403
+   and _cd.get("/sistema/oficina/actualizar_oficina.sh").status_code == 403, "oficina: colaborador y supervisor no lo bajan")
+cl2.post("/sistema/oficina_instalada", data={"csrf": token(_hs)})
+ok(datos.aviso_oficina(_dt2.date(2026, 11, 28)) is None and "anotado el" in cl2.get("/sistema").text,
+   "oficina: 'Ya lo instalé' deja de avisar hasta la próxima versión")
 if os.environ.get("VOLCAR_HTML"):                      # para ver la estética: guarda las pantallas en HTML
     os.makedirs(os.environ["VOLCAR_HTML"], exist_ok=True)
     css = open(os.path.join(RAIZ, "robots_web", "static", "estilo.css"), encoding="utf-8").read()

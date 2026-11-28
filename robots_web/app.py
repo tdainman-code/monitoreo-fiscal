@@ -213,7 +213,8 @@ def inicio():
     encargados_lista = sorted({x["encargado"] for x in filas if x["encargado"]}, key=lambda u: nombres.get(u, u).upper())
     return render_template("inicio.html", filas=filas, q=q, f=filtro, cuenta=cuenta, temas=temas, total=len(filas),
                            solo_mios=not es_admin, es_admin=es_admin, nombres=nombres, encargados_lista=encargados_lista,
-                           sin_encargado=sum(1 for x in filas if not x["encargado"]))
+                           sin_encargado=sum(1 for x in filas if not x["encargado"]),
+                           aviso_oficina=datos.aviso_oficina() if session.get("rol") == "admin" else None)
 
 
 def _que_pasa(r: dict) -> list[tuple]:
@@ -549,7 +550,31 @@ def sistema():
         except (OSError, ValueError):
             return defecto
     return render_template("sistema.html", version=leer("version.json", {}), cambios=leer("actualizaciones.json", []),
-                           pedidos_listo=pedidos.listo(), claves_listo=claves.listo())
+                           pedidos_listo=pedidos.listo(), claves_listo=claves.listo(),
+                           paquete=datos.paquete_oficina(), oficina=datos.oficina_instalada())
+
+
+@app.route("/sistema/oficina/<archivo>")
+@requiere_admin
+def paquete_oficina(archivo):
+    """Paquete para la máquina "robots" de la oficina (Gaby 28/11/2026). Solo administradores."""
+    p = datos.paquete_oficina()
+    if not p or archivo not in (p["archivo"], "actualizar_oficina.sh"):
+        abort(404)
+    usuarios.registrar(session["usuario"], "bajó el paquete de la oficina", archivo, _ip())
+    return send_file(os.path.join(datos.PUBLICO, "paquete_oficina", archivo), as_attachment=True, download_name=archivo)
+
+
+@app.route("/sistema/oficina_instalada", methods=["POST"])
+@requiere_admin
+def oficina_instalada():
+    _controlar_csrf()
+    p = datos.paquete_oficina()
+    if p:
+        datos.marcar_oficina(p["version"], session["usuario"])
+        usuarios.registrar(session["usuario"], "instaló el paquete en la oficina", p["version"], _ip())
+        flash(f"Anotado: la oficina tiene la versión {p['version']}.", "ok")
+    return redirect(request.form.get("volver") if (request.form.get("volver") or "").startswith("/") else url_for("sistema"))
 
 
 @app.route("/dfe/informada", methods=["POST"])

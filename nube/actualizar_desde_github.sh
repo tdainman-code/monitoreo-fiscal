@@ -133,6 +133,11 @@ fi
 if echo "$SALIDA" | grep -q "CODIGO=0" && echo "$SALIDA2" | grep -q "CODIGO=0"; then
   if instalar_desde "$PRUEBA"; then
     echo "$NUEVO" > /opt/monitoreo/instalado; git checkout -q --detach "$NUEVO"
+    # paquete para la máquina "robots" de la oficina (Gaby 28/11/2026): se baja desde Sistema (solo administradores)
+    PQ="$PUB/paquete_oficina"; mkdir -p "$PQ" && rm -f "$PQ"/*.tgz "$PQ"/actualizar_oficina.sh
+    if bash /opt/monitoreo/repo/nube/armar_paquete_oficina.sh "$PQ" >/dev/null 2>>"$LOG"; then
+      chown -R robot:robotsweb "$PQ" 2>/dev/null; chmod 750 "$PQ"; chmod 640 "$PQ"/* 2>/dev/null
+    fi
     anotar "instalada" "$CORTO" "$MSJ" "$(echo "$SALIDA" | tail -3)"
     echo "$(date) instalada $CORTO" >> "$LOG"
   fi

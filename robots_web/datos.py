@@ -1153,3 +1153,38 @@ def fallas_todos(solo: set | None = None) -> list[dict]:
         for f in fallas(c["cuit"]):
             out.append({**f, "cuit": c["cuit"], "razon_social": c.get("razon_social") or ""})
     return out
+
+
+# ---------------------------------------------------------------- paquete para la oficina (28/11/2026)
+def paquete_oficina() -> dict | None:
+    """Último paquete armado por el servidor para la máquina "robots" de la oficina (PUBLICO/paquete_oficina)."""
+    d = os.path.join(PUBLICO, "paquete_oficina")
+    tgz = sorted(glob.glob(os.path.join(d, "monitoreo_oficina_*.tgz")))
+    if not tgz:
+        return None
+    m = re.search(r"monitoreo_oficina_(\d{8})_(\w+)\.tgz$", tgz[-1])
+    return {"archivo": os.path.basename(tgz[-1]), "version": m[2] if m else "",
+            "fecha": f"{m[1][6:8]}/{m[1][4:6]}/{m[1][:4]}" if m else "",
+            "script": os.path.exists(os.path.join(d, "actualizar_oficina.sh"))}
+
+
+def _ruta_oficina() -> str:
+    return os.path.join(os.environ.get("ROBOTS_WEB_DATOS", "/var/lib/robots-web"), "oficina.json")
+
+
+def oficina_instalada() -> dict:
+    return _leer(_ruta_oficina()) or {}
+
+
+def marcar_oficina(version: str, por: str) -> None:
+    with open(_ruta_oficina(), "w", encoding="utf-8") as f:
+        json.dump({"version": version, "por": por, "fecha": datetime.now().isoformat(timespec="minutes")}, f)
+
+
+def aviso_oficina(hoy: date | None = None) -> dict | None:
+    """Sábados y domingos, si hay un paquete más nuevo que el instalado en la oficina."""
+    hoy = hoy or date.today()
+    p = paquete_oficina()
+    if not p or hoy.weekday() < 5 or oficina_instalada().get("version") == p["version"]:
+        return None
+    return p
