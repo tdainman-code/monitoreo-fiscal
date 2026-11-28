@@ -212,6 +212,15 @@ def cuentas_tributarias(scth: dict | None, f: date) -> dict:
             "hay": bool(scth)}
 
 
+CAPITAL_F800 = ("211",)        # Gaby 28/11/2026: Bienes Personales acciones y participaciones por F.800 es capital
+
+
+def es_interes(p: dict) -> bool:
+    """F.800 = intereses (Gaby 26/11/2026), salvo el impuesto 211 (BP acciones y participaciones), que es capital."""
+    imp = re.match(r"\s*0*(\d+)", str(p.get("impuesto") or ""))
+    return str(p.get("formulario")) == "800" and not (imp and imp[1] in CAPITAL_F800)
+
+
 def pagos_posteriores(pagos_sct: dict | None, f: date) -> dict:
     """Pagos con fecha posterior al cierre e imputados a períodos hasta el cierre (Gaby 26/11/2026: "no tomaste en
     cuenta los pagos posteriores"): eran deuda a la fecha del cierre. El F.800 se separa: son intereses (confirmado por Gaby 26/11/2026)."""
@@ -232,7 +241,7 @@ def pagos_posteriores(pagos_sct: dict | None, f: date) -> dict:
                 continue
             filas.append({**p, "importe": p.get("importe") or 0.0, "impuesto": str(p.get("impuesto") or ""),
                           "periodo_txt": f"{mes:02d}/{anio}" if mes else f"Anual {anio}",
-                          "posible_interes": str(p.get("formulario")) == "800"})
+                          "posible_interes": es_interes(p)})
     filas.sort(key=lambda x: (x["impuesto"], x["periodo"], x["fecha"]))
     return {"filas": filas, "total": round(sum(x["importe"] for x in filas if not x["posible_interes"]), 2),
             "total_f800": round(sum(x["importe"] for x in filas if x["posible_interes"]), 2),

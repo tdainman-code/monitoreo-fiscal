@@ -87,6 +87,14 @@ class T(unittest.TestCase):
         self.assertEqual(pp["total_f800"], 3330.31)
         self.assertEqual(len(pp["filas"]), 2)
 
+    def test_f800_bienes_personales_acciones_es_capital(self):
+        pp = dc.pagos_posteriores({"desde": "2025-01-01", "pagos": [
+            {"fecha": "2025-06-10", "formulario": "800", "impuesto": "211 - BP-ACCIONES O PARTICIPACIONES", "periodo": "20240000", "importe": 100.0},
+            {"fecha": "2025-06-10", "formulario": "800", "impuesto": "301 - EMPLEADOR-APORTES SEG. SOCIAL", "periodo": "20241100", "importe": 7.0}]},
+            date(2024, 12, 31))
+        self.assertEqual(pp["total"], 100.0)
+        self.assertEqual(pp["total_f800"], 7.0)
+
     def test_csv_pagos(self):
         from robots import robot_pagos_sct as rp
         t = ("CUIT: 30-71222757-1 - Fecha de emisión: 26/11/2026\nFecha Operación;Formulario;Version;Impuesto;Periodo;Importe;Observaciones\n"
